@@ -131,28 +131,22 @@ def test_removing_from_users_file_signs_out(web, tmp_path):
     assert bob.get("/api/me").status_code == 401
 
 
-def test_switch_model_mid_chat(web):
+def test_model_is_locked_per_chat(web):
     module, calls = web
     alice = login(module, "alice", "password-a")
-    first = alice.post("/api/chat", json={"question": "hi", "model": "claude-opus-5-5"}).json()
-    assert first["model"] == "claude-opus-5-5"
+    first = alice.post("/api/chat", json={"question": "hi", "model": "claude-haiku-4-5"}).json()
+    assert first["model"] == "claude-haiku-4-5"
     chat_id = first["conversation_id"]
 
-    # Switching model continues the same chat with its full history.
+    # Asking for a different model on an existing chat still uses the chat's own model.
     second = alice.post("/api/chat", json={"question": "again", "conversation_id": chat_id,
-                                           "model": "claude-haiku-4-5"}).json()
+                                           "model": "claude-opus-5-5"}).json()
     assert second["conversation_id"] == chat_id and second["model"] == "claude-haiku-4-5"
-    history, _, model = calls[-1]
-    assert model == "claude-haiku-4-5" and len(history) == 2
-
-    # Without a model, the chat continues on the last one used.
-    alice.post("/api/chat", json={"question": "more", "conversation_id": chat_id})
     assert calls[-1][2] == "claude-haiku-4-5"
 
     chat = alice.get(f"/api/conversations/{chat_id}").json()
     assert chat["model"] == "claude-haiku-4-5"
-    assert [t["model"] for t in chat["turns"] if t["role"] == "assistant"] == [
-        "claude-opus-5-5", "claude-haiku-4-5", "claude-haiku-4-5"]
+    assert [t["model"] for t in chat["turns"] if t["role"] == "assistant"] == ["claude-haiku-4-5"] * 2
 
 
 def test_disabled_model_falls_back_to_default(web, monkeypatch):

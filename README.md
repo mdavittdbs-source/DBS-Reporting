@@ -113,5 +113,5 @@ Set `LLM_PROVIDER=claude` to switch back.
   projects, etc.), add a method to `connectwise.py` and a `@beta_tool` function in `tools.py`.
   Claude picks it up automatically.
 - **Models.** Defaults to `claude-sonnet-5-5`. Set `CLAUDE_MODEL` in `.env` to change the default,
-  and list several in `CLAUDE_MODELS` to show a model picker next to the send button. People can
-  switch models at any point in a chat; each answer is labelled with the model that wrote it.
+  and list several in `CLAUDE_MODELS` to show a model picker next to the send button. The model is
+  chosen when a chat starts and stays fixed for that chat; start a new chat to use another one.

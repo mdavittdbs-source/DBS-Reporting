@@ -148,9 +148,12 @@
   .model-wrap { position: relative; flex-shrink: 0; height: 38px; display: flex; align-items: center; }
   .model-wrap[hidden] { display: none; }
   #model { appearance: none; background: transparent; border: 0; border-radius: 9px; height: 34px;
-           padding: 0 26px 0 10px; font-size: 13px; color: var(--muted); max-width: 190px;
+           padding: 0 26px 0 10px; font-size: 13px; color: var(--muted); max-width: 230px;
            text-overflow: ellipsis; transition: background .15s, color .15s; }
-  #model:hover, #model:focus-visible { background: var(--bg); color: var(--text); }
+  #model:hover:not(:disabled), #model:focus-visible { background: var(--bg); color: var(--text); }
+  #model:disabled { cursor: default; opacity: .75; }
+  .model-wrap:has(#model:disabled)::after { display: none; }
+  .model-wrap:has(#model:disabled) #model { padding-right: 10px; }
   .model-wrap::after { content: ""; position: absolute; right: 11px; top: 50%; width: 5px; height: 5px;
                        border: solid currentColor; color: var(--faint); border-width: 0 1.5px 1.5px 0;
                        transform: translateY(-75%) rotate(45deg); pointer-events: none; }
@@ -202,7 +205,7 @@
   .actions { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
   .actions button { opacity: 0; transition: opacity .15s; }
   .msg.bot:hover .actions button, .actions button:focus-visible { opacity: 1; }
-  .model-tag { font-size: 12px; color: var(--faint); padding: 4px 8px 4px 0; }
+
   .actions button { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
                     color: var(--muted); font-size: 13px; padding: 4px 8px; border-radius: 6px; }
   .actions button:hover { color: var(--text); background: rgba(120, 110, 90, .1); }
@@ -311,7 +314,7 @@
           <label for="q" class="sr-only">Your question</label>
           <textarea id="q" rows="1" placeholder="Ask about a client's tickets or time…"></textarea>
           <span class="model-wrap" id="model-wrap" hidden>
-            <select id="model" aria-label="AI model" title="Model for the next answer. You can switch at any time."></select>
+            <select id="model" aria-label="AI model"></select>
           </span>
           <button id="send" aria-label="Send">
             <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 14.5V3.5M4 8.5l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -395,12 +398,7 @@
     scrollToEnd();
   }
 
-  function modelName(id) {
-    const m = modelInfo.models.find((x) => x.id === id);
-    return (m ? m.label : id || "").replace(/\s*\(.*\)$/, "");
-  }
-
-  function addAnswer(text, model) {
+  function addAnswer(text) {
     const div = document.createElement("div");
     div.className = "msg bot";
     const answer = document.createElement("div");
@@ -412,12 +410,6 @@
     copy.type = "button";
     copy.innerHTML = COPY + "Copy";
     copy.onclick = () => copyText(text);
-    if (model && modelInfo.models.length > 1) {
-      const tag = document.createElement("span");
-      tag.className = "model-tag";
-      tag.textContent = modelName(model);
-      actions.appendChild(tag);
-    }
     actions.appendChild(copy);
     div.append(answer, actions);
     messages.appendChild(div);
@@ -589,17 +581,21 @@
     input.onblur = () => finish(true);
   }
 
-  function setModel(model) {
-    // Only select models that are still enabled; otherwise keep the default.
+  function setModel(model, locked) {
+    // Only select models that are still enabled; otherwise show the default.
     if (model && [...modelSelect.options].some((o) => o.value === model)) modelSelect.value = model;
     else if (modelInfo.default) modelSelect.value = modelInfo.default;
+    modelSelect.disabled = locked;
+    modelSelect.title = locked
+      ? "This chat's model. Start a new chat to use a different one."
+      : "Model for this chat. It can't be changed after the first question.";
   }
 
   function newChat() {
     conversationId = null;
     messages.innerHTML = "";
     chatTitle.textContent = "New chat";
-    setModel(modelInfo.default);
+    setModel(modelInfo.default, false);
     showStart();
     closeDrawer();
     loadChats();
@@ -612,9 +608,9 @@
       const chat = await api(`/api/conversations/${id}`);
       conversationId = chat.id;
       chatTitle.textContent = chat.title;
-      setModel(chat.model);
+      setModel(chat.model, true);
       messages.innerHTML = "";
-      for (const t of chat.turns) t.role === "user" ? addUser(t.text) : addAnswer(t.text, t.model);
+      for (const t of chat.turns) t.role === "user" ? addUser(t.text) : addAnswer(t.text);
       scrollToEnd();
       loadChats();
     } catch (err) {
@@ -638,8 +634,11 @@
       conversationId = data.conversation_id;
       thinking.stop();
       thinking.el.remove();
-      addAnswer(data.answer, data.model);
-      if (isNew) chatTitle.textContent = data.title;
+      addAnswer(data.answer);
+      if (isNew) {
+        chatTitle.textContent = data.title;
+        setModel(data.model, true);
+      }
       loadChats();
     } catch (err) {
       thinking.stop();

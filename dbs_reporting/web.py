@@ -186,13 +186,10 @@ def _answer(user: dict, request: ChatRequest, question: str) -> ChatResponse:
         if found is None:
             raise HTTPException(404, "Chat not found.")
         conversation_id, title = found["id"], found["title"]
-        # People can switch models mid-chat. The saved history is passed along unchanged; the API
-        # skips any reasoning the new model can't read. If the chat's last model has since been
-        # disabled, carry on with the default.
-        model = request.model or found["model"]
+        # A chat keeps the model it started with, so answers stay consistent and Claude keeps its
+        # full reasoning. If that model has since been disabled, carry on with the default.
+        model = found["model"]
         if model not in agent.models:
-            if request.model:
-                raise HTTPException(400, f"Model {model!r} isn't enabled.")
             model = agent.default_model
     else:
         model = request.model or agent.default_model
