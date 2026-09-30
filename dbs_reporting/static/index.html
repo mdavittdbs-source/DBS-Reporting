@@ -86,6 +86,8 @@
   .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent);
                 display: grid; place-items: center; flex-shrink: 0; }
   .brand-mark svg { width: 16px; height: 16px; }
+  .brand-mark.has-logo { background: none; width: auto; height: auto; border-radius: 0; }
+  .brand-mark img { display: block; height: 30px; width: auto; max-width: 132px; object-fit: contain; }
   .brand-name { font-weight: 600; letter-spacing: -.01em; line-height: 1.2; }
   .brand-name small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); letter-spacing: 0; }
 
@@ -143,16 +145,15 @@
            border-bottom: 1px solid var(--border); }
   #chat-title { flex: 1; min-width: 0; font-weight: 600; letter-spacing: -.01em;
                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .model-wrap { position: relative; flex-shrink: 0; }
+  .model-wrap { position: relative; flex-shrink: 0; height: 38px; display: flex; align-items: center; }
   .model-wrap[hidden] { display: none; }
-  #model { appearance: none; background: var(--surface); border: 1px solid var(--border);
-           border-radius: 8px; padding: 6px 30px 6px 10px; font-size: 13px; max-width: 46vw;
-           transition: border-color .15s; }
-  #model:hover:not(:disabled) { border-color: var(--border-strong); }
-  #model:disabled { color: var(--muted); cursor: default; }
-  .model-wrap::after { content: ""; position: absolute; right: 11px; top: 50%; width: 6px; height: 6px;
-                       border: solid var(--muted); border-width: 0 1.5px 1.5px 0;
-                       transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+  #model { appearance: none; background: transparent; border: 0; border-radius: 9px; height: 34px;
+           padding: 0 26px 0 10px; font-size: 13px; color: var(--muted); max-width: 190px;
+           text-overflow: ellipsis; transition: background .15s, color .15s; }
+  #model:hover, #model:focus-visible { background: var(--bg); color: var(--text); }
+  .model-wrap::after { content: ""; position: absolute; right: 11px; top: 50%; width: 5px; height: 5px;
+                       border: solid currentColor; color: var(--faint); border-width: 0 1.5px 1.5px 0;
+                       transform: translateY(-75%) rotate(45deg); pointer-events: none; }
   #toggle { display: none; background: none; border: 1px solid var(--border); border-radius: 8px;
             padding: 6px 8px; line-height: 0; }
   #toggle svg { width: 18px; height: 18px; }
@@ -198,8 +199,10 @@
   .answer td { border-bottom: 1px solid var(--border); padding: 8px 16px 8px 0; vertical-align: top; }
   .answer tr:last-child td { border-bottom: 0; }
   .answer td:not(:first-child), .answer th:not(:first-child) { text-align: right; }
-  .actions { display: flex; gap: 4px; margin-top: 10px; opacity: .0; transition: opacity .15s; }
-  .msg.bot:hover .actions, .actions:focus-within { opacity: 1; }
+  .actions { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
+  .actions button { opacity: 0; transition: opacity .15s; }
+  .msg.bot:hover .actions button, .actions button:focus-visible { opacity: 1; }
+  .model-tag { font-size: 12px; color: var(--faint); padding: 4px 8px 4px 0; }
   .actions button { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
                     color: var(--muted); font-size: 13px; padding: 4px 8px; border-radius: 6px; }
   .actions button:hover { color: var(--text); background: rgba(120, 110, 90, .1); }
@@ -264,7 +267,8 @@
     #form { padding: 6px 12px 12px; }
     .composer-hint { display: none; }
     .msg.user { max-width: 90%; }
-    .actions { opacity: 1; }
+    .actions button { opacity: 1; }
+    #model { max-width: 118px; padding-right: 22px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
@@ -299,9 +303,6 @@
         <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>
       <span id="chat-title">New chat</span>
-      <span class="model-wrap" id="model-wrap" hidden>
-        <select id="model" aria-label="AI model"></select>
-      </span>
     </header>
     <div id="log"><div class="inner"><div id="messages" aria-live="polite"></div></div></div>
     <form id="form">
@@ -309,6 +310,9 @@
         <div class="composer">
           <label for="q" class="sr-only">Your question</label>
           <textarea id="q" rows="1" placeholder="Ask about a client's tickets or time…"></textarea>
+          <span class="model-wrap" id="model-wrap" hidden>
+            <select id="model" aria-label="AI model" title="Model for the next answer. You can switch at any time."></select>
+          </span>
           <button id="send" aria-label="Send">
             <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 14.5V3.5M4 8.5l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -391,7 +395,12 @@
     scrollToEnd();
   }
 
-  function addAnswer(text) {
+  function modelName(id) {
+    const m = modelInfo.models.find((x) => x.id === id);
+    return (m ? m.label : id || "").replace(/\s*\(.*\)$/, "");
+  }
+
+  function addAnswer(text, model) {
     const div = document.createElement("div");
     div.className = "msg bot";
     const answer = document.createElement("div");
@@ -403,6 +412,12 @@
     copy.type = "button";
     copy.innerHTML = COPY + "Copy";
     copy.onclick = () => copyText(text);
+    if (model && modelInfo.models.length > 1) {
+      const tag = document.createElement("span");
+      tag.className = "model-tag";
+      tag.textContent = modelName(model);
+      actions.appendChild(tag);
+    }
     actions.appendChild(copy);
     div.append(answer, actions);
     messages.appendChild(div);
@@ -574,17 +589,17 @@
     input.onblur = () => finish(true);
   }
 
-  function setModel(model, locked) {
-    if (model) modelSelect.value = model;
-    modelSelect.disabled = locked;
-    modelSelect.title = locked ? "This chat's model. Start a new chat to use a different one." : "Model for this chat";
+  function setModel(model) {
+    // Only select models that are still enabled; otherwise keep the default.
+    if (model && [...modelSelect.options].some((o) => o.value === model)) modelSelect.value = model;
+    else if (modelInfo.default) modelSelect.value = modelInfo.default;
   }
 
   function newChat() {
     conversationId = null;
     messages.innerHTML = "";
     chatTitle.textContent = "New chat";
-    setModel(modelInfo.default, false);
+    setModel(modelInfo.default);
     showStart();
     closeDrawer();
     loadChats();
@@ -597,12 +612,9 @@
       const chat = await api(`/api/conversations/${id}`);
       conversationId = chat.id;
       chatTitle.textContent = chat.title;
-      if (![...modelSelect.options].some((o) => o.value === chat.model)) {
-        modelSelect.add(new Option(chat.model + " (no longer enabled)", chat.model));
-      }
-      setModel(chat.model, true);
+      setModel(chat.model);
       messages.innerHTML = "";
-      for (const t of chat.turns) t.role === "user" ? addUser(t.text) : addAnswer(t.text);
+      for (const t of chat.turns) t.role === "user" ? addUser(t.text) : addAnswer(t.text, t.model);
       scrollToEnd();
       loadChats();
     } catch (err) {
@@ -626,11 +638,8 @@
       conversationId = data.conversation_id;
       thinking.stop();
       thinking.el.remove();
-      addAnswer(data.answer);
-      if (isNew) {
-        chatTitle.textContent = data.title;
-        setModel(modelSelect.value, true);
-      }
+      addAnswer(data.answer, data.model);
+      if (isNew) chatTitle.textContent = data.title;
       loadChats();
     } catch (err) {
       thinking.stop();
@@ -681,6 +690,19 @@
     await api("/api/logout", { method: "POST" }).catch(() => {});
     location.href = "/login";
   };
+
+  function loadLogo() {
+    const img = new Image();
+    img.alt = "";
+    img.onload = () => {
+      const mark = document.querySelector(".brand-mark");
+      mark.replaceChildren(img);
+      mark.classList.add("has-logo");
+      document.querySelector('link[rel="icon"]').href = "/logo";
+    };
+    img.src = "/logo";
+  }
+  loadLogo();
 
   (async () => {
     const me = await api("/api/me");

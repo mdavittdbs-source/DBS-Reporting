@@ -44,6 +44,8 @@
   .brand { display: flex; align-items: center; gap: 10px; margin: 0 0 28px 4px; }
   .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; }
   .brand-mark svg { width: 18px; height: 18px; }
+  .brand-mark.has-logo { background: none; width: auto; height: auto; border-radius: 0; }
+  .brand-mark img { display: block; height: 36px; width: auto; max-width: 180px; object-fit: contain; }
   .brand span:last-child { font-weight: 600; letter-spacing: -.01em; }
   form { background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
          padding: 30px 28px 26px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 16px; }
@@ -92,6 +94,16 @@
   <p class="foot">Need an account or a password reset? Ask Mikey Davitt.</p>
 </main>
 <script>
+  const logo = new Image();
+  logo.alt = "";
+  logo.onload = () => {
+    const mark = document.querySelector(".brand-mark");
+    mark.replaceChildren(logo);
+    mark.classList.add("has-logo");
+    document.querySelector('link[rel="icon"]').href = "/logo";
+  };
+  logo.src = "/logo";
+
   const form = document.getElementById("form");
   const error = document.getElementById("error");
   const submit = document.getElementById("submit");

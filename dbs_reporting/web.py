@@ -61,6 +61,20 @@ def index(dbs_session: str | None = Cookie(default=None)):
     return FileResponse(STATIC / "index.html")
 
 
+BRANDING = Path(__file__).resolve().parent.parent / "branding"
+LOGO_NAMES = ("logo.svg", "logo.png", "logo.webp", "logo.jpg", "logo.jpeg")
+
+
+@app.get("/logo")
+def logo() -> FileResponse:
+    """Your logo, if one is saved in the branding folder. Public so the sign-in page can show it."""
+    for name in LOGO_NAMES:
+        path = BRANDING / name
+        if path.is_file():
+            return FileResponse(path, headers={"Cache-Control": "no-cache"})
+    raise HTTPException(404, "No logo in the branding folder.")
+
+
 @app.get("/login")
 def login_page() -> FileResponse:
     return FileResponse(STATIC / "login.html")
@@ -163,6 +177,7 @@ class ChatResponse(BaseModel):
     answer: str
     conversation_id: str
     title: str
+    model: str
 
 
 def _answer(user: dict, request: ChatRequest, question: str) -> ChatResponse:
@@ -170,11 +185,15 @@ def _answer(user: dict, request: ChatRequest, question: str) -> ChatResponse:
         found = store.get_conversation(user["id"], request.conversation_id)
         if found is None:
             raise HTTPException(404, "Chat not found.")
-        conversation_id, model, title = found["id"], found["model"], found["title"]
+        conversation_id, title = found["id"], found["title"]
+        # People can switch models mid-chat. The saved history is passed along unchanged; the API
+        # skips any reasoning the new model can't read. If the chat's last model has since been
+        # disabled, carry on with the default.
+        model = request.model or found["model"]
         if model not in agent.models:
-            raise HTTPException(
-                400, f"This chat used {model}, which is no longer enabled. Start a new chat."
-            )
+            if request.model:
+                raise HTTPException(400, f"Model {model!r} isn't enabled.")
+            model = agent.default_model
     else:
         model = request.model or agent.default_model
         if model not in agent.models:
@@ -187,8 +206,8 @@ def _answer(user: dict, request: ChatRequest, question: str) -> ChatResponse:
         answer, history = agent.respond(history, question, model)
         if conversation_id is None:
             conversation_id = store.create_conversation(user["id"], title, model)
-        store.save_turn(conversation_id, question, answer, history)
-    return ChatResponse(answer=answer, conversation_id=conversation_id, title=title[:80])
+        store.save_turn(conversation_id, question, answer, history, model)
+    return ChatResponse(answer=answer, conversation_id=conversation_id, title=title[:80], model=model)
 
 
 @app.post("/api/chat")
