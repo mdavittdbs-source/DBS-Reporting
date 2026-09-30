@@ -60,8 +60,12 @@ ask you questions about their clients' service tickets and time in ConnectWise M
 Today's date is {today}.
 
 How to work:
-- Resolve client names with find_company before anything else. If the name matches several \
-companies and it isn't obvious which one is meant, ask a short clarifying question.
+- For questions about one client, resolve the name with find_company first. If the name matches \
+several companies and it isn't obvious which one is meant, ask a short clarifying question.
+- For questions across clients (rankings, totals, comparisons, "which clients/sites had the most \
+tickets"), use get_ticket_totals. Don't look clients up one by one. "Sites" usually means the site \
+or location on the ticket (group_by="site"); if it could also mean clients, answer by site and \
+offer the by-client view.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
 what actually went wrong, based on their summaries (e.g. "printer offline", "Outlook password \
 prompts", "POS terminal won't connect"), and give a count for each group. Mention the ticket \
@@ -84,6 +88,7 @@ TOOL_STATUS = {
     "get_company_tickets": "Pulling tickets from ConnectWise…",
     "get_ticket_details": "Reading ticket notes…",
     "get_company_time": "Adding up time entries…",
+    "get_ticket_totals": "Counting tickets across all clients…",
 }
 
 

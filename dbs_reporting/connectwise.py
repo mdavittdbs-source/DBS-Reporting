@@ -10,6 +10,12 @@ from .config import ConnectWiseSettings
 
 PAGE_SIZE = 1000  # ConnectWise maximum
 
+# Just what cross-client totals need; far smaller than full ticket records.
+TICKET_SUMMARY_FIELDS = (
+    "id,summary,closedFlag,company/id,company/name,site/name,board/name,status/name,"
+    "type/name,subType/name,priority/name,source/name"
+)
+
 
 def cw_date(dt: datetime) -> str:
     """Format a datetime for a ConnectWise `conditions` clause, e.g. [2026-09-01T00:00:00Z]."""
@@ -91,6 +97,20 @@ class ConnectWiseClient:
         return list(
             self.get_all("/service/tickets", limit=limit, conditions=conditions, orderBy="id desc")
         )
+
+    def tickets_since(self, days: int, board_name: str | None = None, limit: int = 20000) -> list[dict]:
+        """Every client's tickets entered in the last `days` days (up to `limit`)."""
+        conditions = f"dateEntered>={cw_date(since(days))}"
+        if board_name:
+            conditions += f" and board/name={quote(board_name)}"
+        try:
+            return list(self.get_all("/service/tickets", limit=limit, conditions=conditions,
+                                     orderBy="id desc", fields=TICKET_SUMMARY_FIELDS))
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 400:
+                raise
+            # Some instances reject nested field lists; fall back to full records.
+            return list(self.get_all("/service/tickets", limit=limit, conditions=conditions, orderBy="id desc"))
 
     def ticket(self, ticket_id: int) -> dict:
         return self.get(f"/service/tickets/{int(ticket_id)}")
