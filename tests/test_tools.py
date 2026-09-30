@@ -151,3 +151,38 @@ def test_ticket_totals_falls_back_without_fields_and_rejects_bad_group():
     assert "fields" in requests[0].url.params and "fields" not in requests[1].url.params
     bad = json.loads(tools["get_ticket_totals"].call({"group_by": "planet"}))
     assert "group_by must be one of" in bad["error"]
+
+
+def test_paging_stops_at_the_limit_without_an_extra_request():
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        size = int(request.url.params["pageSize"])
+        page = int(request.url.params["page"])
+        return httpx.Response(200, json=[{"id": (page - 1) * size + i} for i in range(size)])
+
+    cw = ConnectWiseClient(SETTINGS, transport=httpx.MockTransport(handler))
+    assert len(list(cw.get_all("/service/tickets", limit=2000))) == 2000
+    assert len(requests) == 2  # a full last page used to trigger a third, discarded request
+    requests.clear()
+    assert [r["id"] for r in cw.get_all("/x", limit=3)] == [0, 1, 2]
+    assert len(requests) == 1 and requests[0].url.params["pageSize"] == "3"
+
+
+def test_rejected_field_list_is_remembered():
+    requests = []
+    tools = tools_by_name(totals_client(requests, reject_fields=True))
+    tools["get_ticket_totals"].call({"group_by": "board"})
+    tools["get_ticket_totals"].call({"group_by": "company"})
+    # first question: fields rejected, then full records; second question skips the failing try
+    assert ["fields" in r.url.params for r in requests] == [True, False, False]
+
+
+def test_ticket_list_leaves_out_blank_fields():
+    tools = tools_by_name(make_client([]))
+    result = json.loads(tools["get_company_tickets"].call({"company_id": 42}))
+    open_ticket = result["tickets"][0]
+    assert open_ticket == {"id": 3, "summary": "Printer offline", "entered": "2026-09-20T10:00:00Z",
+                           "board": "Help Desk", "type": "Hardware"}
+    assert result["tickets"][1]["closed"] == "2026-09-11T10:00:00Z"

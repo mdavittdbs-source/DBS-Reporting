@@ -9,6 +9,7 @@ A chart spec is plain JSON, validated here, saved with the answer, drawn by the 
 """
 
 import json
+import math
 
 CHART_TYPES = ("bar", "hbar", "line", "stacked_bar")
 MAX_SERIES = 8     # the categorical palette has 8 validated colors; never generate more
@@ -42,6 +43,9 @@ def validate_chart(spec: dict) -> tuple[dict | None, str | None]:
         try:
             numbers = [None if v is None else float(v) for v in values]
         except (TypeError, ValueError):
+            numbers = None
+        # NaN/Infinity would be saved as invalid JSON and stop the chat from loading.
+        if numbers is None or any(n is not None and not math.isfinite(n) for n in numbers):
             return None, f"series {s.get('name')!r} has a value that isn't a number"
         clean_series.append({"name": str(s.get("name") or f"Series {len(clean_series) + 1}")[:60],
                              "values": [int(n) if n is not None and n.is_integer() else n for n in numbers]})
@@ -59,6 +63,17 @@ def validate_chart(spec: dict) -> tuple[dict | None, str | None]:
     }, None
 
 
+def _chart_added(content) -> bool:
+    """Whether a create_chart tool result says the chart was accepted."""
+    if isinstance(content, list):  # [{"type": "text", "text": "..."}]
+        content = "".join(b.get("text", "") for b in content if isinstance(b, dict))
+    try:
+        result = json.loads(content) if isinstance(content, str) else None
+    except json.JSONDecodeError:
+        return False
+    return isinstance(result, dict) and result.get("chart_added") is True
+
+
 def extract_charts(new_messages: list) -> list[dict]:
     """Charts created while answering, in order, from the answer's new history messages.
     Only calls that the tool accepted (no error result) are included."""
@@ -66,11 +81,9 @@ def extract_charts(new_messages: list) -> list[dict]:
     for message in new_messages:
         if isinstance(message, dict) and message.get("role") == "user" and isinstance(message.get("content"), list):
             for block in message["content"]:
-                if isinstance(block, dict) and block.get("type") == "tool_result" and not block.get("is_error"):
-                    content = block.get("content")
-                    text = content if isinstance(content, str) else json.dumps(content)
-                    if '"chart_added": true' in text:
-                        accepted.add(block.get("tool_use_id"))
+                if (isinstance(block, dict) and block.get("type") == "tool_result" and not block.get("is_error")
+                        and _chart_added(block.get("content"))):
+                    accepted.add(block.get("tool_use_id"))
     charts = []
     for message in new_messages:
         if isinstance(message, dict) and message.get("role") == "assistant" and isinstance(message.get("content"), list):

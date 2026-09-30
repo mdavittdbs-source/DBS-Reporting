@@ -70,3 +70,27 @@ def test_answer_workbook():
     values = [[c.value for c in row] for row in sheet.iter_rows(min_row=4, max_row=6)]
     assert values[0][:3] == ["Category", "Open", "Closed"] and values[1][:3] == ["Downtown", 5, 26]
     assert len(sheet._charts) == 1
+
+
+def test_chart_values_must_be_finite():
+    for bad in ("nan", float("inf"), "-Infinity"):
+        assert "isn't a number" in validate_chart({**CHART, "series": [{"name": "T", "values": [bad, 1]}]})[1]
+
+
+def test_extract_accepts_any_json_spacing():
+    history = [
+        {"role": "assistant", "content": [{"type": "tool_use", "id": "a", "name": "create_chart", "input": CHART}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "a",
+                                      "content": [{"type": "text", "text": '{"chart_added":true}'}]}]},
+    ]
+    assert len(extract_charts(history)) == 1
+
+
+def test_workbook_keeps_equals_text_as_text_and_reads_short_separators():
+    text = "=== Summary ===\n\n| Client | Note |\n|-|-|\n| Acme | =HYPERLINK(\"x\") |\n| Beta | - |"
+    wb = load_workbook(io.BytesIO(answer_workbook({"text": text, "charts": []})))
+    assert wb["Summary"]["A6"].value == "=== Summary ==="
+    assert wb["Summary"]["A6"].data_type == "s"
+    rows = [[c.value for c in row] for row in wb["Table 1"].iter_rows()]
+    assert rows == [["Client", "Note"], ["Acme", '=HYPERLINK("x")'], ["Beta", "-"]]
+    assert wb["Table 1"]["B2"].data_type == "s"

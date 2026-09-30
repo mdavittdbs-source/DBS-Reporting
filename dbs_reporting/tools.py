@@ -51,6 +51,10 @@ def ticket_breakdown(tickets: list[dict]) -> dict[str, Any]:
         counts = Counter(r[field] or "(none)" for r in rows)
         return [[k, v] for k, v in counts.most_common(n)]
 
+    # Blank fields are left out of the ticket list: up to 1000 rows go to Claude on every step
+    # of the answer and every follow-up, so empty values would cost tokens for nothing.
+    compact = [{k: v for k, v in r.items() if v is not None and v != ""} for r in rows]
+
     return {
         "ticket_count": len(rows),
         "open_count": sum(1 for r in rows if not r["closed"]),
@@ -61,7 +65,7 @@ def ticket_breakdown(tickets: list[dict]) -> dict[str, Any]:
         "by_priority": top("priority"),
         "by_source": top("source"),
         "by_contact": top("contact", 10),
-        "tickets": rows,
+        "tickets": compact,
     }
 
 
@@ -128,7 +132,8 @@ def build_tools(cw: ConnectWiseClient) -> list:
         """Get service tickets opened for a company in the last N days.
 
         Returns counts broken down by type, subtype, item, board, priority, source and contact,
-        plus a compact list of every ticket (id, summary, dates, status, classification). Use the ticket summaries, not
+        plus a compact list of every ticket (id, summary, dates, status, classification; blank fields
+        are left out, so a ticket with no "closed" date is open). Use the ticket summaries, not
         just the type fields, to identify recurring issues, because technicians often leave the
         type fields blank or generic.
 
@@ -267,8 +272,8 @@ def build_tools(cw: ConnectWiseClient) -> list:
                 ],
             }
             if len(totals) > top:
-                result["other_groups"] = {"groups": len(totals) - top,
-                                          "tickets": sum(n for _, n in totals.most_common()[top:])}
+                shown = sum(g["tickets"] for g in result["groups"])
+                result["other_groups"] = {"groups": len(totals) - top, "tickets": len(tickets) - shown}
             if len(tickets) >= TOTALS_LIMIT:
                 result["note"] = f"Capped at {TOTALS_LIMIT} tickets; narrow the date range for exact totals."
             return json.dumps(result)

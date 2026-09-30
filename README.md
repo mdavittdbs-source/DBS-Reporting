@@ -108,8 +108,9 @@ using the numbers it pulled from ConnectWise. Under each answer:
 - **PDF** opens a printable report (logo, question, answer and charts); choose *Save as PDF*.
 - Each chart has **Show table** (the numbers behind it) and **Download PNG** (for emails and slides).
 
-Charts are saved with the chat, so they come back when you reopen it. Chart.js is bundled in
-`dbs_reporting/static/vendor`, so nothing extra is needed on the network.
+Charts are saved with the chat, so they come back when you reopen it. The page's libraries
+(Chart.js, marked and DOMPurify) are bundled in `dbs_reporting/static/vendor`, so the chat works
+even where the office network blocks public CDNs.
 
 ## Token usage and cost
 

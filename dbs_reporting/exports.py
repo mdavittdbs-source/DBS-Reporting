@@ -6,7 +6,7 @@ import re
 
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, LineChart, Reference
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 # Chart colors: the same validated categorical palette as the web page (light mode).
@@ -41,14 +41,23 @@ def markdown_tables(text: str) -> list[list[list[str]]]:
         stripped = line.strip()
         if stripped.startswith("|") and stripped.count("|") >= 2:
             cells = [c.strip() for c in stripped.strip("|").split("|")]
-            if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
-                continue  # the |---|---| separator row
+            if len(current) == 1 and all(re.fullmatch(r":?-+:?", c) for c in cells if c):
+                continue  # the |---|---| separator row under the header
             current.append(cells)
         else:
             if len(current) >= 2:
                 tables.append(current)
             current = []
     return tables
+
+
+def _as_text(ws) -> None:
+    """Keep text that starts with "=" as text. openpyxl would otherwise write it as a formula,
+    which Excel then reports as a damaged file (or runs, if it came from a ticket summary)."""
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str) and cell.value.startswith("="):
+                cell.data_type = "s"
 
 
 def _autosize(ws) -> None:
@@ -126,8 +135,6 @@ def answer_workbook(answer: dict) -> bytes:
         ws.append([_plain(line)])
     ws.column_dimensions["A"].width = 14
     ws.column_dimensions["B"].width = 100
-    for row in ws.iter_rows(min_row=6):
-        row[0].alignment = Alignment(wrap_text=False)
 
     for number, table in enumerate(markdown_tables(answer["text"]), start=1):
         sheet = wb.create_sheet(f"Table {number}")
@@ -142,6 +149,9 @@ def answer_workbook(answer: dict) -> bytes:
 
     for number, chart in enumerate(answer.get("charts") or [], start=1):
         _add_chart_sheet(wb, number, chart)
+
+    for sheet in wb.worksheets:
+        _as_text(sheet)
 
     buffer = io.BytesIO()
     wb.save(buffer)

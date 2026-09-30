@@ -52,6 +52,9 @@ class ConnectWiseClient:
             timeout=60,
             transport=transport,
         )
+        # Field lists this ConnectWise server has rejected, so later queries skip straight to
+        # full records instead of failing first every time.
+        self._rejected_fields: set[str] = set()
 
     def close(self) -> None:
         self._http.close()
@@ -63,18 +66,32 @@ class ConnectWiseClient:
 
     def get_all(self, path: str, limit: int = 5000, **params: Any) -> Iterator[dict]:
         """Yield records across pages, stopping after `limit` records."""
+        page_size = max(1, min(PAGE_SIZE, limit))
         page = 1
         returned = 0
-        while True:
-            batch = self.get(path, page=page, pageSize=PAGE_SIZE, **params)
-            for record in batch:
-                if returned >= limit:
-                    return
-                returned += 1
+        while returned < limit:
+            batch = self.get(path, page=page, pageSize=page_size, **params)
+            for record in batch[:limit - returned]:
                 yield record
-            if len(batch) < PAGE_SIZE:
+            returned += len(batch)
+            if len(batch) < page_size:
                 return
             page += 1
+
+    def _tickets(self, conditions: str, limit: int, fields: str) -> list[dict]:
+        """Tickets matching `conditions`, asking for just `fields`. Some servers reject nested
+        field lists (HTTP 400); then full records are fetched instead, and remembered."""
+        params = {"limit": limit, "conditions": conditions, "orderBy": "id desc"}
+        if fields not in self._rejected_fields:
+            try:
+                return list(self.get_all("/service/tickets", fields=fields, **params))
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 400:
+                    raise
+            records = list(self.get_all("/service/tickets", **params))
+            self._rejected_fields.add(fields)  # only once full records worked, so it was the fields
+            return records
+        return list(self.get_all("/service/tickets", **params))
 
     # --- Companies -------------------------------------------------------
 
@@ -109,14 +126,7 @@ class ConnectWiseClient:
         conditions = f"dateEntered>={cw_date(since(days))}"
         if board_name:
             conditions += f" and board/name={quote(board_name)}"
-        try:
-            return list(self.get_all("/service/tickets", limit=limit, conditions=conditions,
-                                     orderBy="id desc", fields=TICKET_SUMMARY_FIELDS))
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code != 400:
-                raise
-            # Some instances reject nested field lists; fall back to full records.
-            return list(self.get_all("/service/tickets", limit=limit, conditions=conditions, orderBy="id desc"))
+        return self._tickets(conditions, limit, TICKET_SUMMARY_FIELDS)
 
     def ticket(self, ticket_id: int) -> dict:
         return self.get(f"/service/tickets/{int(ticket_id)}")
@@ -132,13 +142,7 @@ class ConnectWiseClient:
             conditions += f" and company/id={int(company_id)}"
         if board_name:
             conditions += f" and board/name={quote(board_name)}"
-        try:
-            return list(self.get_all("/service/tickets", limit=limit, conditions=conditions,
-                                     orderBy="id desc", fields=TICKET_SLA_FIELDS))
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code != 400:
-                raise
-            return list(self.get_all("/service/tickets", limit=limit, conditions=conditions, orderBy="id desc"))
+        return self._tickets(conditions, limit, TICKET_SLA_FIELDS)
 
     # --- Time entries ----------------------------------------------------
 

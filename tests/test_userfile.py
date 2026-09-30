@@ -83,3 +83,18 @@ def test_new_file_carries_over_existing_logins(tmp_path):
     text = (tmp_path / "users.txt").read_text()
     assert "legacy | Legacy User | scrypt$" in text and text.rstrip().endswith("admin")
     assert store.authenticate("legacy", "LegacyPass1")
+
+
+def test_unreadable_file_keeps_existing_logins(tmp_path):
+    store, users, path = setup(tmp_path, "jsmith | Jane Smith | Welcome2026! |\n")
+    path.write_bytes("jsmith | Jane Smith | Other-password1 |\n".encode("utf-16"))  # Notepad's "Unicode"
+    os.utime(path, (time.time() + 100, time.time() + 100))
+    users.refresh()  # used to raise, failing every page
+    assert "UTF-8" in users.problems[0]
+    assert store.authenticate("jsmith", "Welcome2026!") is not None
+
+
+def test_bad_last_column_is_not_erased(tmp_path):
+    store, users, path = setup(tmp_path, "jsmith | Jane Smith | Welcome2026! | admn\n")
+    assert "admn" in path.read_text()
+    assert any("last column" in p for p in users.problems)

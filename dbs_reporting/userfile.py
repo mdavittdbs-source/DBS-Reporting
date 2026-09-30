@@ -84,7 +84,7 @@ def parse_and_hash(path: Path) -> tuple[list[dict], list[str], set[str]]:
                 continue
             password = hash_password(password)
             parts[2] = password
-            lines[number - 1] = " | ".join(parts[:3] + (["admin"] if admin else [""]))
+            lines[number - 1] = " | ".join(parts[:3] + [parts[3] if len(parts) == 4 else ""])
             changed = True
         seen.add(username.lower())
         users.append({
@@ -131,7 +131,18 @@ class UsersFile:
         with self._lock:
             if mtime == self._mtime:
                 return
-            users, self.problems, broken = parse_and_hash(self.path)
+            try:
+                users, self.problems, broken = parse_and_hash(self.path)
+            except UnicodeDecodeError:
+                # e.g. saved as UTF-16 by Notepad. Keep the current logins rather than fail every page.
+                self.problems = ["can't be read: save it as UTF-8 (in VS Code, click the encoding in the "
+                                 "status bar, then 'Save with Encoding')"]
+                log.error("users.txt %s", self.problems[0])
+                self._mtime = mtime
+                return
+            except OSError as exc:
+                log.warning("Couldn't read %s yet (%s); keeping the current logins.", self.path, exc)
+                return  # e.g. locked while an editor saves it; try again on the next request
             for problem in self.problems:
                 log.warning("users.txt %s", problem)
             self.store.sync_users(users, keep=broken)

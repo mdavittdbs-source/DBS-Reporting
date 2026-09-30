@@ -188,9 +188,17 @@ class ReportingAgent:
                     usage_mod.add_message(usage, final, model)
                     # Mirror the history: the runner keeps its own copy and doesn't expose it.
                     messages.append({"role": "assistant", "content": [_to_json(b) for b in final.content]})
-                    has_tool_use = any(b.type == "tool_use" for b in final.content)
-                    if final.stop_reason == "refusal" or (final.stop_reason == "max_tokens" and has_tool_use):
-                        break  # don't run tools from a turn that was cut off or declined
+                    tool_uses = [b for b in final.content if b.type == "tool_use"]
+                    if final.stop_reason == "refusal":
+                        break
+                    if final.stop_reason == "max_tokens" and tool_uses:
+                        # Don't run tools from a turn that was cut off, but answer each call so the
+                        # saved chat stays valid: a tool call with no result makes the API reject
+                        # every later question in this chat.
+                        messages.append({"role": "user", "content": [
+                            {"type": "tool_result", "tool_use_id": b.id, "is_error": True,
+                             "content": "Not run: the response was cut off."} for b in tool_uses]})
+                        break
                     tool_response = runner.generate_tool_call_response()
                     if tool_response is not None:
                         messages.append(json.loads(json.dumps(tool_response, default=_to_json)))
