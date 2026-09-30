@@ -81,6 +81,12 @@ several companies and it isn't obvious which one is meant, ask a short clarifyin
 tickets"), use get_ticket_totals. Don't look clients up one by one. "Sites" usually means the site \
 or location on the ticket (group_by="site"); if it could also mean clients, answer by site and \
 offer the by-client view.
+- Agreements: get_agreements lists contracts and allowances (use ending_within_days for renewals); \
+get_agreement_usage shows hours used vs. allowed in the current period. When a client has several \
+agreements, check the one with an hours allowance. Mention that the balance can differ from \
+ConnectWise's if there are manual adjustments.
+- SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
+times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
 what actually went wrong, based on their summaries (e.g. "printer offline", "Outlook password \
 prompts", "POS terminal won't connect"), and give a count for each group. Mention the ticket \
@@ -104,6 +110,9 @@ TOOL_STATUS = {
     "get_ticket_details": "Reading ticket notes…",
     "get_company_time": "Adding up time entries…",
     "get_ticket_totals": "Counting tickets across all clients…",
+    "get_agreements": "Looking up agreements…",
+    "get_agreement_usage": "Adding up agreement hours…",
+    "get_sla_performance": "Checking SLA performance…",
 }
 
 

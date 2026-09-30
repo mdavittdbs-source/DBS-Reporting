@@ -10,6 +10,12 @@ from .config import ConnectWiseSettings
 
 PAGE_SIZE = 1000  # ConnectWise maximum
 
+# What SLA reporting needs from each ticket.
+TICKET_SLA_FIELDS = (
+    "id,closedFlag,closedDate,dateResponded,dateResolved,isInSla,slaStatus,company/id,company/name,"
+    "board/name,priority/name,sla/name,_info/dateEntered"
+)
+
 # Just what cross-client totals need; far smaller than full ticket records.
 TICKET_SUMMARY_FIELDS = (
     "id,summary,closedFlag,company/id,company/name,site/name,board/name,status/name,"
@@ -117,6 +123,40 @@ class ConnectWiseClient:
 
     def ticket_notes(self, ticket_id: int) -> list[dict]:
         return list(self.get_all(f"/service/tickets/{int(ticket_id)}/notes", limit=200, orderBy="id asc"))
+
+    def tickets_for_sla(self, days: int, company_id: int | None = None, board_name: str | None = None,
+                        limit: int = 20000) -> list[dict]:
+        """Tickets entered in the last `days` days with their SLA flag and response/resolution times."""
+        conditions = f"dateEntered>={cw_date(since(days))}"
+        if company_id:
+            conditions += f" and company/id={int(company_id)}"
+        if board_name:
+            conditions += f" and board/name={quote(board_name)}"
+        try:
+            return list(self.get_all("/service/tickets", limit=limit, conditions=conditions,
+                                     orderBy="id desc", fields=TICKET_SLA_FIELDS))
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 400:
+                raise
+            return list(self.get_all("/service/tickets", limit=limit, conditions=conditions, orderBy="id desc"))
+
+    # --- Agreements ------------------------------------------------------
+
+    def agreements(self, company_id: int | None = None, active_only: bool = True, limit: int = 2000) -> list[dict]:
+        clauses = []
+        if company_id:
+            clauses.append(f"company/id={int(company_id)}")
+        if active_only:
+            clauses.append('agreementStatus="Active"')
+        conditions = " and ".join(clauses) or None
+        return list(self.get_all("/finance/agreements", limit=limit, conditions=conditions, orderBy="id asc"))
+
+    def agreement(self, agreement_id: int) -> dict:
+        return self.get(f"/finance/agreements/{int(agreement_id)}")
+
+    def time_entries_for_agreement(self, agreement_id: int, start: datetime, limit: int = 5000) -> list[dict]:
+        conditions = f"agreement/id={int(agreement_id)} and timeStart>={cw_date(start)}"
+        return list(self.get_all("/time/entries", limit=limit, conditions=conditions))
 
     # --- Time entries ----------------------------------------------------
 

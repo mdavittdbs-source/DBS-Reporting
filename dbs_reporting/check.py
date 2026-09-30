@@ -97,6 +97,12 @@ def main() -> None:
     except httpx.HTTPStatusError as exc:
         fail(f"HTTP {exc.response.status_code}: {exc.response.text[:300]}")
         return
+    try:
+        cw.get("/finance/agreements", pageSize=1, fields="id")
+        ok("can read agreements")
+    except httpx.HTTPStatusError as exc:
+        print(f"    NOTE can't read agreements (HTTP {exc.response.status_code}). Agreement questions won't work")
+        print("         until the API member's security role has Finance > Agreements: Inquire Level = All.")
 
     from .agent import configured_models
 

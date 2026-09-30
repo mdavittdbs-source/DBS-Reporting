@@ -22,6 +22,9 @@ Manager (web chat) ──► FastAPI ──► Claude (claude-opus-5-5) ──�
 | `get_ticket_details` | One ticket plus its notes (description, internal analysis, resolution) |
 | `get_company_time` | Hours logged in the last N days by technician, work type and ticket |
 | `get_ticket_totals` | Tickets across **all** clients in the last N days, ranked by client, site, board, type, priority, source or status, with open counts and top ticket types |
+| `get_agreements` | Agreements (contracts) for one client or all: type, dates, billing, allowance; can list ones ending soon |
+| `get_agreement_usage` | Hours used vs. allowed in an agreement's current period, by technician and ticket |
+| `get_sla_performance` | In-SLA vs. breached tickets and first-response/resolution times, by client, board, priority or SLA |
 
 Code layout:
 
@@ -45,6 +48,9 @@ Code layout:
    python -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
    ```
+
+The API member's security role needs *Inquire* access to Companies, Service Tickets, Time Entry
+and Finance > Agreements.
 
 ## Logins
 
