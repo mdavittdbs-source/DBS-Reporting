@@ -113,12 +113,17 @@ def main() -> None:
             return
         ok("Ollama is running and the model is downloaded")
     else:
-        step(7, "Anthropic API key")
+        from .agent import configured_models
+
+        default, choices = configured_models()
+        step(7, f"Anthropic API key and models (default {default!r})")
         try:
             import anthropic
 
-            anthropic.Anthropic().models.retrieve("claude-opus-5-5")
-            ok("key works")
+            client = anthropic.Anthropic()
+            for model in choices:
+                client.models.retrieve(model)
+                ok(f"{model} available")
         except Exception as exc:
             fail(f"{type(exc).__name__}: {exc}")
             return

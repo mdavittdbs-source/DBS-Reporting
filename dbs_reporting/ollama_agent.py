@@ -48,6 +48,13 @@ class OllamaAgent:
     def description(self) -> str:
         return f"Ollama model {self._model} at {self._url}"
 
+    @property
+    def default_model(self) -> str:
+        return self._model
+
+    def model_choices(self) -> list[dict]:
+        return [{"id": self._model, "label": f"{self._model} (local)"}]
+
     def new_conversation(self) -> str:
         conversation_id = uuid.uuid4().hex
         with self._guard:
@@ -87,7 +94,10 @@ class OllamaAgent:
         except Exception as exc:
             return json.dumps({"error": f"Bad arguments for {name}: {exc}"})
 
-    def ask(self, question: str, conversation_id: str | None = None) -> tuple[str, str]:
+    def ask(
+        self, question: str, conversation_id: str | None = None, model: str | None = None
+    ) -> tuple[str, str]:
+        # Only the one model from OLLAMA_MODEL is offered, so `model` is ignored.
         if not conversation_id or conversation_id not in self._conversations:
             conversation_id = self.new_conversation()
 
