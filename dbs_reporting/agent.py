@@ -2,6 +2,7 @@
 
 import json
 import os
+from collections.abc import Iterator
 from datetime import date
 
 import anthropic
@@ -77,6 +78,15 @@ How to answer:
 issue that suggests a project or a user who needs training."""
 
 
+# Shown in the chat while a tool runs.
+TOOL_STATUS = {
+    "find_company": "Looking up the company…",
+    "get_company_tickets": "Pulling tickets from ConnectWise…",
+    "get_ticket_details": "Reading ticket notes…",
+    "get_company_time": "Adding up time entries…",
+}
+
+
 def _to_json(block) -> dict:
     """SDK content blocks -> plain dicts, so a conversation can be saved and replayed later."""
     if hasattr(block, "model_dump"):
@@ -104,39 +114,72 @@ class ReportingAgent:
         Returns (answer_text, updated_history). The history is plain JSON; pass it back
         unchanged on the next turn. On a refusal the original history is returned.
         """
+        for event in self.respond_stream(history, question, model):
+            if event["type"] == "done":
+                return event["answer"], event["history"]
+        raise RuntimeError("No response from Claude")
+
+    def respond_stream(self, history: list, question: str, model: str | None = None) -> Iterator[dict]:
+        """Like respond(), but yields events as the answer is produced:
+
+        {"type": "status", "text": ...}   what David is doing (looking up the company, ...)
+        {"type": "reset"}                 a new model turn started; discard streamed text so far
+        {"type": "text", "text": ...}     a piece of answer text
+        {"type": "done", "answer": ..., "history": [...]}   always last
+        """
         model = model or self.default_model
         if model not in self.models:
             raise ValueError(f"Model {model!r} isn't enabled. Choose one of: {', '.join(self.models)}")
 
         messages = list(history) + [{"role": "user", "content": question}]
-        runner = self._client.beta.messages.tool_runner(
-            model=model,
-            max_tokens=16000,
-            system=SYSTEM_PROMPT.format(today=date.today().isoformat()),
-            tools=self._tools,
-            messages=messages,
-            max_iterations=20,
-            **request_options(model, self._effort),
-        )
-
         final = None
-        for message in runner:
-            final = message
-            # Mirror the history: the runner keeps its own copy and doesn't expose it.
-            messages.append({"role": "assistant", "content": [_to_json(b) for b in message.content]})
-            tool_response = runner.generate_tool_call_response()
-            if tool_response is not None:
-                messages.append(json.loads(json.dumps(tool_response, default=_to_json)))
+        json_retries = 0
+        while True:
+            runner = self._client.beta.messages.tool_runner(
+                model=model,
+                max_tokens=64000,
+                system=SYSTEM_PROMPT.format(today=date.today().isoformat()),
+                tools=self._tools,
+                messages=messages,
+                max_iterations=20,
+                stream=True,
+                **request_options(model, self._effort),
+            )
+            try:
+                for stream in runner:
+                    yield {"type": "reset"}
+                    for event in stream:
+                        if event.type == "text":
+                            yield {"type": "text", "text": event.text}
+                        elif event.type == "content_block_start" and event.content_block.type == "tool_use":
+                            yield {"type": "status", "text": TOOL_STATUS.get(event.content_block.name, "Working…")}
+                    final = stream.get_final_message()
+                    # Mirror the history: the runner keeps its own copy and doesn't expose it.
+                    messages.append({"role": "assistant", "content": [_to_json(b) for b in final.content]})
+                    has_tool_use = any(b.type == "tool_use" for b in final.content)
+                    if final.stop_reason == "refusal" or (final.stop_reason == "max_tokens" and has_tool_use):
+                        break  # don't run tools from a turn that was cut off or declined
+                    tool_response = runner.generate_tool_call_response()
+                    if tool_response is not None:
+                        messages.append(json.loads(json.dumps(tool_response, default=_to_json)))
+                break
+            except ValueError:
+                # Eager input streaming: a tool input the SDK couldn't parse. The broken turn was
+                # never added to `messages`, so re-issue it from the mirrored history (bounded).
+                json_retries += 1
+                if json_retries > 2:
+                    raise RuntimeError("Claude sent a malformed tool request. Please try again.")
+                yield {"type": "status", "text": "Retrying…"}
 
         if final is None:
             raise RuntimeError("No response from Claude")
         if final.stop_reason == "refusal":
-            return "Sorry, I can't help with that request.", list(history)
-
+            yield {"type": "done", "answer": "Sorry, I can't help with that request.", "history": list(history)}
+            return
         answer = "\n".join(b.text for b in final.content if b.type == "text").strip()
         if final.stop_reason == "max_tokens":
             answer += "\n\n_(Answer was cut off. Try a narrower question.)_"
-        return answer or "I couldn't produce an answer for that.", messages
+        yield {"type": "done", "answer": answer or "I couldn't produce an answer for that.", "history": messages}
 
 
 def create_agent(cw: ConnectWiseClient):

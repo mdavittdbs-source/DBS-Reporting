@@ -108,6 +108,9 @@ Set `LLM_PROVIDER=claude` to switch back.
   about any client. Five wrong passwords lock a username for 15 minutes. Sign-ins last 14 days.
 - **Chats** are saved per person with their full history, so follow-up questions keep context
   even after a restart.
+- **Streaming.** Answers appear as they're written, with status lines ("Pulling tickets from
+  ConnectWise…") while data is fetched. The web chat uses `POST /api/chat/stream`
+  (one JSON event per line); `POST /api/chat` still returns the whole answer at once.
 - **Limits.** A single ticket query is capped at 1000 tickets. Claude is told when this
   happens so it can suggest a narrower date range.
 - **Adding questions.** To support a new kind of question (agreements, configurations,
