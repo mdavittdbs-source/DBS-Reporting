@@ -2,7 +2,7 @@
 
 An AI assistant that lets managers ask plain-English questions about ConnectWise Manage data, e.g.
 
-> What are the most common issues in the past 30 days at Joe's Pizza?
+> What are the most common issues in the past 30 days at Jimmy's Grille?
 
 It uses Claude with a small set of **read-only** ConnectWise tools. Claude finds the company,
 pulls the tickets, groups them into recurring problems from their summaries, and answers
