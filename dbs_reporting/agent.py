@@ -45,19 +45,33 @@ def request_options(model: str, effort: str) -> dict:
     """Model-specific request parameters."""
     info = KNOWN_MODELS.get(model, {})
     options: dict = {}
+    betas: list[str] = []
     if info.get("thinking", True):
-        options["thinking"] = {"type": "adaptive"}
+        # Saved chats replay Claude's earlier reasoning (thinking blocks), which the API only accepts
+        # if the instructions, tools and earlier messages are unchanged since it was written. After
+        # an update changes the instructions or tools, drop that old reasoning instead of failing
+        # (newer Anthropic accounts otherwise get a 400). The questions and answers are unaffected.
+        options["thinking"] = {"type": "adaptive", "block_binding": {"prefix_mismatch_behavior": "drop_block"}}
+        betas.append("thinking-binding-controls-2026-08-01")
     if info.get("effort"):
         options["output_config"] = {"effort": effort}
     if info.get("fallback"):
-        options["betas"] = ["server-side-fallback-2026-07-01"]
+        betas.append("server-side-fallback-2026-07-01")
         options["fallbacks"] = "default"
+    if betas:
+        options["betas"] = betas
     return options
+
+
+def dated(question: str) -> str:
+    """Put today's date with the question rather than in the system prompt, so the system prompt
+    never changes between turns of a saved chat."""
+    return f"(Today's date: {date.today().isoformat()})\n\n{question}"
 
 SYSTEM_PROMPT = """You are the DBS reporting assistant. Managers at an IT managed service provider \
 ask you questions about their clients' service tickets and time in ConnectWise Manage.
 
-Today's date is {today}.
+Each question starts with today's date.
 
 How to work:
 - For questions about one client, resolve the name with find_company first. If the name matches \
@@ -136,14 +150,14 @@ class ReportingAgent:
         if model not in self.models:
             raise ValueError(f"Model {model!r} isn't enabled. Choose one of: {', '.join(self.models)}")
 
-        messages = list(history) + [{"role": "user", "content": question}]
+        messages = list(history) + [{"role": "user", "content": dated(question)}]
         final = None
         json_retries = 0
         while True:
             runner = self._client.beta.messages.tool_runner(
                 model=model,
                 max_tokens=64000,
-                system=SYSTEM_PROMPT.format(today=date.today().isoformat()),
+                system=SYSTEM_PROMPT,
                 tools=self._tools,
                 messages=messages,
                 max_iterations=20,

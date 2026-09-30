@@ -230,3 +230,24 @@ def test_stream_errors(web, monkeypatch):
     events = read_events(alice.post("/api/chat/stream", json={"question": "hi"}))
     assert events[-1] == {"type": "error", "message": "ConnectWise fell over"}
     assert alice.get("/api/conversations").json() == []  # nothing half-saved
+
+
+def test_api_errors_show_the_apis_message(web, monkeypatch):
+    import anthropic
+    import httpx2
+
+    module, _ = web
+    alice = login(module, "alice", "password-a")
+
+    def rejected(history, question, model=None):
+        request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+        response = httpx2.Response(400, request=request, json={
+            "type": "error", "error": {"type": "invalid_request_error",
+                                       "message": "messages.5.content.0: Invalid `signature` in `thinking` block."}})
+        raise anthropic.BadRequestError("bad request", response=response, body=response.json())
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(module.agent, "respond_stream", rejected)
+    events = read_events(alice.post("/api/chat/stream", json={"question": "hi"}))
+    assert events[-1]["type"] == "error"
+    assert events[-1]["message"].startswith("AI service error (400): messages.5.content.0: Invalid `signature`")
