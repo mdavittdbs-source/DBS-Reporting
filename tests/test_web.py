@@ -358,13 +358,23 @@ def test_charts_and_excel_export(web, monkeypatch):
     assert response.status_code == 200
     assert "attachment" in response.headers["content-disposition"]
     wb = load_workbook(io.BytesIO(response.content))
-    assert wb.sheetnames == ["Summary", "Table 1", "Chart 1"]
+    assert wb.sheetnames == ["Table 1", "Chart 1"]
 
     # Only the person who asked can download it.
     bob = login(module, "bob", "password-b")
     assert bob.get(f"/api/answers/{done['answer_id']}/export.xlsx").status_code == 404
     assert module.app.url_path_for("static", path="vendor/chart.umd.min.js")
     assert bob.get("/static/vendor/chart.umd.min.js").status_code == 200
+
+    # A plain answer (no table or chart) has nothing to download.
+    def plain_answer(history, question, model=None):
+        yield {"type": "done", "answer": "Just text.", "usage": None,
+               "history": history + [{"role": "user", "content": question},
+                                     {"role": "assistant", "content": [{"type": "text", "text": "Just text."}]}]}
+
+    monkeypatch.setattr(module.agent, "respond_stream", plain_answer)
+    plain = alice.post("/api/chat", json={"question": "hi"}).json()
+    assert alice.get(f"/api/answers/{plain['answer_id']}/export.xlsx").status_code == 404
 
 
 def test_question_to_a_deleted_chat_explains(web, monkeypatch):

@@ -1,5 +1,5 @@
-"""Excel exports of an answer: the answer text, each markdown table and each chart (with its
-data and a native Excel chart)."""
+"""Excel exports of the reports in an answer: each markdown table and each chart (with its data
+and a native Excel chart). The answer's other text isn't included."""
 
 import io
 import re
@@ -119,22 +119,16 @@ def _add_chart_sheet(wb: Workbook, number: int, chart: dict) -> None:
     ws.add_chart(xl, f"{get_column_letter(len(chart['series']) + 3)}{header_row}")
 
 
+def has_report(answer: dict) -> bool:
+    """Whether an answer made anything to download: a chart or a table."""
+    return bool(answer.get("charts")) or bool(markdown_tables(answer["text"]))
+
+
 def answer_workbook(answer: dict) -> bytes:
-    """Build the .xlsx for one answer (as returned by Store.get_answer)."""
+    """Build the .xlsx for one answer (as returned by Store.get_answer): just its tables and
+    charts, not the conversation. Check has_report() first."""
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Summary"
-    ws.append(["Question", answer.get("question") or answer.get("title") or ""])
-    ws.append(["Asked", (answer.get("created_at") or "")[:16].replace("T", " ") + " UTC"])
-    ws.append(["Model", answer.get("model") or ""])
-    ws.append([])
-    ws.append(["Answer"])
-    for cell in ("A1", "A2", "A3", "A5"):
-        ws[cell].font = Font(bold=True)
-    for line in answer["text"].splitlines():
-        ws.append([_plain(line)])
-    ws.column_dimensions["A"].width = 14
-    ws.column_dimensions["B"].width = 100
+    wb.remove(wb.active)
 
     for number, table in enumerate(markdown_tables(answer["text"]), start=1):
         sheet = wb.create_sheet(f"Table {number}")
