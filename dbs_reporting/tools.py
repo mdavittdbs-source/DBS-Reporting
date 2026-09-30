@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from anthropic import beta_tool
 
+from .charts import validate_chart
 from .connectwise import ConnectWiseClient
 
 MAX_DAYS = 730
@@ -348,5 +349,31 @@ def build_tools(cw: ConnectWiseClient) -> list:
         except Exception as exc:
             return _error(exc)
 
+    @beta_tool(eager_input_streaming=True)
+    def create_chart(title: str, chart_type: str, labels: list[str], series: list[dict],
+                     subtitle: str = "", x_label: str = "", y_label: str = "") -> str:
+        """Add a chart to your answer. It's drawn below your text and can be exported.
+
+        Use it when a picture makes the numbers clearer: ranking 3+ clients/sites/boards, a trend
+        over time, or a breakdown within groups. Use numbers from your tool results only. Don't
+        chart a single number. At most two charts per answer.
+
+        Args:
+            title: Short title, e.g. "Tickets by site, last 30 days".
+            chart_type: "hbar" to rank named items (best for clients/sites, long names), "bar" for a few short categories, "line" for a trend over time (labels are dates/weeks/months in order), "stacked_bar" for parts of a whole within each label.
+            labels: Category or time labels, in display order (for rankings, largest first). At most 50.
+            series: One or more series, each {"name": "Tickets", "values": [31, 18, ...]} with one number per label. Use one series unless comparing groups; at most 8 series. All series share one axis, so only combine numbers in the same unit.
+            subtitle: Optional one-line context, e.g. the date range.
+            x_label: Optional axis label for the categories.
+            y_label: Optional axis label for the values, e.g. "Tickets" or "Hours".
+        """
+        chart, error = validate_chart({"title": title, "chart_type": chart_type, "labels": labels,
+                                       "series": series, "subtitle": subtitle, "x_label": x_label,
+                                       "y_label": y_label})
+        if error:
+            return json.dumps({"error": f"Chart not added: {error}"})
+        return json.dumps({"chart_added": True, "note": "The chart appears below your answer; refer to it "
+                           "rather than repeating every value."})
+
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance]
+            get_sla_performance, create_chart]

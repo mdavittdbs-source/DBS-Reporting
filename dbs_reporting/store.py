@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS turns (
     text TEXT NOT NULL,
     model TEXT,
     usage TEXT,
+    charts TEXT,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS turns_by_conversation ON turns(conversation_id, id);
@@ -90,6 +91,8 @@ class Store:
                 db.execute("ALTER TABLE turns ADD COLUMN model TEXT")
             if "usage" not in turn_columns:  # databases created before usage tracking
                 db.execute("ALTER TABLE turns ADD COLUMN usage TEXT")
+            if "charts" not in turn_columns:  # databases created before charts
+                db.execute("ALTER TABLE turns ADD COLUMN charts TEXT")
 
     @contextmanager
     def _db(self):
@@ -256,31 +259,56 @@ class Store:
     def turns(self, conversation_id: str) -> list[dict]:
         with self._db() as db:
             rows = db.execute(
-                "SELECT role, text, model, usage, created_at FROM turns WHERE conversation_id = ? ORDER BY id",
+                "SELECT id, role, text, model, usage, charts, created_at FROM turns WHERE conversation_id = ?"
+                " ORDER BY id",
                 (conversation_id,),
             ).fetchall()
         turns = [dict(r) for r in rows]
         for turn in turns:
             turn["usage"] = json.loads(turn["usage"]) if turn["usage"] else None
+            turn["charts"] = json.loads(turn["charts"]) if turn["charts"] else []
         return turns
+
+    def get_answer(self, user_id: int, turn_id: int) -> dict | None:
+        """One answer (with its question, chat title and charts), only if it belongs to `user_id`."""
+        with self._db() as db:
+            row = db.execute(
+                "SELECT a.id, a.text, a.model, a.charts, a.created_at, c.title,"
+                " (SELECT q.text FROM turns q WHERE q.conversation_id = a.conversation_id AND q.id < a.id"
+                "  ORDER BY q.id DESC LIMIT 1) AS question"
+                " FROM turns a JOIN conversations c ON c.id = a.conversation_id"
+                " WHERE a.id = ? AND a.role = 'assistant' AND c.user_id = ?",
+                (turn_id, user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        answer = dict(row)
+        answer["charts"] = json.loads(answer["charts"]) if answer["charts"] else []
+        return answer
 
     def save_turn(
         self, conversation_id: str, question: str, answer: str, history: list, model: str | None = None,
-        usage: dict | None = None,
-    ) -> None:
+        usage: dict | None = None, charts: list | None = None,
+    ) -> int:
         """Record a question and answer. `model` is the model that answered; it also becomes the
-        chat's current model, so the next question defaults to it."""
+        chat's current model, so the next question defaults to it. Returns the answer's id."""
         now = _now()
         with self._db() as db:
-            db.executemany(
-                "INSERT INTO turns (conversation_id, role, text, model, usage, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                [(conversation_id, "user", question, None, None, now),
-                 (conversation_id, "assistant", answer, model, json.dumps(usage) if usage else None, now)],
+            db.execute(
+                "INSERT INTO turns (conversation_id, role, text, created_at) VALUES (?, 'user', ?, ?)",
+                (conversation_id, question, now),
             )
+            answer_id = db.execute(
+                "INSERT INTO turns (conversation_id, role, text, model, usage, charts, created_at)"
+                " VALUES (?, 'assistant', ?, ?, ?, ?, ?)",
+                (conversation_id, answer, model, json.dumps(usage) if usage else None,
+                 json.dumps(charts) if charts else None, now),
+            ).lastrowid
             db.execute(
                 "UPDATE conversations SET history = ?, updated_at = ?, model = COALESCE(?, model) WHERE id = ?",
                 (json.dumps(history), now, model, conversation_id),
             )
+        return answer_id
 
     def answered_turns(self, days: int) -> list[dict]:
         """Every answer in the last `days` days, oldest first, with who asked, the question,

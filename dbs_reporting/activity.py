@@ -56,6 +56,9 @@ def tool_calls(new_messages: list) -> list[str]:
                     args = json.loads(args)
                 except json.JSONDecodeError:
                     args = {"raw": args}
+            if name == "create_chart":  # the chart's data is in the answer; the title is enough here
+                calls.append(f"create_chart({args.get('title', '')!r})")
+                continue
             shown = ", ".join(f"{k}={v!r}" for k, v in args.items())
             calls.append(f"{name}({shown})")
     return calls

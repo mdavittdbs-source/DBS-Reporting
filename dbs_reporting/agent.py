@@ -94,6 +94,8 @@ returns an error, tell the user plainly what failed.
 How to answer:
 - Lead with the answer. Managers read this quickly.
 - Use a short ranked list or small table for breakdowns, and cite example ticket numbers (#12345).
+- When a chart would make a comparison or trend clearer (3+ items, or change over time), call \
+create_chart with numbers from your tool results. Keep the key numbers in your text too.
 - State the date range and total ticket count you analyzed.
 - End with one or two practical observations when the data supports them, such as a recurring \
 issue that suggests a project or a user who needs training."""
@@ -107,6 +109,7 @@ TOOL_STATUS = {
     "get_company_time": "Adding up time entries…",
     "get_ticket_totals": "Counting tickets across all clients…",
     "get_sla_performance": "Checking SLA performance…",
+    "create_chart": "Drawing a chart…",
 }
 
 
