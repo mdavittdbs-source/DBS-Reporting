@@ -1,1 +1,1 @@
-"""AI reporting assistant for ConnectWise Manage."""
+"""AI reporting assistant for ConnectWise."""
