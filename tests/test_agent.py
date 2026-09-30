@@ -8,16 +8,40 @@ from test_tools import make_client
 from dbs_reporting.agent import ReportingAgent, request_options
 
 
-def fake_claude(sent: list) -> anthropic.Anthropic:
+def sse(model: str, blocks: list[dict], stop_reason: str) -> str:
+    """A Messages API streaming response (server-sent events) for the given content blocks."""
+    events = [("message_start", {"type": "message_start", "message": {
+        "id": "msg_1", "type": "message", "role": "assistant", "model": model, "content": [],
+        "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 0}}})]
+    for i, block in enumerate(blocks):
+        if block["type"] == "text":
+            events.append(("content_block_start", {"type": "content_block_start", "index": i,
+                                                    "content_block": {"type": "text", "text": ""}}))
+            for piece in (block["text"][:2], block["text"][2:]):
+                events.append(("content_block_delta", {"type": "content_block_delta", "index": i,
+                                                        "delta": {"type": "text_delta", "text": piece}}))
+        else:
+            events.append(("content_block_start", {"type": "content_block_start", "index": i,
+                                                    "content_block": {**block, "input": {}}}))
+            events.append(("content_block_delta", {"type": "content_block_delta", "index": i, "delta": {
+                "type": "input_json_delta", "partial_json": json.dumps(block["input"])}}))
+        events.append(("content_block_stop", {"type": "content_block_stop", "index": i}))
+    events.append(("message_delta", {"type": "message_delta", "delta": {"stop_reason": stop_reason,
+                                     "stop_sequence": None}, "usage": {"output_tokens": 1}}))
+    events.append(("message_stop", {"type": "message_stop"}))
+    return "".join(f"event: {name}\ndata: {json.dumps(data)}\n\n" for name, data in events)
+
+
+def fake_claude(sent: list, turns: list | None = None) -> anthropic.Anthropic:
+    """Answers each request with the next (blocks, stop_reason) from `turns`, else a plain "ok"."""
+    turns = list(turns or [])
+
     def handler(request: httpx2.Request) -> httpx2.Response:
         body = json.loads(request.content)
         sent.append((dict(request.headers), body))
-        return httpx2.Response(200, json={
-            "id": "msg_1", "type": "message", "role": "assistant", "model": body["model"],
-            "stop_reason": "end_turn", "stop_sequence": None,
-            "usage": {"input_tokens": 1, "output_tokens": 1},
-            "content": [{"type": "text", "text": "ok"}],
-        })
+        blocks, stop = turns.pop(0) if turns else ([{"type": "text", "text": "ok"}], "end_turn")
+        return httpx2.Response(200, text=sse(body["model"], blocks, stop),
+                               headers={"content-type": "text/event-stream"})
 
     return anthropic.Anthropic(api_key="x", http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
 
@@ -63,3 +87,27 @@ def test_respond_saves_replayable_history(monkeypatch):
 
     with pytest.raises(ValueError):
         agent.respond([], "nope", "claude-not-enabled")
+
+
+def test_respond_stream_events(monkeypatch):
+    monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+    monkeypatch.delenv("CLAUDE_MODELS", raising=False)
+    sent = []
+    turns = [
+        ([{"type": "tool_use", "id": "tu_1", "name": "find_company", "input": {"name": "Joe's Pizza"}}], "tool_use"),
+        ([{"type": "text", "text": "Top issue: printers."}], "end_turn"),
+    ]
+    agent = ReportingAgent(make_client([]), fake_claude(sent, turns))
+    events = list(agent.respond_stream([], "issues at Joe's Pizza?"))
+
+    assert sent[0][1]["stream"] is True
+    assert {"type": "status", "text": "Looking up the company…"} in events
+    text = "".join(e["text"] for e in events if e["type"] == "text")
+    assert text == "Top issue: printers."
+    done = events[-1]
+    assert done["type"] == "done" and done["answer"] == "Top issue: printers."
+    # question, tool call, tool result, answer; tool result carries the real ConnectWise lookup
+    roles = [m["role"] for m in done["history"]]
+    assert roles == ["user", "assistant", "user", "assistant"]
+    assert "Joe's Pizza" in json.dumps(done["history"][2])
+    assert json.loads(json.dumps(done["history"])) == done["history"]

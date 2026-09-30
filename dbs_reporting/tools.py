@@ -75,7 +75,7 @@ def _clamp_days(days: int) -> int:
 
 
 def build_tools(cw: ConnectWiseClient) -> list:
-    @beta_tool
+    @beta_tool(eager_input_streaming=True)
     def find_company(name: str) -> str:
         """Look up ConnectWise companies (clients) by name.
 
@@ -91,7 +91,7 @@ def build_tools(cw: ConnectWiseClient) -> list:
         except Exception as exc:
             return _error(exc)
 
-    @beta_tool
+    @beta_tool(eager_input_streaming=True)
     def get_company_tickets(company_id: int, days: int = 30, board_name: str = "") -> str:
         """Get service tickets opened for a company in the last N days.
 
@@ -114,7 +114,7 @@ def build_tools(cw: ConnectWiseClient) -> list:
         except Exception as exc:
             return _error(exc)
 
-    @beta_tool
+    @beta_tool(eager_input_streaming=True)
     def get_ticket_details(ticket_id: int) -> str:
         """Get one ticket's full details and its notes.
 
@@ -140,7 +140,7 @@ def build_tools(cw: ConnectWiseClient) -> list:
         except Exception as exc:
             return _error(exc)
 
-    @beta_tool
+    @beta_tool(eager_input_streaming=True)
     def get_company_time(company_id: int, days: int = 30) -> str:
         """Summarize time logged against a company in the last N days.
 

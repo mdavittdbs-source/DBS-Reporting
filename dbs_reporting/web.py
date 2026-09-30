@@ -4,17 +4,19 @@ Each person signs in with their own login (listed in users.txt, see userfile.py)
 only their own saved chats.
 """
 
+import json
 import logging
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 
 import anthropic
 import httpx
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .agent import create_agent
@@ -190,58 +192,107 @@ class ChatResponse(BaseModel):
     model: str
 
 
-def _answer(user: dict, request: ChatRequest, question: str) -> ChatResponse:
+def _resolve(user: dict, request: ChatRequest) -> tuple[str | None, str, str]:
+    """Check the request and work out (conversation_id or None for a new chat, title, model)."""
     if request.conversation_id:
         found = store.get_conversation(user["id"], request.conversation_id)
         if found is None:
             raise HTTPException(404, "Chat not found.")
-        conversation_id, title = found["id"], found["title"]
         # A chat keeps the model it started with, so answers stay consistent and Claude keeps its
         # full reasoning. If that model has since been disabled, carry on with the default.
         model = found["model"]
         if model not in agent.models:
             model = agent.default_model
-    else:
-        model = request.model or agent.default_model
-        if model not in agent.models:
-            raise HTTPException(400, f"Model {model!r} isn't enabled.")
-        conversation_id, title = None, question
+        return found["id"], found["title"], model
+    model = request.model or agent.default_model
+    if model not in agent.models:
+        raise HTTPException(400, f"Model {model!r} isn't enabled.")
+    return None, request.question.strip(), model
 
+
+def _run(user: dict, question: str, conversation_id: str | None, title: str, model: str) -> Iterator[dict]:
+    """Stream the agent's events, saving the chat when the answer is complete.
+
+    Ends with {"type": "done", "answer", "conversation_id", "title", "model"}.
+    """
     lock = _conversation_locks[conversation_id] if conversation_id else threading.Lock()
     with lock:
         history = store.get_conversation(user["id"], conversation_id)["history"] if conversation_id else []
-        answer, history = agent.respond(history, question, model)
-        if conversation_id is None:
-            conversation_id = store.create_conversation(user["id"], title, model)
-        store.save_turn(conversation_id, question, answer, history, model)
-    return ChatResponse(answer=answer, conversation_id=conversation_id, title=title[:80], model=model)
+        for event in agent.respond_stream(history, question, model):
+            if event["type"] != "done":
+                yield event
+                continue
+            if conversation_id is None:
+                conversation_id = store.create_conversation(user["id"], title, model)
+            store.save_turn(conversation_id, question, event["answer"], event["history"], model)
+            yield {"type": "done", "answer": event["answer"], "conversation_id": conversation_id,
+                   "title": title[:80], "model": model}
+
+
+def _friendly_error(exc: Exception) -> tuple[int, str]:
+    """HTTP status and a message people can act on, for errors while answering."""
+    if isinstance(exc, ValueError):
+        return 400, str(exc)
+    if isinstance(exc, anthropic.RateLimitError):
+        return 429, "The AI service is busy. Please try again in a minute."
+    if isinstance(exc, anthropic.APIStatusError):
+        log.exception("Claude API error")
+        return 502, f"AI service error ({exc.status_code})."
+    if isinstance(exc, anthropic.APIConnectionError):
+        log.exception("Claude API connection error")
+        return 502, "Couldn't reach the AI service."
+    if isinstance(exc, httpx.ConnectError):
+        log.exception("Ollama connection error")
+        return 502, "Couldn't reach Ollama. Is it running on the server?"
+    if isinstance(exc, httpx.TimeoutException):
+        log.exception("Ollama timeout")
+        return 504, "The local AI model took too long. Try a narrower question."
+    if isinstance(exc, RuntimeError):
+        log.exception("Agent error")
+        return 502, str(exc)
+    log.exception("Unexpected error while answering")
+    return 500, "Something went wrong on the server. Please try again."
+
+
+def _answer(user: dict, request: ChatRequest) -> ChatResponse:
+    conversation_id, title, model = _resolve(user, request)
+    for event in _run(user, request.question.strip(), conversation_id, title, model):
+        if event["type"] == "done":
+            return ChatResponse(**{k: v for k, v in event.items() if k != "type"})
+    raise RuntimeError("No answer was produced.")
 
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest, user: dict = Depends(current_user)) -> ChatResponse:
-    question = request.question.strip()
-    if not question:
+    """Ask a question and get the whole answer at once."""
+    if not request.question.strip():
         raise HTTPException(400, "Question is empty")
     try:
-        return await run_in_threadpool(_answer, user, request, question)
+        return await run_in_threadpool(_answer, user, request)
     except HTTPException:
         raise
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    except anthropic.RateLimitError:
-        raise HTTPException(429, "The AI service is busy. Please try again in a minute.")
-    except anthropic.APIStatusError as exc:
-        log.exception("Claude API error")
-        raise HTTPException(502, f"AI service error ({exc.status_code}).")
-    except anthropic.APIConnectionError:
-        log.exception("Claude API connection error")
-        raise HTTPException(502, "Couldn't reach the AI service.")
-    except httpx.ConnectError:
-        log.exception("Ollama connection error")
-        raise HTTPException(502, "Couldn't reach Ollama. Is it running on the server?")
-    except httpx.TimeoutException:
-        log.exception("Ollama timeout")
-        raise HTTPException(504, "The local AI model took too long. Try a narrower question.")
-    except RuntimeError as exc:
-        log.exception("Agent error")
-        raise HTTPException(502, str(exc))
+    except Exception as exc:
+        status, message = _friendly_error(exc)
+        raise HTTPException(status, message)
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest, user: dict = Depends(current_user)) -> StreamingResponse:
+    """Ask a question and receive the answer as it's written: one JSON event per line
+    (status / reset / text, then done, or error)."""
+    if not request.question.strip():
+        raise HTTPException(400, "Question is empty")
+    conversation_id, title, model = await run_in_threadpool(_resolve, user, request)
+
+    def lines() -> Iterator[str]:
+        try:
+            for event in _run(user, request.question.strip(), conversation_id, title, model):
+                yield json.dumps(event) + "\n"
+        except Exception as exc:
+            _, message = _friendly_error(exc)
+            yield json.dumps({"type": "error", "message": message}) + "\n"
+
+    return StreamingResponse(
+        lines(), media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

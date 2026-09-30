@@ -7,11 +7,13 @@ system prompt as the Claude agent.
 import json
 import os
 import re
+from collections.abc import Iterator
 from datetime import date
 
 import httpx
 
 from .connectwise import ConnectWiseClient
+from .agent import TOOL_STATUS
 from .tools import build_tools
 
 DEFAULT_MODEL = "qwen3:14b"
@@ -88,6 +90,13 @@ class OllamaAgent:
 
     def respond(self, history: list, question: str, model: str | None = None) -> tuple[str, list]:
         """Same contract as ReportingAgent.respond. Only OLLAMA_MODEL is offered."""
+        for event in self.respond_stream(history, question, model):
+            if event["type"] == "done":
+                return event["answer"], event["history"]
+        raise RuntimeError("No response from Ollama")
+
+    def respond_stream(self, history: list, question: str, model: str | None = None) -> Iterator[dict]:
+        """Same events as ReportingAgent.respond_stream; the answer arrives in one piece."""
         if model is not None and model != self._model:
             raise ValueError(f"Model {model!r} isn't enabled. This server uses {self._model!r}.")
         system = {
@@ -109,14 +118,19 @@ class OllamaAgent:
             for call in tool_calls:
                 function = call.get("function") or {}
                 name = function.get("name", "")
+                yield {"type": "status", "text": TOOL_STATUS.get(name, "Working…")}
                 messages.append({
                     "role": "tool",
                     "tool_name": name,
                     "content": self._run_tool(name, function.get("arguments")),
                 })
         else:
-            return "I couldn't finish that within the step limit. Try a narrower question.", list(history)
+            answer = "I couldn't finish that within the step limit. Try a narrower question."
+            yield {"type": "done", "answer": answer, "history": list(history)}
+            return
 
         # Some local models include their reasoning in <think> tags; managers don't need it.
         answer = re.sub(r"<think>.*?</think>", "", messages[-1].get("content") or "", flags=re.S).strip()
-        return answer or "I couldn't produce an answer for that.", messages
+        answer = answer or "I couldn't produce an answer for that."
+        yield {"type": "text", "text": answer}
+        yield {"type": "done", "answer": answer, "history": messages}

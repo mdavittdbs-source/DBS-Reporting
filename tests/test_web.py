@@ -24,14 +24,19 @@ def web(monkeypatch, tmp_path):
     module = importlib.reload(module)
     calls = []
 
-    def fake_respond(history, question, model=None):
+    def fake_respond_stream(history, question, model=None):
         calls.append((list(history), question, model))
-        return f"answer to {question}", history + [
+        yield {"type": "status", "text": "Looking up the company…"}
+        yield {"type": "reset"}
+        answer = f"answer to {question}"
+        yield {"type": "text", "text": answer[:6]}
+        yield {"type": "text", "text": answer[6:]}
+        yield {"type": "done", "answer": answer, "history": history + [
             {"role": "user", "content": question},
             {"role": "assistant", "content": [{"type": "text", "text": "a"}]},
-        ]
+        ]}
 
-    monkeypatch.setattr(module.agent, "respond", fake_respond)
+    monkeypatch.setattr(module.agent, "respond_stream", fake_respond_stream)
     return module, calls
 
 
@@ -181,3 +186,47 @@ def test_dark_logo(web, tmp_path, monkeypatch):
     response = client.get("/logo-dark")
     assert response.status_code == 200 and response.headers["content-type"] == "image/png"
     assert client.get("/logo").headers["content-type"].startswith("image/svg")
+
+
+def read_events(response) -> list[dict]:
+    import json
+
+    return [json.loads(line) for line in response.text.splitlines() if line.strip()]
+
+
+def test_stream_endpoint(web):
+    module, calls = web
+    alice = login(module, "alice", "password-a")
+    response = alice.post("/api/chat/stream", json={"question": "Issues at Jimmy's?", "model": "claude-haiku-4-5"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    events = read_events(response)
+    assert [e["type"] for e in events] == ["status", "reset", "text", "text", "done"]
+    assert "".join(e["text"] for e in events if e["type"] == "text") == "answer to Issues at Jimmy's?"
+    done = events[-1]
+    assert done["title"] == "Issues at Jimmy's?" and done["model"] == "claude-haiku-4-5"
+
+    # The streamed answer is saved like any other, and follow-ups continue the chat.
+    chat = alice.get(f"/api/conversations/{done['conversation_id']}").json()
+    assert [t["text"] for t in chat["turns"]] == ["Issues at Jimmy's?", "answer to Issues at Jimmy's?"]
+    follow = read_events(alice.post("/api/chat/stream", json={"question": "and last week?",
+                                                             "conversation_id": done["conversation_id"]}))
+    assert follow[-1]["conversation_id"] == done["conversation_id"]
+    assert len(calls[-1][0]) == 2 and calls[-1][2] == "claude-haiku-4-5"
+
+
+def test_stream_errors(web, monkeypatch):
+    module, _ = web
+    alice = login(module, "alice", "password-a")
+    assert TestClient(module.app).post("/api/chat/stream", json={"question": "hi"}).status_code == 401
+    assert alice.post("/api/chat/stream", json={"question": "  "}).status_code == 400
+    assert alice.post("/api/chat/stream", json={"question": "x", "conversation_id": "nope"}).status_code == 404
+
+    def broken(history, question, model=None):
+        yield {"type": "status", "text": "Looking up the company…"}
+        raise RuntimeError("ConnectWise fell over")
+
+    monkeypatch.setattr(module.agent, "respond_stream", broken)
+    events = read_events(alice.post("/api/chat/stream", json={"question": "hi"}))
+    assert events[-1] == {"type": "error", "message": "ConnectWise fell over"}
+    assert alice.get("/api/conversations").json() == []  # nothing half-saved

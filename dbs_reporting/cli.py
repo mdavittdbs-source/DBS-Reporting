@@ -19,8 +19,22 @@ def main() -> None:
             return
         if not question:
             continue
-        answer, history = agent.respond(history, question)
-        print("\n" + answer)
+        print()
+        streamed = False
+        for event in agent.respond_stream(history, question):
+            if event["type"] == "status":
+                print(f"  … {event['text']}", flush=True)
+            elif event["type"] == "reset" and streamed:
+                print()  # a new step started; keep earlier partial text on its own line
+                streamed = False
+            elif event["type"] == "text":
+                if not streamed:
+                    print()
+                print(event["text"], end="", flush=True)
+                streamed = True
+            elif event["type"] == "done":
+                history = event["history"]
+                print()
 
 
 if __name__ == "__main__":
