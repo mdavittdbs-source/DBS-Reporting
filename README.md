@@ -67,6 +67,11 @@ mdavitt  | Matt Davitt  | S0mething-Long | admin
 `users.txt` and the chat database (`data/dbs_reporting.db`, override with `DB_PATH`) are
 gitignored. Back up both.
 
+## Logo
+
+Save your logo as `branding/logo.svg` (or `.png`, `.webp`, `.jpg`). It replaces the built-in
+logo in the sidebar, on the sign-in page and in the browser tab. See `branding/README.md`.
+
 ## Run
 
 Web chat (then open http://localhost:8000 and sign in):
@@ -101,13 +106,12 @@ Set `LLM_PROVIDER=claude` to switch back.
 - **Access control.** Run it on the internal network or VPN only; anyone with a login can ask
   about any client. Five wrong passwords lock a username for 15 minutes. Sign-ins last 14 days.
 - **Chats** are saved per person with their full history, so follow-up questions keep context
-  even after a restart. Each chat keeps the model it started with.
+  even after a restart.
 - **Limits.** A single ticket query is capped at 1000 tickets. Claude is told when this
   happens so it can suggest a narrower date range.
 - **Adding questions.** To support a new kind of question (agreements, configurations,
   projects, etc.), add a method to `connectwise.py` and a `@beta_tool` function in `tools.py`.
   Claude picks it up automatically.
-- **Models.** Defaults to `claude-opus-5-5` with adaptive thinking at `medium` effort. Set
-  `CLAUDE_MODEL` in `.env` to change the default (e.g. `claude-sonnet-5-5` or `claude-haiku-4-5`
-  to cut costs), and list several in `CLAUDE_MODELS` to show a model picker in the web chat.
-  Switching models starts a new conversation.
+- **Models.** Defaults to `claude-sonnet-5-5`. Set `CLAUDE_MODEL` in `.env` to change the default,
+  and list several in `CLAUDE_MODELS` to show a model picker next to the send button. The model is
+  chosen when a chat starts and stays fixed for that chat; start a new chat to use another one.

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS turns (
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     role TEXT NOT NULL,
     text TEXT NOT NULL,
+    model TEXT,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS turns_by_conversation ON turns(conversation_id, id);
@@ -83,6 +84,9 @@ class Store:
             columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
             if "active" not in columns:  # databases created before users.txt support
                 db.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+            turn_columns = {row[1] for row in db.execute("PRAGMA table_info(turns)")}
+            if "model" not in turn_columns:  # databases created before per-answer models
+                db.execute("ALTER TABLE turns ADD COLUMN model TEXT")
 
     @contextmanager
     def _db(self):
@@ -249,21 +253,25 @@ class Store:
     def turns(self, conversation_id: str) -> list[dict]:
         with self._db() as db:
             rows = db.execute(
-                "SELECT role, text, created_at FROM turns WHERE conversation_id = ? ORDER BY id",
+                "SELECT role, text, model, created_at FROM turns WHERE conversation_id = ? ORDER BY id",
                 (conversation_id,),
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def save_turn(self, conversation_id: str, question: str, answer: str, history: list) -> None:
+    def save_turn(
+        self, conversation_id: str, question: str, answer: str, history: list, model: str | None = None
+    ) -> None:
+        """Record a question and answer. `model` is the model that answered; it also becomes the
+        chat's current model, so the next question defaults to it."""
         now = _now()
         with self._db() as db:
             db.executemany(
-                "INSERT INTO turns (conversation_id, role, text, created_at) VALUES (?, ?, ?, ?)",
-                [(conversation_id, "user", question, now), (conversation_id, "assistant", answer, now)],
+                "INSERT INTO turns (conversation_id, role, text, model, created_at) VALUES (?, ?, ?, ?, ?)",
+                [(conversation_id, "user", question, None, now), (conversation_id, "assistant", answer, model, now)],
             )
             db.execute(
-                "UPDATE conversations SET history = ?, updated_at = ? WHERE id = ?",
-                (json.dumps(history), now, conversation_id),
+                "UPDATE conversations SET history = ?, updated_at = ?, model = COALESCE(?, model) WHERE id = ?",
+                (json.dumps(history), now, model, conversation_id),
             )
 
     def rename_conversation(self, user_id: int, conversation_id: str, title: str) -> bool:
