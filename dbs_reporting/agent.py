@@ -9,6 +9,7 @@ import anthropic
 
 from .connectwise import ConnectWiseClient
 from .tools import build_tools
+from . import usage as usage_mod
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
 
@@ -144,7 +145,7 @@ class ReportingAgent:
         {"type": "status", "text": ...}   what David is doing (looking up the company, ...)
         {"type": "reset"}                 a new model turn started; discard streamed text so far
         {"type": "text", "text": ...}     a piece of answer text
-        {"type": "done", "answer": ..., "history": [...]}   always last
+        {"type": "done", "answer": ..., "history": [...], "usage": {...}}   always last
         """
         model = model or self.default_model
         if model not in self.models:
@@ -153,11 +154,16 @@ class ReportingAgent:
         messages = list(history) + [{"role": "user", "content": dated(question)}]
         final = None
         json_retries = 0
+        usage = usage_mod.empty()
         while True:
             runner = self._client.beta.messages.tool_runner(
                 model=model,
                 max_tokens=64000,
-                system=SYSTEM_PROMPT,
+                # Prompt caching: a marker on the (never-changing) instructions caches the tools and
+                # instructions for everyone, and top-level automatic caching caches the growing
+                # conversation, so each step and follow-up re-reads earlier context at ~1/10 the price.
+                system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+                cache_control={"type": "ephemeral"},
                 tools=self._tools,
                 messages=messages,
                 max_iterations=20,
@@ -173,6 +179,7 @@ class ReportingAgent:
                         elif event.type == "content_block_start" and event.content_block.type == "tool_use":
                             yield {"type": "status", "text": TOOL_STATUS.get(event.content_block.name, "Working…")}
                     final = stream.get_final_message()
+                    usage_mod.add_message(usage, final, model)
                     # Mirror the history: the runner keeps its own copy and doesn't expose it.
                     messages.append({"role": "assistant", "content": [_to_json(b) for b in final.content]})
                     has_tool_use = any(b.type == "tool_use" for b in final.content)
@@ -193,12 +200,14 @@ class ReportingAgent:
         if final is None:
             raise RuntimeError("No response from Claude")
         if final.stop_reason == "refusal":
-            yield {"type": "done", "answer": "Sorry, I can't help with that request.", "history": list(history)}
+            yield {"type": "done", "answer": "Sorry, I can't help with that request.", "history": list(history),
+                   "usage": usage}
             return
         answer = "\n".join(b.text for b in final.content if b.type == "text").strip()
         if final.stop_reason == "max_tokens":
             answer += "\n\n_(Answer was cut off. Try a narrower question.)_"
-        yield {"type": "done", "answer": answer or "I couldn't produce an answer for that.", "history": messages}
+        yield {"type": "done", "answer": answer or "I couldn't produce an answer for that.", "history": messages,
+               "usage": usage}
 
 
 def create_agent(cw: ConnectWiseClient):

@@ -122,11 +122,11 @@ class OllamaAgent:
                 })
         else:
             answer = "I couldn't finish that within the step limit. Try a narrower question."
-            yield {"type": "done", "answer": answer, "history": list(history)}
+            yield {"type": "done", "answer": answer, "history": list(history), "usage": None}
             return
 
         # Some local models include their reasoning in <think> tags; managers don't need it.
         answer = re.sub(r"<think>.*?</think>", "", messages[-1].get("content") or "", flags=re.S).strip()
         answer = answer or "I couldn't produce an answer for that."
         yield {"type": "text", "text": answer}
-        yield {"type": "done", "answer": answer, "history": messages}
+        yield {"type": "done", "answer": answer, "history": messages, "usage": None}

@@ -17,7 +17,7 @@ def web(monkeypatch, tmp_path):
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("USERS_FILE", str(tmp_path / "users.txt"))
     (tmp_path / "users.txt").write_text(
-        "alice | Alice A | password-a |\nbob | Bob B | password-b |\n", encoding="utf-8"
+        "alice | Alice A | password-a | admin\nbob | Bob B | password-b |\n", encoding="utf-8"
     )
     from dbs_reporting import web as module
 
@@ -34,7 +34,8 @@ def web(monkeypatch, tmp_path):
         yield {"type": "done", "answer": answer, "history": history + [
             {"role": "user", "content": question},
             {"role": "assistant", "content": [{"type": "text", "text": "a"}]},
-        ]}
+        ], "usage": {"requests": 2, "input_tokens": 12000, "output_tokens": 800, "cache_read_tokens": 3000,
+                     "cache_write_tokens": 0, "cost_usd": 0.0326, "priced": True}}
 
     monkeypatch.setattr(module.agent, "respond_stream", fake_respond_stream)
     return module, calls
@@ -251,3 +252,24 @@ def test_api_errors_show_the_apis_message(web, monkeypatch):
     events = read_events(alice.post("/api/chat/stream", json={"question": "hi"}))
     assert events[-1]["type"] == "error"
     assert events[-1]["message"].startswith("AI service error (400): messages.5.content.0: Invalid `signature`")
+
+
+def test_usage_visible_to_admins_only(web):
+    module, _ = web
+    alice = login(module, "alice", "password-a")  # admin
+    bob = login(module, "bob", "password-b")
+    assert alice.get("/api/me").json()["is_admin"] is True and bob.get("/api/me").json()["is_admin"] is False
+
+    a = read_events(alice.post("/api/chat/stream", json={"question": "hi"}))[-1]
+    b = read_events(bob.post("/api/chat/stream", json={"question": "hi"}))[-1]
+    assert a["usage"]["input_tokens"] == 12000 and b["usage"] is None
+
+    a_turns = alice.get(f"/api/conversations/{a['conversation_id']}").json()["turns"]
+    b_turns = bob.get(f"/api/conversations/{b['conversation_id']}").json()["turns"]
+    assert a_turns[1]["usage"]["cost_usd"] == 0.0326 and b_turns[1]["usage"] is None
+
+    # Both answers are recorded for the usage report, whoever asked.
+    from dbs_reporting import usage
+
+    text = usage.report(days=30)
+    assert "Answers: 2" in text and "Alice A" in text and "Bob B" in text and "$0.07" in text

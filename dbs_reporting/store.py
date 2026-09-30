@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS turns (
     role TEXT NOT NULL,
     text TEXT NOT NULL,
     model TEXT,
+    usage TEXT,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS turns_by_conversation ON turns(conversation_id, id);
@@ -87,6 +88,8 @@ class Store:
             turn_columns = {row[1] for row in db.execute("PRAGMA table_info(turns)")}
             if "model" not in turn_columns:  # databases created before per-answer models
                 db.execute("ALTER TABLE turns ADD COLUMN model TEXT")
+            if "usage" not in turn_columns:  # databases created before usage tracking
+                db.execute("ALTER TABLE turns ADD COLUMN usage TEXT")
 
     @contextmanager
     def _db(self):
@@ -253,26 +256,48 @@ class Store:
     def turns(self, conversation_id: str) -> list[dict]:
         with self._db() as db:
             rows = db.execute(
-                "SELECT role, text, model, created_at FROM turns WHERE conversation_id = ? ORDER BY id",
+                "SELECT role, text, model, usage, created_at FROM turns WHERE conversation_id = ? ORDER BY id",
                 (conversation_id,),
             ).fetchall()
-            return [dict(r) for r in rows]
+        turns = [dict(r) for r in rows]
+        for turn in turns:
+            turn["usage"] = json.loads(turn["usage"]) if turn["usage"] else None
+        return turns
 
     def save_turn(
-        self, conversation_id: str, question: str, answer: str, history: list, model: str | None = None
+        self, conversation_id: str, question: str, answer: str, history: list, model: str | None = None,
+        usage: dict | None = None,
     ) -> None:
         """Record a question and answer. `model` is the model that answered; it also becomes the
         chat's current model, so the next question defaults to it."""
         now = _now()
         with self._db() as db:
             db.executemany(
-                "INSERT INTO turns (conversation_id, role, text, model, created_at) VALUES (?, ?, ?, ?, ?)",
-                [(conversation_id, "user", question, None, now), (conversation_id, "assistant", answer, model, now)],
+                "INSERT INTO turns (conversation_id, role, text, model, usage, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                [(conversation_id, "user", question, None, None, now),
+                 (conversation_id, "assistant", answer, model, json.dumps(usage) if usage else None, now)],
             )
             db.execute(
                 "UPDATE conversations SET history = ?, updated_at = ?, model = COALESCE(?, model) WHERE id = ?",
                 (json.dumps(history), now, model, conversation_id),
             )
+
+    def usage_rows(self, days: int) -> list[dict]:
+        """Every answer with recorded usage in the last `days` days, with who asked and the question."""
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT a.created_at, a.model, a.usage, u.username, u.display_name, c.title,"
+                " (SELECT q.text FROM turns q WHERE q.conversation_id = a.conversation_id AND q.id < a.id"
+                "  ORDER BY q.id DESC LIMIT 1) AS question"
+                " FROM turns a JOIN conversations c ON c.id = a.conversation_id JOIN users u ON u.id = c.user_id"
+                " WHERE a.role = 'assistant' AND a.usage IS NOT NULL AND a.created_at >= ? ORDER BY a.id",
+                (since,),
+            ).fetchall()
+        result = [dict(r) for r in rows]
+        for row in result:
+            row["usage"] = json.loads(row["usage"])
+        return result
 
     def rename_conversation(self, user_id: int, conversation_id: str, title: str) -> bool:
         with self._db() as db:

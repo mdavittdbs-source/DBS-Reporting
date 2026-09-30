@@ -134,7 +134,7 @@ def logout(response: Response, dbs_session: str | None = Cookie(default=None)) -
 
 @app.get("/api/me")
 def me(user: dict = Depends(current_user)) -> dict:
-    return {"username": user["username"], "display_name": user["display_name"]}
+    return {"username": user["username"], "display_name": user["display_name"], "is_admin": bool(user["is_admin"])}
 
 
 # --- Models and chats ----------------------------------------------------
@@ -157,7 +157,9 @@ def conversation(conversation_id: str, user: dict = Depends(current_user)) -> di
         raise HTTPException(404, "Chat not found.")
     return {
         "id": found["id"], "title": found["title"], "model": found["model"],
-        "turns": store.turns(conversation_id),
+        "turns": [
+            {**t, "usage": t["usage"] if user["is_admin"] else None} for t in store.turns(conversation_id)
+        ],
     }
 
 
@@ -190,6 +192,7 @@ class ChatResponse(BaseModel):
     conversation_id: str
     title: str
     model: str
+    usage: dict | None = None  # token usage and estimated cost; admins only
 
 
 def _resolve(user: dict, request: ChatRequest) -> tuple[str | None, str, str]:
@@ -224,9 +227,10 @@ def _run(user: dict, question: str, conversation_id: str | None, title: str, mod
                 continue
             if conversation_id is None:
                 conversation_id = store.create_conversation(user["id"], title, model)
-            store.save_turn(conversation_id, question, event["answer"], event["history"], model)
+            usage = event.get("usage")
+            store.save_turn(conversation_id, question, event["answer"], event["history"], model, usage)
             yield {"type": "done", "answer": event["answer"], "conversation_id": conversation_id,
-                   "title": title[:80], "model": model}
+                   "title": title[:80], "model": model, "usage": usage if user["is_admin"] else None}
 
 
 def _api_error_message(exc: anthropic.APIStatusError) -> str:
