@@ -12,7 +12,6 @@ def web(monkeypatch, tmp_path):
     for name in ("CW_SITE", "CW_COMPANY_ID", "CW_PUBLIC_KEY", "CW_PRIVATE_KEY", "CW_CLIENT_ID"):
         monkeypatch.setenv(name, "x")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
-    monkeypatch.setenv("LLM_PROVIDER", "claude")
     monkeypatch.setenv("CLAUDE_MODEL", "claude-opus-5-5")
     monkeypatch.setenv("CLAUDE_MODELS", "claude-opus-5-5,claude-haiku-4-5")
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
@@ -324,6 +323,3 @@ def test_tool_calls_are_described():
         {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
     ]
     assert tool_calls(claude) == ["get_ticket_totals(days=30, group_by='site')"]
-    ollama = [{"role": "assistant", "content": "", "tool_calls": [
-        {"function": {"name": "find_company", "arguments": '{"name": "Jimmy"}'}}]}]
-    assert tool_calls(ollama) == ["find_company(name='Jimmy')"]

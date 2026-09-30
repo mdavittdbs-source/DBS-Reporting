@@ -98,35 +98,20 @@ def main() -> None:
         fail(f"HTTP {exc.response.status_code}: {exc.response.text[:300]}")
         return
 
-    if os.environ.get("LLM_PROVIDER", "claude").strip().lower() == "ollama":
-        url = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-        model = os.environ.get("OLLAMA_MODEL", "qwen3:14b").strip()
-        step(7, f"Ollama at {url} with model {model!r}")
-        try:
-            tags = httpx.get(f"{url}/api/tags", timeout=10).json()
-        except Exception as exc:
-            fail(f"can't reach Ollama ({type(exc).__name__}). Is the Ollama app running?")
-            return
-        installed = [m["name"] for m in tags.get("models", [])]
-        if model not in installed and f"{model}:latest" not in installed:
-            fail(f"model not downloaded. Run: ollama pull {model}   (installed: {installed or 'none'})")
-            return
-        ok("Ollama is running and the model is downloaded")
-    else:
-        from .agent import configured_models
+    from .agent import configured_models
 
-        default, choices = configured_models()
-        step(7, f"Anthropic API key and models (default {default!r})")
-        try:
-            import anthropic
+    default, choices = configured_models()
+    step(7, f"Anthropic API key and models (default {default!r})")
+    try:
+        import anthropic
 
-            client = anthropic.Anthropic()
-            for model in choices:
-                client.models.retrieve(model)
-                ok(f"{model} available")
-        except Exception as exc:
-            fail(f"{type(exc).__name__}: {exc}")
-            return
+        client = anthropic.Anthropic()
+        for model in choices:
+            client.models.retrieve(model)
+            ok(f"{model} available")
+    except Exception as exc:
+        fail(f"{type(exc).__name__}: {exc}")
+        return
 
     from .store import Store
     from .userfile import UsersFile

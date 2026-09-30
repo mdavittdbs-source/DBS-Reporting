@@ -13,8 +13,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import anthropic
-import httpx
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
@@ -260,12 +259,6 @@ def _friendly_error(exc: Exception) -> tuple[int, str]:
     if isinstance(exc, anthropic.APIConnectionError):
         log.exception("Claude API connection error")
         return 502, "Couldn't reach the AI service."
-    if isinstance(exc, httpx.ConnectError):
-        log.exception("Ollama connection error")
-        return 502, "Couldn't reach Ollama. Is it running on the server?"
-    if isinstance(exc, httpx.TimeoutException):
-        log.exception("Ollama timeout")
-        return 504, "The local AI model took too long. Try a narrower question."
     if isinstance(exc, RuntimeError):
         log.exception("Agent error")
         return 502, str(exc)

@@ -47,12 +47,9 @@ def tool_calls(new_messages: list) -> list[str]:
         if not isinstance(message, dict) or message.get("role") != "assistant":
             continue
         content = message.get("content")
-        if isinstance(content, list):  # Claude
-            blocks = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
-            pairs = [(b.get("name"), b.get("input") or {}) for b in blocks]
-        else:  # Ollama
-            pairs = [((c.get("function") or {}).get("name"), (c.get("function") or {}).get("arguments") or {})
-                     for c in message.get("tool_calls") or []]
+        blocks = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"] \
+            if isinstance(content, list) else []
+        pairs = [(b.get("name"), b.get("input") or {}) for b in blocks]
         for name, args in pairs:
             if isinstance(args, str):
                 try:

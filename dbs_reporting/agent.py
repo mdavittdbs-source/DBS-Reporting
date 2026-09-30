@@ -210,13 +210,5 @@ class ReportingAgent:
                "usage": usage}
 
 
-def create_agent(cw: ConnectWiseClient):
-    """Build the agent for the provider chosen by LLM_PROVIDER in .env ("claude" or "ollama")."""
-    provider = os.environ.get("LLM_PROVIDER", "claude").strip().lower()
-    if provider == "ollama":
-        from .ollama_agent import OllamaAgent
-
-        return OllamaAgent(cw, SYSTEM_PROMPT)
-    if provider != "claude":
-        raise RuntimeError(f"LLM_PROVIDER must be 'claude' or 'ollama', not {provider!r}")
+def create_agent(cw: ConnectWiseClient) -> ReportingAgent:
     return ReportingAgent(cw)
