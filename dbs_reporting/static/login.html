@@ -3,66 +3,130 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Sign in to the DBS Reporting Assistant.">
+<meta name="color-scheme" content="light dark">
 <title>Sign in · DBS Reporting</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f6f5c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #6b7280;
-    --border: #e3e6eb; --accent: #2458d6; --accent-text: #ffffff; --error: #c53030;
+    --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --bg: #f7f6f3; --surface: #ffffff; --text: #1c1b19; --muted: #6f6b63; --faint: #9a958b;
+    --border: #e2dfd8; --border-strong: #cfcbc2;
+    --accent: #1f6f5c; --accent-hover: #185a4b; --accent-text: #ffffff;
+    --danger: #a8402c; --danger-soft: #f6e4df;
+    --shadow: 0 1px 2px rgba(60, 52, 38, .06), 0 24px 48px -24px rgba(60, 52, 38, .25);
+    --ring: 0 0 0 3px rgba(31, 111, 92, .28);
+    --ease: cubic-bezier(.2, .7, .2, 1);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14171c; --panel: #1c2027; --text: #e6e8ec; --muted: #9aa3af;
-      --border: #2c323c; --accent: #5b8cff; --accent-text: #0d1117; --error: #f87171;
+      --bg: #151513; --surface: #21211e; --text: #ecebe6; --muted: #a29e94; --faint: #767268;
+      --border: #2e2d29; --border-strong: #3d3b36;
+      --accent: #5db69a; --accent-hover: #74c8ad; --accent-text: #0e1a16;
+      --danger: #e0806c; --danger-soft: #3a231e;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 24px 48px -24px rgba(0, 0, 0, .7);
+      --ring: 0 0 0 3px rgba(93, 182, 154, .35);
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
-         background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  form { width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--border);
-         border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px; }
-  h1 { font-size: 20px; margin: 0; }
-  p { margin: 0; color: var(--muted); }
-  label { display: flex; flex-direction: column; gap: 6px; font-weight: 500; }
-  input { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
-          background: var(--bg); color: var(--text); }
-  button { font: inherit; font-weight: 600; padding: 10px; border: 0; border-radius: 8px;
-           background: var(--accent); color: var(--accent-text); cursor: pointer; }
-  button:disabled { opacity: .6; }
-  #error { color: var(--error); min-height: 1.5em; }
+  body {
+    margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px;
+    background:
+      radial-gradient(900px 480px at 15% -10%, rgba(31, 111, 92, .09), transparent 60%),
+      radial-gradient(700px 420px at 110% 110%, rgba(160, 130, 80, .08), transparent 60%),
+      var(--bg);
+    color: var(--text); font: 15px/1.55 var(--font); -webkit-font-smoothing: antialiased;
+  }
+  main { width: 100%; max-width: 380px; }
+  .brand { display: flex; align-items: center; gap: 10px; margin: 0 0 28px 4px; }
+  .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; }
+  .brand-mark svg { width: 18px; height: 18px; }
+  .brand span:last-child { font-weight: 600; letter-spacing: -.01em; }
+  form { background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+         padding: 30px 28px 26px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 24px; line-height: 1.2; letter-spacing: -.02em; font-weight: 600; margin: 0; }
+  .lead { margin: -8px 0 4px; color: var(--muted); font-size: 14px; }
+  label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500; }
+  input { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-strong);
+          background: var(--bg); color: var(--text); transition: border-color .15s, box-shadow .15s; }
+  input:hover { border-color: var(--faint); }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+  input[aria-invalid="true"] { border-color: var(--danger); }
+  button { font: inherit; font-weight: 500; padding: 11px; border: 0; border-radius: 10px; margin-top: 4px;
+           background: var(--accent); color: var(--accent-text); cursor: pointer;
+           display: flex; align-items: center; justify-content: center; gap: 8px;
+           transition: background .15s var(--ease), transform .1s var(--ease); }
+  button:hover:not(:disabled) { background: var(--accent-hover); }
+  button:active:not(:disabled) { transform: scale(.98); }
+  button:focus-visible { outline: none; box-shadow: var(--ring); }
+  button:disabled { opacity: .7; cursor: default; }
+  .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
+             animation: spin .7s linear infinite; display: none; }
+  button:disabled .spinner { display: inline-block; }
+  #error { font-size: 14px; color: var(--danger); background: var(--danger-soft); border-radius: 10px; padding: 9px 12px; }
+  #error:empty { display: none; }
+  .foot { margin: 18px 4px 0; font-size: 13px; color: var(--faint); text-wrap: pretty; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<form id="form">
-  <h1>DBS Reporting Assistant</h1>
-  <p>Sign in to continue.</p>
-  <label>Username <input id="username" autocomplete="username" required autofocus></label>
-  <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
-  <button id="submit">Sign in</button>
-  <div id="error" role="alert"></div>
-</form>
+<main>
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 16 16" fill="none"><path d="M3.5 12V5m4.5 7V8m4.5 4V3.5" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+    </span>
+    <span>DBS Reporting</span>
+  </div>
+  <form id="form" novalidate>
+    <h1>Sign in</h1>
+    <p class="lead">Ask questions about client tickets and time in ConnectWise.</p>
+    <label>Username <input id="username" autocomplete="username" autocapitalize="off" spellcheck="false" required autofocus></label>
+    <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+    <div id="error" role="alert"></div>
+    <button id="submit"><span class="spinner" aria-hidden="true"></span><span id="submit-label">Sign in</span></button>
+  </form>
+  <p class="foot">Need an account or a password reset? Ask your admin.</p>
+</main>
 <script>
   const form = document.getElementById("form");
   const error = document.getElementById("error");
   const submit = document.getElementById("submit");
+  const label = document.getElementById("submit-label");
+  const fields = [document.getElementById("username"), document.getElementById("password")];
+
+  fields.forEach((f) => f.addEventListener("input", () => f.removeAttribute("aria-invalid")));
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     error.textContent = "";
+    const empty = fields.filter((f) => !f.value.trim());
+    if (empty.length) {
+      empty.forEach((f) => f.setAttribute("aria-invalid", "true"));
+      error.textContent = "Enter your username and password.";
+      empty[0].focus();
+      return;
+    }
     submit.disabled = true;
+    label.textContent = "Signing in…";
     try {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: document.getElementById("username").value,
-          password: document.getElementById("password").value,
-        }),
+        body: JSON.stringify({ username: fields[0].value, password: fields[1].value }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Sign in failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Sign in failed. Try again.");
       location.href = "/";
     } catch (err) {
       error.textContent = err.message;
+      fields[1].value = "";
+      fields[1].focus();
       submit.disabled = false;
+      label.textContent = "Sign in";
     }
   });
 </script>
