@@ -101,11 +101,12 @@ pytest
 
 Ask for a report or a chart ("chart tickets by site for the last 30 days", "graph weekly tickets at
 Jimmy's Grille") and David draws bar, horizontal bar, line or stacked bar charts under its answer,
-using the numbers it pulled from ConnectWise. Under each answer:
+using the numbers it pulled from ConnectWise. Answers that include a chart or a table get two
+download buttons. Both contain only the charts and tables, not the rest of the chat:
 
-- **Excel** downloads an `.xlsx` with the answer, every table as its own sheet, and every chart as a
-  sheet with its data and a native Excel chart.
-- **PDF** opens a printable report (logo, question, answer and charts); choose *Save as PDF*.
+- **Excel** downloads an `.xlsx` with every table as its own sheet, and every chart as a sheet with
+  its data and a native Excel chart.
+- **PDF** opens a printable report (logo, tables and charts); choose *Save as PDF*.
 - Each chart has **Show table** (the numbers behind it) and **Download PNG** (for emails and slides).
 
 Charts are saved with the chat, so they come back when you reopen it. The page's libraries

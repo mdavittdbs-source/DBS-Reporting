@@ -679,7 +679,8 @@
   }
 
   // ---------- Exports ----------
-  function printReport(question, text, charts) {
+  // PDF of just the tables and charts in an answer (not the rest of the chat).
+  function printReport(tables, charts) {
     const win = window.open("", "_blank");
     if (!win) { toast("Allow pop-ups for this site to create the PDF."); return; }
     const doc = win.document;
@@ -689,7 +690,6 @@
       header { display: flex; align-items: center; justify-content: space-between; gap: 16px;
                border-bottom: 2px solid #183e7c; padding-bottom: 12px; margin-bottom: 18px; }
       header img { height: 44px; } header .meta { text-align: right; font-size: 11px; color: #6f6b63; }
-      h1 { font-size: 18px; margin: 0 0 14px; letter-spacing: -.01em; }
       table { border-collapse: collapse; margin: 10px 0; font-variant-numeric: tabular-nums; }
       th { text-align: left; font-weight: 600; border-bottom: 1px solid #cfcbc2; padding: 4px 14px 4px 0; }
       td { border-bottom: 1px solid #e2dfd8; padding: 4px 14px 4px 0; }
@@ -700,16 +700,15 @@
       @page { margin: 14mm; }
     </style></head><body></body></html>`);
     doc.close();
-    doc.title = `David report – ${question.slice(0, 60)}`;
+    const title = charts?.[0]?.title || "Report";
+    doc.title = `David – ${title}`;
     const header = doc.createElement("header");
     const logo = doc.createElement("img"); logo.src = "/logo"; logo.alt = ""; logo.onerror = () => logo.remove();
     const meta = doc.createElement("div"); meta.className = "meta";
     meta.textContent = `Prepared by David · ${new Date().toLocaleString()}`;
     header.append(logo, meta);
-    const h1 = doc.createElement("h1"); h1.textContent = question;
-    const body = doc.createElement("section");
-    body.innerHTML = DOMPurify.sanitize(marked.parse(text));
-    doc.body.append(header, h1, body);
+    doc.body.append(header);
+    for (const table of tables) doc.body.appendChild(doc.importNode(table, true));
     for (const spec of charts || []) {
       const fig = doc.createElement("figure");
       const cap = doc.createElement("figcaption"); cap.textContent = spec.title;
@@ -736,7 +735,7 @@
 
   const DOWNLOAD = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5v8m0 0L4.5 7M8 10.5 11.5 7M3 13.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  function addAnswer(text, usage, charts, answerId, question) {
+  function addAnswer(text, usage, charts, answerId) {
     const div = document.createElement("div");
     div.className = "msg bot";
     const answer = document.createElement("div");
@@ -750,10 +749,14 @@
     copy.onclick = () => copyText(text);
     if (isAdmin && usage) actions.appendChild(usageTag(usage));
     actions.appendChild(copy);
-    if (answerId) {
-      actions.appendChild(actionButton("Excel", DOWNLOAD, () => download(`/api/answers/${answerId}/export.xlsx`, "")));
+    // Only reports can be downloaded: the answer's tables and charts, never the chat itself.
+    const tables = [...answer.querySelectorAll("table")];
+    if (tables.length || charts?.length) {
+      if (answerId) {
+        actions.appendChild(actionButton("Excel", DOWNLOAD, () => download(`/api/answers/${answerId}/export.xlsx`, "")));
+      }
+      actions.appendChild(actionButton("PDF", DOWNLOAD, () => printReport(tables, charts)));
     }
-    actions.appendChild(actionButton("PDF", DOWNLOAD, () => printReport(question || chatTitle.textContent, text, charts)));
     div.append(answer);
     if (charts && charts.length && window.Chart) {
       const wrap = document.createElement("div");
@@ -969,10 +972,9 @@
       chatTitle.textContent = chat.title;
       setModel(chat.model, true);
       clearMessages();
-      let lastQuestion = "";
       for (const t of chat.turns) {
-        if (t.role === "user") { addUser(t.text); lastQuestion = t.text; }
-        else addAnswer(t.text, t.usage, t.charts, t.id, lastQuestion);
+        if (t.role === "user") addUser(t.text);
+        else addAnswer(t.text, t.usage, t.charts, t.id);
       }
       scrollToEnd();
       loadChats();
@@ -1074,7 +1076,7 @@
       }
       thinking.el.remove();
       if (streamed) streamed.parentElement.remove();
-      addAnswer(result.answer, result.usage, result.charts, result.answer_id, question);
+      addAnswer(result.answer, result.usage, result.charts, result.answer_id);
       if (!conversationId) {
         chatTitle.textContent = result.title;
         setModel(result.model, true);

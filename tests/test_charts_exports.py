@@ -4,7 +4,7 @@ import json
 from openpyxl import load_workbook
 
 from dbs_reporting.charts import extract_charts, validate_chart
-from dbs_reporting.exports import answer_workbook, markdown_tables
+from dbs_reporting.exports import answer_workbook, has_report, markdown_tables
 
 CHART = {"title": "Tickets by site", "chart_type": "hbar", "labels": ["Downtown", "Airport"],
          "series": [{"name": "Tickets", "values": [31, 18]}], "subtitle": "Last 30 days", "y_label": "Tickets"}
@@ -60,8 +60,7 @@ def test_answer_workbook():
     data = answer_workbook({"text": ANSWER, "question": "sites with most tickets?", "model": "claude-sonnet-5-5",
                             "created_at": "2026-09-30T19:00:00+00:00", "charts": [chart], "title": "t"})
     wb = load_workbook(io.BytesIO(data))
-    assert wb.sheetnames == ["Summary", "Table 1", "Chart 1"]
-    assert wb["Summary"]["B1"].value == "sites with most tickets?"
+    assert wb.sheetnames == ["Table 1", "Chart 1"]  # the reports only, not the answer text
     table = wb["Table 1"]
     assert [c.value for c in table[1]] == ["Site", "Tickets", "Share"]
     assert [c.value for c in table[2]] == ["Downtown", 1031, 0.625]   # real numbers, emphasis stripped
@@ -89,8 +88,12 @@ def test_extract_accepts_any_json_spacing():
 def test_workbook_keeps_equals_text_as_text_and_reads_short_separators():
     text = "=== Summary ===\n\n| Client | Note |\n|-|-|\n| Acme | =HYPERLINK(\"x\") |\n| Beta | - |"
     wb = load_workbook(io.BytesIO(answer_workbook({"text": text, "charts": []})))
-    assert wb["Summary"]["A6"].value == "=== Summary ==="
-    assert wb["Summary"]["A6"].data_type == "s"
     rows = [[c.value for c in row] for row in wb["Table 1"].iter_rows()]
     assert rows == [["Client", "Note"], ["Acme", '=HYPERLINK("x")'], ["Beta", "-"]]
     assert wb["Table 1"]["B2"].data_type == "s"
+
+
+def test_has_report():
+    assert has_report({"text": ANSWER, "charts": []})
+    assert has_report({"text": "no table here", "charts": [CHART]})
+    assert not has_report({"text": "Just a sentence.\n\n- and a list", "charts": []})

@@ -106,10 +106,12 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 @app.get("/api/answers/{answer_id}/export.xlsx")
 def export_xlsx(answer_id: int, user: dict = Depends(current_user)) -> Response:
-    """Download one of your answers as Excel: the answer, each table, and each chart with its data."""
+    """Download the tables and charts in one of your answers as Excel (not the rest of the chat)."""
     answer = store.get_answer(user["id"], answer_id)
     if answer is None:
         raise HTTPException(404, "Answer not found.")
+    if not exports.has_report(answer):
+        raise HTTPException(404, "This answer has no table or chart to download.")
     slug = re.sub(r"[^A-Za-z0-9]+", "-", answer.get("title") or "report").strip("-")[:50] or "report"
     return Response(
         exports.answer_workbook(answer),
