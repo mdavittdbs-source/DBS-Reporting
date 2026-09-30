@@ -94,3 +94,31 @@ def test_tool_schemas():
         schema = tool.to_dict()
         assert schema["description"]
         assert schema["input_schema"]["type"] == "object"
+
+
+def test_ollama_agent_runs_tools(monkeypatch):
+    from dbs_reporting import ollama_agent
+    from dbs_reporting.agent import SYSTEM_PROMPT
+
+    replies = [
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"function": {"name": "find_company", "arguments": {"name": "Joe's Pizza"}}}]},
+        {"role": "assistant", "content": "<think>hmm</think>Top issue: printers."},
+    ]
+    sent = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"message": replies[len(sent) - 1]})
+
+    monkeypatch.setenv("OLLAMA_MODEL", "test-model")
+    agent = ollama_agent.OllamaAgent(make_client([]), SYSTEM_PROMPT)
+    agent._http = httpx.Client(transport=httpx.MockTransport(handler))
+
+    answer, conversation_id = agent.ask("most common issues at Joe's Pizza?")
+    assert answer == "Top issue: printers."
+    assert sent[0]["model"] == "test-model"
+    assert sent[0]["tools"][0]["function"]["name"] == "find_company"
+    tool_message = sent[1]["messages"][-1]
+    assert tool_message["role"] == "tool"
+    assert json.loads(tool_message["content"]) == [{"id": 42, "name": "Joe's Pizza"}]

@@ -1,5 +1,6 @@
 """The reporting agent: Claude plus the read-only ConnectWise tools."""
 
+import os
 import threading
 import uuid
 from datetime import date
@@ -36,6 +37,8 @@ issue that suggests a project or a user who needs training."""
 
 
 class ReportingAgent:
+    description = f"Claude ({MODEL})"
+
     def __init__(self, cw: ConnectWiseClient, client: anthropic.Anthropic | None = None):
         self._client = client or anthropic.Anthropic()
         self._tools = build_tools(cw)
@@ -96,3 +99,15 @@ class ReportingAgent:
 
             self._conversations[conversation_id] = messages
             return answer or "I couldn't produce an answer for that.", conversation_id
+
+
+def create_agent(cw: ConnectWiseClient):
+    """Build the agent for the provider chosen by LLM_PROVIDER in .env ("claude" or "ollama")."""
+    provider = os.environ.get("LLM_PROVIDER", "claude").strip().lower()
+    if provider == "ollama":
+        from .ollama_agent import OllamaAgent
+
+        return OllamaAgent(cw, SYSTEM_PROMPT)
+    if provider != "claude":
+        raise RuntimeError(f"LLM_PROVIDER must be 'claude' or 'ollama', not {provider!r}")
+    return ReportingAgent(cw)

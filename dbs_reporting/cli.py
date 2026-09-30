@@ -1,13 +1,14 @@
 """Terminal chat: `python -m dbs_reporting.cli`."""
 
-from .agent import ReportingAgent
+from .agent import create_agent
 from .config import ConnectWiseSettings
 from .connectwise import ConnectWiseClient
 
 
 def main() -> None:
-    agent = ReportingAgent(ConnectWiseClient(ConnectWiseSettings.from_env()))
+    agent = create_agent(ConnectWiseClient(ConnectWiseSettings.from_env()))
     conversation_id = None
+    print(f"Using {agent.description}.")
     print("DBS reporting assistant. Ask about a client, e.g. \"most common issues at Joe's Pizza "
           "in the last 30 days\". Ctrl+C to quit.")
     while True:
