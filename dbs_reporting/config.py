@@ -23,6 +23,15 @@ def _required(name: str) -> str:
     return value
 
 
+def _clean_site(value: str) -> str:
+    """Accept "https://host/", "host/v4_6_release" etc. and keep just the hostname."""
+    value = value.strip().strip('"').strip("'")
+    for prefix in ("https://", "http://"):
+        if value.lower().startswith(prefix):
+            value = value[len(prefix):]
+    return value.split("/")[0].strip()
+
+
 @dataclass(frozen=True)
 class ConnectWiseSettings:
     site: str
@@ -35,7 +44,7 @@ class ConnectWiseSettings:
     @classmethod
     def from_env(cls) -> "ConnectWiseSettings":
         return cls(
-            site=_required("CW_SITE"),
+            site=_clean_site(_required("CW_SITE")),
             company_id=_required("CW_COMPANY_ID"),
             public_key=_required("CW_PUBLIC_KEY"),
             private_key=_required("CW_PRIVATE_KEY"),
