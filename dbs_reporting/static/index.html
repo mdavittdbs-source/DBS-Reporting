@@ -204,6 +204,8 @@
   .answer td:not(:first-child), .answer th:not(:first-child) { text-align: right; }
   .actions { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
   .actions button { opacity: 0; transition: opacity .15s; }
+  .usage { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; padding: 4px 8px 4px 0;
+           cursor: help; }
   .msg.bot:hover .actions button, .actions button:focus-visible { opacity: 1; }
 
   .actions button { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
@@ -340,6 +342,7 @@
   const modelSelect = $("model"), chatTitle = $("chat-title");
   let conversationId = null;
   let modelInfo = { default: null, models: [] };
+  let isAdmin = false;
   let busy = false;
 
   const EXAMPLES = [
@@ -403,7 +406,29 @@
     scrollToEnd();
   }
 
-  function addAnswer(text) {
+  function fmtTokens(n) {
+    return n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n);
+  }
+
+  // Admins see what each answer used: tokens in/out and an estimated cost.
+  function usageTag(u) {
+    const span = document.createElement("span");
+    span.className = "usage";
+    const input = u.input_tokens + u.cache_write_tokens + u.cache_read_tokens;
+    const cost = u.priced ? ` · ≈ $${u.cost_usd.toFixed(u.cost_usd < 0.1 ? 3 : 2)}` : "";
+    span.textContent = `${fmtTokens(input)} in · ${fmtTokens(u.output_tokens)} out${cost}`;
+    span.title = [
+      `${u.requests} API call${u.requests === 1 ? "" : "s"} to Claude`,
+      `Input: ${u.input_tokens.toLocaleString()} new, ${u.cache_read_tokens.toLocaleString()} cached, ` +
+        `${u.cache_write_tokens.toLocaleString()} written to cache`,
+      `Output (including reasoning): ${u.output_tokens.toLocaleString()}`,
+      u.priced ? `Estimated cost: $${u.cost_usd.toFixed(4)}` : "No price known for this model",
+      "Only admins see this.",
+    ].join("\n");
+    return span;
+  }
+
+  function addAnswer(text, usage) {
     const div = document.createElement("div");
     div.className = "msg bot";
     const answer = document.createElement("div");
@@ -415,6 +440,7 @@
     copy.type = "button";
     copy.innerHTML = COPY + "Copy";
     copy.onclick = () => copyText(text);
+    if (isAdmin && usage) actions.appendChild(usageTag(usage));
     actions.appendChild(copy);
     div.append(answer, actions);
     messages.appendChild(div);
@@ -616,7 +642,7 @@
       chatTitle.textContent = chat.title;
       setModel(chat.model, true);
       messages.innerHTML = "";
-      for (const t of chat.turns) t.role === "user" ? addUser(t.text) : addAnswer(t.text);
+      for (const t of chat.turns) t.role === "user" ? addUser(t.text) : addAnswer(t.text, t.usage);
       scrollToEnd();
       loadChats();
     } catch (err) {
@@ -708,7 +734,7 @@
       thinking.stop();
       thinking.el.remove();
       if (streamed) streamed.parentElement.remove();
-      addAnswer(result.answer);
+      addAnswer(result.answer, result.usage);
       if (!conversationId) {
         chatTitle.textContent = result.title;
         setModel(result.model, true);
@@ -795,6 +821,7 @@
   (async () => {
     const me = await api("/api/me");
     $("me").textContent = me.display_name;
+    isAdmin = me.is_admin;
     $("avatar").textContent = me.display_name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
     modelInfo = await api("/api/models");
     for (const m of modelInfo.models) modelSelect.add(new Option(m.label, m.id));

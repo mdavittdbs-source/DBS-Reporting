@@ -109,6 +109,10 @@ def test_respond_stream_events(monkeypatch):
     assert text == "Top issue: printers."
     done = events[-1]
     assert done["type"] == "done" and done["answer"] == "Top issue: printers."
+    # Usage covers both API calls (the tool call and the answer); the fake reports 1 in / 1 out each.
+    assert done["usage"]["requests"] == 2
+    assert done["usage"]["input_tokens"] == 2 and done["usage"]["output_tokens"] == 2
+    assert done["usage"]["cost_usd"] > 0 and done["usage"]["priced"]
     # question, tool call, tool result, answer; tool result carries the real ConnectWise lookup
     roles = [m["role"] for m in done["history"]]
     assert roles == ["user", "assistant", "user", "assistant"]
@@ -129,7 +133,10 @@ def test_system_prompt_is_frozen_and_date_goes_with_question(monkeypatch):
     agent.respond(json.loads(json.dumps(history)), "again")
     first, second = sent[0][1], sent[1][1]
     # Same instructions every turn (no date in them), so saved reasoning stays valid.
-    assert first["system"] == second["system"] == SYSTEM_PROMPT and "{today}" not in SYSTEM_PROMPT
+    assert first["system"] == second["system"] and "{today}" not in SYSTEM_PROMPT
+    assert first["system"] == [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+    # Prompt caching: instructions marked, plus automatic caching of the conversation.
+    assert first["cache_control"] == {"type": "ephemeral"}
     assert first["messages"][0]["content"].startswith(f"(Today's date: {date.today().isoformat()})")
     assert first["messages"][0]["content"].endswith("hi")
     # The second request replays the first turn exactly as it was sent.

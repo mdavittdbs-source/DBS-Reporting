@@ -94,6 +94,21 @@ Tests (no network or API keys needed):
 pytest
 ```
 
+## Token usage and cost
+
+Every answer records the tokens it used (across all of its steps) and an estimated cost.
+
+- **Admins** see a line under each answer, e.g. `20.3k in · 1.0k out · ≈ $0.031`; hover it for the
+  breakdown (new vs cached input, output, number of API calls). Other users don't see it.
+- **Summary:** `python -m dbs_reporting.usage` (add `--days 7` for another range) prints totals by
+  person, model and day, plus the most expensive questions.
+- **Prompt caching** is on: the instructions and each chat's earlier context are re-read from
+  Anthropic's cache at about a tenth of the normal input price. The cached share shows up in the
+  usage line and summary.
+
+Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic console
+(Settings → Usage / Cost) has exact billing.
+
 ## Running on a local model (Ollama)
 
 Set `LLM_PROVIDER=ollama` in `.env` to use a free local model through
