@@ -690,17 +690,28 @@
     location.href = "/login";
   };
 
+  // Custom logo from the branding folder. Dark-mode viewers get logo-dark if it exists,
+  // otherwise the normal logo. Swaps live when the system theme changes.
+  const darkMode = window.matchMedia("(prefers-color-scheme: dark)");
   function loadLogo() {
-    const img = new Image();
-    img.alt = "";
-    img.onload = () => {
-      const mark = document.querySelector(".brand-mark");
-      mark.replaceChildren(img);
-      mark.classList.add("has-logo");
-      document.querySelector('link[rel="icon"]').href = "/logo";
+    const sources = darkMode.matches ? ["/logo-dark", "/logo"] : ["/logo"];
+    const tryNext = () => {
+      const src = sources.shift();
+      if (!src) return;
+      const img = new Image();
+      img.alt = "";
+      img.onload = () => {
+        const mark = document.querySelector(".brand-mark");
+        mark.replaceChildren(img);
+        mark.classList.add("has-logo");
+        document.querySelector('link[rel="icon"]').href = src;
+      };
+      img.onerror = tryNext;
+      img.src = src;
     };
-    img.src = "/logo";
+    tryNext();
   }
+  darkMode.addEventListener("change", loadLogo);
   loadLogo();
 
   (async () => {

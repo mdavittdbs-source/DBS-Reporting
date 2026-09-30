@@ -167,3 +167,17 @@ def test_logo(web, tmp_path, monkeypatch):
     (tmp_path / "branding" / "logo.png").write_bytes(b"\x89PNG fake")
     response = client.get("/logo")  # public: no sign-in needed
     assert response.status_code == 200 and response.headers["content-type"] == "image/png"
+
+
+def test_dark_logo(web, tmp_path, monkeypatch):
+    module, _ = web
+    client = TestClient(module.app)
+    branding = tmp_path / "branding"
+    branding.mkdir()
+    monkeypatch.setattr(module, "BRANDING", branding)
+    (branding / "logo.svg").write_text("<svg/>")
+    assert client.get("/logo-dark").status_code == 404  # optional; pages fall back to /logo
+    (branding / "logo-dark.png").write_bytes(b"\x89PNG fake")
+    response = client.get("/logo-dark")
+    assert response.status_code == 200 and response.headers["content-type"] == "image/png"
+    assert client.get("/logo").headers["content-type"].startswith("image/svg")

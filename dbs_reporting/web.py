@@ -62,17 +62,27 @@ def index(dbs_session: str | None = Cookie(default=None)):
 
 
 BRANDING = Path(__file__).resolve().parent.parent / "branding"
-LOGO_NAMES = ("logo.svg", "logo.png", "logo.webp", "logo.jpg", "logo.jpeg")
+LOGO_TYPES = ("svg", "png", "webp", "jpg", "jpeg")
+
+
+def _branding_file(stem: str) -> FileResponse:
+    for ext in LOGO_TYPES:
+        path = BRANDING / f"{stem}.{ext}"
+        if path.is_file():
+            return FileResponse(path, headers={"Cache-Control": "no-cache"})
+    raise HTTPException(404, f"No {stem} in the branding folder.")
 
 
 @app.get("/logo")
 def logo() -> FileResponse:
     """Your logo, if one is saved in the branding folder. Public so the sign-in page can show it."""
-    for name in LOGO_NAMES:
-        path = BRANDING / name
-        if path.is_file():
-            return FileResponse(path, headers={"Cache-Control": "no-cache"})
-    raise HTTPException(404, "No logo in the branding folder.")
+    return _branding_file("logo")
+
+
+@app.get("/logo-dark")
+def logo_dark() -> FileResponse:
+    """Optional version of the logo for dark mode (branding/logo-dark.*)."""
+    return _branding_file("logo-dark")
 
 
 @app.get("/login")
