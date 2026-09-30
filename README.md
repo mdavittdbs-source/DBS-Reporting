@@ -109,6 +109,18 @@ Every answer records the tokens it used (across all of its steps) and an estimat
 Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic console
 (Settings → Usage / Cost) has exact billing.
 
+## Activity log
+
+Every question and answer is logged with who asked, the ConnectWise lookups David ran, the full
+answer, token usage and any errors:
+
+- **Live:** printed in the terminal running the bot, and appended to `logs/activity.log` (open it in
+  VS Code; rotated at 5 MB, 10 old files kept, gitignored). Set `LOG_DIR` to log elsewhere.
+- **Past conversations** (including ones from before the log existed), from the database:
+  `python -m dbs_reporting.activity --days 7 [--user jsmith] [--search printer] [--full]`
+
+The chat sidebar tells people their questions and answers are logged for admins.
+
 ## Running on a local model (Ollama)
 
 Set `LLM_PROVIDER=ollama` in `.env` to use a free local model through

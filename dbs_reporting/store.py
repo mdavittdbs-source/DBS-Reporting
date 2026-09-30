@@ -282,22 +282,27 @@ class Store:
                 (json.dumps(history), now, model, conversation_id),
             )
 
-    def usage_rows(self, days: int) -> list[dict]:
-        """Every answer with recorded usage in the last `days` days, with who asked and the question."""
+    def answered_turns(self, days: int) -> list[dict]:
+        """Every answer in the last `days` days, oldest first, with who asked, the question,
+        the chat title, the model and usage (None if not recorded)."""
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
         with self._db() as db:
             rows = db.execute(
-                "SELECT a.created_at, a.model, a.usage, u.username, u.display_name, c.title,"
+                "SELECT a.created_at, a.model, a.usage, a.text, u.username, u.display_name, c.title,"
                 " (SELECT q.text FROM turns q WHERE q.conversation_id = a.conversation_id AND q.id < a.id"
                 "  ORDER BY q.id DESC LIMIT 1) AS question"
                 " FROM turns a JOIN conversations c ON c.id = a.conversation_id JOIN users u ON u.id = c.user_id"
-                " WHERE a.role = 'assistant' AND a.usage IS NOT NULL AND a.created_at >= ? ORDER BY a.id",
+                " WHERE a.role = 'assistant' AND a.created_at >= ? ORDER BY a.id",
                 (since,),
             ).fetchall()
         result = [dict(r) for r in rows]
         for row in result:
-            row["usage"] = json.loads(row["usage"])
+            row["usage"] = json.loads(row["usage"]) if row["usage"] else None
         return result
+
+    def usage_rows(self, days: int) -> list[dict]:
+        """Answers in the last `days` days that have recorded usage."""
+        return [row for row in self.answered_turns(days) if row["usage"]]
 
     def rename_conversation(self, user_id: int, conversation_id: str, title: str) -> bool:
         with self._db() as db:
