@@ -6,7 +6,7 @@
 <meta name="description" content="Sign in to the DBS Reporting Assistant.">
 <meta name="color-scheme" content="light dark">
 <title>Sign in · DBS Reporting</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f6f5c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23183e7c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
@@ -15,27 +15,27 @@
     --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     --bg: #f7f6f3; --surface: #ffffff; --text: #1c1b19; --muted: #6f6b63; --faint: #9a958b;
     --border: #e2dfd8; --border-strong: #cfcbc2;
-    --accent: #1f6f5c; --accent-hover: #185a4b; --accent-text: #ffffff;
+    --accent: #183e7c; --accent-hover: #122f5f; --accent-text: #ffffff;
     --danger: #a8402c; --danger-soft: #f6e4df;
     --shadow: 0 1px 2px rgba(60, 52, 38, .06), 0 24px 48px -24px rgba(60, 52, 38, .25);
-    --ring: 0 0 0 3px rgba(31, 111, 92, .28);
+    --ring: 0 0 0 3px rgba(24, 62, 124, .28);
     --ease: cubic-bezier(.2, .7, .2, 1);
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #151513; --surface: #21211e; --text: #ecebe6; --muted: #a29e94; --faint: #767268;
       --border: #2e2d29; --border-strong: #3d3b36;
-      --accent: #5db69a; --accent-hover: #74c8ad; --accent-text: #0e1a16;
+      --accent: #7fa3dd; --accent-hover: #9dbae8; --accent-text: #0c1426;
       --danger: #e0806c; --danger-soft: #3a231e;
       --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 24px 48px -24px rgba(0, 0, 0, .7);
-      --ring: 0 0 0 3px rgba(93, 182, 154, .35);
+      --ring: 0 0 0 3px rgba(127, 163, 221, .35);
     }
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px;
     background:
-      radial-gradient(900px 480px at 15% -10%, rgba(31, 111, 92, .09), transparent 60%),
+      radial-gradient(900px 480px at 15% -10%, rgba(24, 62, 124, .09), transparent 60%),
       radial-gradient(700px 420px at 110% 110%, rgba(160, 130, 80, .08), transparent 60%),
       var(--bg);
     color: var(--text); font: 15px/1.55 var(--font); -webkit-font-smoothing: antialiased;
