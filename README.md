@@ -84,5 +84,7 @@ Set `LLM_PROVIDER=claude` to switch back.
 - **Adding questions.** To support a new kind of question (agreements, configurations,
   projects, etc.), add a method to `connectwise.py` and a `@beta_tool` function in `tools.py`.
   Claude picks it up automatically.
-- **Model.** Uses `claude-opus-5-5` with adaptive thinking at `medium` effort, and has
-  server-side refusal fallbacks turned on (`fallbacks="default"`).
+- **Models.** Defaults to `claude-opus-5-5` with adaptive thinking at `medium` effort. Set
+  `CLAUDE_MODEL` in `.env` to change the default (e.g. `claude-sonnet-5-5` or `claude-haiku-4-5`
+  to cut costs), and list several in `CLAUDE_MODELS` to show a model picker in the web chat.
+  Switching models starts a new conversation.

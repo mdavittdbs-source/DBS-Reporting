@@ -10,7 +10,49 @@ import anthropic
 from .connectwise import ConnectWiseClient
 from .tools import build_tools
 
-MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "claude-opus-5-5"
+
+# What each model accepts. "effort" and "fallback" are only sent to models that support them;
+# anything not listed here gets adaptive thinking only.
+KNOWN_MODELS = {
+    "claude-opus-5-5": {"label": "Claude Opus 5.5 (best)", "effort": True, "fallback": True},
+    "claude-sonnet-5-5": {"label": "Claude Sonnet 5.5 (balanced)", "effort": True, "fallback": True},
+    "claude-haiku-4-5": {"label": "Claude Haiku 4.5 (cheapest)", "thinking": False},
+    "claude-fable-5-1": {"label": "Claude Fable 5.1 (most capable, most expensive)", "effort": True, "fallback": True},
+    "claude-opus-5": {"label": "Claude Opus 5", "effort": True, "fallback": True},
+    "claude-sonnet-5": {"label": "Claude Sonnet 5", "effort": True},
+}
+
+
+def _model_list(value: str) -> list[str]:
+    return [m.strip() for m in value.split(",") if m.strip()]
+
+
+def configured_models() -> tuple[str, list[str]]:
+    """Read CLAUDE_MODEL (default) and CLAUDE_MODELS (choices offered in the web chat)."""
+    default = os.environ.get("CLAUDE_MODEL", "").strip() or DEFAULT_MODEL
+    choices = _model_list(os.environ.get("CLAUDE_MODELS", "")) or [default]
+    if default not in choices:
+        choices.insert(0, default)
+    return default, choices
+
+
+def model_label(model: str) -> str:
+    return KNOWN_MODELS.get(model, {}).get("label", model)
+
+
+def request_options(model: str, effort: str) -> dict:
+    """Model-specific request parameters."""
+    info = KNOWN_MODELS.get(model, {})
+    options: dict = {}
+    if info.get("thinking", True):
+        options["thinking"] = {"type": "adaptive"}
+    if info.get("effort"):
+        options["output_config"] = {"effort": effort}
+    if info.get("fallback"):
+        options["betas"] = ["server-side-fallback-2026-07-01"]
+        options["fallbacks"] = "default"
+    return options
 
 SYSTEM_PROMPT = """You are the DBS reporting assistant. Managers at an IT managed service provider \
 ask you questions about their clients' service tickets and time in ConnectWise Manage.
@@ -37,29 +79,50 @@ issue that suggests a project or a user who needs training."""
 
 
 class ReportingAgent:
-    description = f"Claude ({MODEL})"
-
     def __init__(self, cw: ConnectWiseClient, client: anthropic.Anthropic | None = None):
         self._client = client or anthropic.Anthropic()
         self._tools = build_tools(cw)
+        self.default_model, self.models = configured_models()
+        self._effort = os.environ.get("CLAUDE_EFFORT", "medium").strip() or "medium"
         self._conversations: dict[str, list] = {}
+        self._conversation_models: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
 
-    def new_conversation(self) -> str:
+    @property
+    def description(self) -> str:
+        return f"Claude ({self.default_model})"
+
+    def model_choices(self) -> list[dict]:
+        return [{"id": m, "label": model_label(m)} for m in self.models]
+
+    def new_conversation(self, model: str | None = None) -> str:
         conversation_id = uuid.uuid4().hex
         with self._guard:
             self._conversations[conversation_id] = []
+            self._conversation_models[conversation_id] = model or self.default_model
             self._locks[conversation_id] = threading.Lock()
         return conversation_id
 
-    def ask(self, question: str, conversation_id: str | None = None) -> tuple[str, str]:
+    def ask(
+        self, question: str, conversation_id: str | None = None, model: str | None = None
+    ) -> tuple[str, str]:
         """Answer a question, continuing the conversation if an id is given.
+
+        `model` must be one of the configured models. A conversation keeps the model it started
+        with; picking a different model starts a new conversation.
 
         Returns (answer_text, conversation_id).
         """
-        if not conversation_id or conversation_id not in self._conversations:
-            conversation_id = self.new_conversation()
+        if model is not None and model not in self.models:
+            raise ValueError(f"Model {model!r} isn't enabled. Choose one of: {', '.join(self.models)}")
+        if (
+            not conversation_id
+            or conversation_id not in self._conversations
+            or (model is not None and model != self._conversation_models[conversation_id])
+        ):
+            conversation_id = self.new_conversation(model)
+        model = self._conversation_models[conversation_id]
 
         with self._locks[conversation_id]:
             history = self._conversations[conversation_id]
@@ -67,16 +130,13 @@ class ReportingAgent:
             messages = history + [{"role": "user", "content": question}]
 
             runner = self._client.beta.messages.tool_runner(
-                model=MODEL,
+                model=model,
                 max_tokens=16000,
                 system=SYSTEM_PROMPT.format(today=date.today().isoformat()),
                 tools=self._tools,
                 messages=messages,
-                thinking={"type": "adaptive"},
-                output_config={"effort": "medium"},
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
                 max_iterations=20,
+                **request_options(model, self._effort),
             )
 
             final = None

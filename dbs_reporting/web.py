@@ -42,6 +42,7 @@ agent = create_agent(ConnectWiseClient(ConnectWiseSettings.from_env()))
 class ChatRequest(BaseModel):
     question: str
     conversation_id: str | None = None
+    model: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -54,13 +55,22 @@ def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/api/models")
+def models() -> dict:
+    return {"default": agent.default_model, "models": agent.model_choices()}
+
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest) -> ChatResponse:
     question = request.question.strip()
     if not question:
         raise HTTPException(400, "Question is empty")
     try:
-        answer, conversation_id = await run_in_threadpool(agent.ask, question, request.conversation_id)
+        answer, conversation_id = await run_in_threadpool(
+            agent.ask, question, request.conversation_id, request.model
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     except anthropic.RateLimitError:
         raise HTTPException(429, "The AI service is busy. Please try again in a minute.")
     except anthropic.APIStatusError as exc:

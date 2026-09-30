@@ -24,8 +24,11 @@
          min-height: 100vh; }
   header { display: flex; justify-content: space-between; align-items: center; padding: 8px 0 16px; }
   h1 { font-size: 18px; margin: 0; }
-  header button { background: none; border: 1px solid var(--border); color: var(--text);
-                  border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  header button, header select { background: none; border: 1px solid var(--border); color: var(--text);
+                  border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; }
+  header select { background: var(--panel); max-width: 60vw; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  .note { color: var(--muted); font-size: 13px; text-align: center; }
   #log { flex: 1; display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }
   .msg { padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border);
          background: var(--panel); overflow-x: auto; }
@@ -50,7 +53,10 @@
 <main>
   <header>
     <h1>DBS Reporting Assistant</h1>
-    <button id="new" type="button">New chat</button>
+    <div class="controls">
+      <select id="model" title="AI model" hidden></select>
+      <button id="new" type="button">New chat</button>
+    </div>
   </header>
   <div id="log">
     <div class="hint" id="hint">
@@ -70,7 +76,20 @@
   const form = document.getElementById("form");
   const q = document.getElementById("q");
   const send = document.getElementById("send");
+  const modelSelect = document.getElementById("model");
   let conversationId = null;
+
+  fetch("/api/models").then((r) => r.json()).then((data) => {
+    for (const m of data.models) modelSelect.add(new Option(m.label, m.id, false, m.id === data.default));
+    modelSelect.hidden = data.models.length < 2;
+  }).catch(() => {});
+
+  modelSelect.addEventListener("change", () => {
+    if (conversationId) {
+      conversationId = null;
+      add("note", "Switched to " + modelSelect.selectedOptions[0].text + ". Starting a new conversation.", false);
+    }
+  });
 
   function add(kind, content, html) {
     document.getElementById("hint")?.remove();
@@ -91,7 +110,7 @@
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, conversation_id: conversationId }),
+        body: JSON.stringify({ question, conversation_id: conversationId, model: modelSelect.value || null }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || res.statusText);
