@@ -1,0 +1,26 @@
+"""Terminal chat: `python -m dbs_reporting.cli`."""
+
+from .agent import ReportingAgent
+from .config import ConnectWiseSettings
+from .connectwise import ConnectWiseClient
+
+
+def main() -> None:
+    agent = ReportingAgent(ConnectWiseClient(ConnectWiseSettings.from_env()))
+    conversation_id = None
+    print("DBS reporting assistant. Ask about a client, e.g. \"most common issues at Joe's Pizza "
+          "in the last 30 days\". Ctrl+C to quit.")
+    while True:
+        try:
+            question = input("\n> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if not question:
+            continue
+        answer, conversation_id = agent.ask(question, conversation_id)
+        print("\n" + answer)
+
+
+if __name__ == "__main__":
+    main()
