@@ -8,6 +8,13 @@ Put your logo in this folder, named one of:
 - `logo.jpg`
 
 It replaces the built-in logo in the sidebar, on the sign-in page and in the browser tab.
+
+## Dark mode
+
+If your logo is hard to see on a dark background, add a second version named `logo-dark`
+(e.g. `logo-dark.svg` or `logo-dark.png`) in this folder. People whose computer or browser is
+set to dark mode see it automatically; everyone else sees `logo`. Without a `logo-dark` file,
+everyone sees `logo`.
 Reload the page with Ctrl+F5 to see it; no restart needed.
 
 A square or nearly square image works best (at least 128 x 128 pixels). A wide logo also

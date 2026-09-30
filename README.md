@@ -70,7 +70,8 @@ gitignored. Back up both.
 ## Logo
 
 Save your logo as `branding/logo.svg` (or `.png`, `.webp`, `.jpg`). It replaces the built-in
-logo in the sidebar, on the sign-in page and in the browser tab. See `branding/README.md`.
+logo in the sidebar, on the sign-in page and in the browser tab. Add `branding/logo-dark.*` for a
+version shown to people using dark mode. See `branding/README.md`.
 
 ## Run
 

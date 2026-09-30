@@ -94,15 +94,29 @@
   <p class="foot">Need an account or a password reset? Ask Mikey Davitt.</p>
 </main>
 <script>
-  const logo = new Image();
-  logo.alt = "";
-  logo.onload = () => {
-    const mark = document.querySelector(".brand-mark");
-    mark.replaceChildren(logo);
-    mark.classList.add("has-logo");
-    document.querySelector('link[rel="icon"]').href = "/logo";
-  };
-  logo.src = "/logo";
+  // Custom logo from the branding folder. Dark-mode viewers get logo-dark if it exists,
+  // otherwise the normal logo. Swaps live when the system theme changes.
+  const darkMode = window.matchMedia("(prefers-color-scheme: dark)");
+  function loadLogo() {
+    const sources = darkMode.matches ? ["/logo-dark", "/logo"] : ["/logo"];
+    const tryNext = () => {
+      const src = sources.shift();
+      if (!src) return;
+      const img = new Image();
+      img.alt = "";
+      img.onload = () => {
+        const mark = document.querySelector(".brand-mark");
+        mark.replaceChildren(img);
+        mark.classList.add("has-logo");
+        document.querySelector('link[rel="icon"]').href = src;
+      };
+      img.onerror = tryNext;
+      img.src = src;
+    };
+    tryNext();
+  }
+  darkMode.addEventListener("change", loadLogo);
+  loadLogo();
 
   const form = document.getElementById("form");
   const error = document.getElementById("error");
