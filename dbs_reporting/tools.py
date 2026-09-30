@@ -2,7 +2,7 @@
 
 import json
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from statistics import median
 from typing import Any
 
@@ -14,7 +14,6 @@ from .connectwise import ConnectWiseClient
 MAX_DAYS = 730
 NOTE_CHARS = 1500
 TOTALS_LIMIT = 20000
-AGREEMENT_LIST_LIMIT = 300
 
 
 def _name(record: dict, key: str) -> str | None:
@@ -78,7 +77,7 @@ def _clamp_days(days: int) -> int:
     return max(1, min(int(days), MAX_DAYS))
 
 
-# --- Agreements and SLA helpers ---------------------------------------------
+# --- SLA helpers ---------------------------------------------
 
 
 def parse_dt(value) -> datetime | None:
@@ -90,60 +89,6 @@ def parse_dt(value) -> datetime | None:
     except ValueError:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
-def _add_months(dt: datetime, months: int) -> datetime:
-    month = dt.month - 1 + months
-    year = dt.year + month // 12
-    month = month % 12 + 1
-    day = min(dt.day, [31, 29 if year % 4 == 0 and (year % 100 or year % 400 == 0) else 28,
-                       31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1])
-    return dt.replace(year=year, month=month, day=day)
-
-
-def period_start(cycle: str | None, agreement_start: datetime | None, now: datetime) -> tuple[datetime, str]:
-    """Start of the agreement's current allowance period, and a description of how it was worked out."""
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if cycle == "CalendarWeek":
-        return today - timedelta(days=today.weekday()), "this calendar week"
-    if cycle == "CalendarQuarter":
-        return today.replace(month=(today.month - 1) // 3 * 3 + 1, day=1), "this calendar quarter"
-    if cycle == "CalendarYear":
-        return today.replace(month=1, day=1), "this calendar year"
-    if cycle in ("Contract2Weeks", "Contract4Weeks") and agreement_start:
-        step = timedelta(days=14 if cycle == "Contract2Weeks" else 28)
-        periods = max(0, (today - agreement_start) // step)
-        return agreement_start + periods * step, f"the current {step.days}-day contract period"
-    if cycle in ("ContractQuarter", "ContractYear") and agreement_start:
-        months = 3 if cycle == "ContractQuarter" else 12
-        # Count each period from the original start so month-end dates don't drift (Jan 31 -> Jul 31).
-        k = 0
-        while _add_months(agreement_start, (k + 1) * months) <= today:
-            k += 1
-        return _add_months(agreement_start, k * months), f"the current contract {'quarter' if months == 3 else 'year'}"
-    basis = "this calendar month" if cycle == "CalendarMonth" else \
-        f"this calendar month (cycle {cycle or 'unknown'} not recognised)"
-    return today.replace(day=1), basis
-
-
-def summarize_agreement(a: dict) -> dict:
-    return {
-        "id": a.get("id"),
-        "name": a.get("name"),
-        "company": _name(a, "company"),
-        "type": _name(a, "type"),
-        "status": a.get("agreementStatus"),
-        "start": a.get("startDate"),
-        "end": None if a.get("noEndingDateFlag") else a.get("endDate"),
-        "bill_amount": a.get("billAmount"),
-        "billing_cycle": _name(a, "billingCycle"),
-        "allowance": {
-            "units": a.get("applicationUnits"),
-            "limit": a.get("applicationLimit"),
-            "cycle": a.get("applicationCycle"),
-            "unlimited": a.get("applicationUnlimitedFlag"),
-        },
-    }
 
 
 def _hours_between(start, end) -> float | None:
@@ -330,83 +275,6 @@ def build_tools(cw: ConnectWiseClient) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
-    def get_agreements(company_id: int = 0, active_only: bool = True, ending_within_days: int = 0) -> str:
-        """List service agreements (contracts) for one client or all clients.
-
-        Shows each agreement's type, status, start/end dates, billing amount and cycle, and its
-        allowance (e.g. 10 hours per calendar month). Use ending_within_days to find agreements
-        that are up for renewal soon. For how much of an allowance has been used, call
-        get_agreement_usage with the agreement id.
-
-        Args:
-            company_id: ConnectWise company id from find_company, or 0 for all clients.
-            active_only: Only active agreements (true) or include cancelled/expired/inactive ones (false).
-            ending_within_days: If above 0, only agreements whose end date falls within this many days from today, soonest first.
-        """
-        try:
-            agreements = [summarize_agreement(a) for a in cw.agreements(company_id or None, active_only)]
-            if ending_within_days > 0:
-                now = datetime.now(timezone.utc)
-                horizon = now + timedelta(days=int(ending_within_days))
-                agreements = [a for a in agreements
-                              if (end := parse_dt(a["end"])) and now - timedelta(days=1) <= end <= horizon]
-                agreements.sort(key=lambda a: a["end"])
-            result = {"count": len(agreements), "agreements": agreements[:AGREEMENT_LIST_LIMIT]}
-            if len(agreements) > AGREEMENT_LIST_LIMIT:
-                result["note"] = f"Showing the first {AGREEMENT_LIST_LIMIT}; narrow to one client for the rest."
-            return json.dumps(result)
-        except Exception as exc:
-            return _error(exc)
-
-    @beta_tool(eager_input_streaming=True)
-    def get_agreement_usage(agreement_id: int) -> str:
-        """How much of an agreement's allowance has been used in its current period.
-
-        Adds up time charged to the agreement since the start of its current allowance period
-        (calendar month, contract year, etc.) and compares it with the allowance. Also shows
-        hours by technician and the tickets that used the most time. Use this for questions like
-        "is Jimmy's Grille over their block hours?".
-
-        Args:
-            agreement_id: Agreement id from get_agreements.
-        """
-        try:
-            a = cw.agreement(agreement_id)
-            summary = summarize_agreement(a)
-            now = datetime.now(timezone.utc)
-            start, basis = period_start(a.get("applicationCycle"), parse_dt(a.get("startDate")), now)
-            entries = cw.time_entries_for_agreement(agreement_id, start)
-            by_member: Counter = Counter()
-            by_ticket: Counter = Counter()
-            used = 0.0
-            for e in entries:
-                hours = e.get("hoursDeduct")
-                hours = float(hours if hours is not None else e.get("actualHours") or 0)
-                used += hours
-                member = e.get("member") or {}
-                by_member[member.get("name") or member.get("identifier") or "(unknown)"] += hours
-                if e.get("chargeToType") == "ServiceTicket":
-                    by_ticket[e.get("chargeToId")] += hours
-            allowance = summary["allowance"]
-            usage = {"period_start": start.date().isoformat(), "period": basis,
-                     "hours_used": round(used, 2), "time_entries": len(entries),
-                     "by_member": [[k, round(v, 2)] for k, v in by_member.most_common(10)],
-                     "top_tickets_by_hours": [[k, round(v, 2)] for k, v in by_ticket.most_common(10)]}
-            if allowance["units"] == "Hours" and allowance["limit"] and not allowance["unlimited"]:
-                limit = float(allowance["limit"])
-                usage["hours_allowed"] = limit
-                usage["hours_remaining"] = round(limit - used, 2)
-                usage["percent_used"] = round(100 * used / limit, 1) if limit else None
-            elif allowance["units"] and allowance["units"] != "Hours":
-                usage["note_units"] = (f"This agreement's allowance is in {allowance['units']}, so only hours "
-                                       "are shown; compare against the allowance yourself.")
-            usage["note"] = ("Based on time entries charged to this agreement since the period start. "
-                             "ConnectWise's own balance can differ if there are manual adjustments or carry-over.")
-            return json.dumps({"agreement": summary, "usage": usage})
-        except Exception as exc:
-            return _error(exc)
-
-    @beta_tool(eager_input_streaming=True)
     def get_sla_performance(days: int = 30, group_by: str = "company", company_id: int = 0,
                             board_name: str = "", top: int = 25) -> str:
         """SLA performance for tickets entered in the last N days, for all clients or one.
@@ -481,4 +349,4 @@ def build_tools(cw: ConnectWiseClient) -> list:
             return _error(exc)
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_agreements, get_agreement_usage, get_sla_performance]
+            get_sla_performance]

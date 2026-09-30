@@ -140,24 +140,6 @@ class ConnectWiseClient:
                 raise
             return list(self.get_all("/service/tickets", limit=limit, conditions=conditions, orderBy="id desc"))
 
-    # --- Agreements ------------------------------------------------------
-
-    def agreements(self, company_id: int | None = None, active_only: bool = True, limit: int = 2000) -> list[dict]:
-        clauses = []
-        if company_id:
-            clauses.append(f"company/id={int(company_id)}")
-        if active_only:
-            clauses.append('agreementStatus="Active"')
-        conditions = " and ".join(clauses) or None
-        return list(self.get_all("/finance/agreements", limit=limit, conditions=conditions, orderBy="id asc"))
-
-    def agreement(self, agreement_id: int) -> dict:
-        return self.get(f"/finance/agreements/{int(agreement_id)}")
-
-    def time_entries_for_agreement(self, agreement_id: int, start: datetime, limit: int = 5000) -> list[dict]:
-        conditions = f"agreement/id={int(agreement_id)} and timeStart>={cw_date(start)}"
-        return list(self.get_all("/time/entries", limit=limit, conditions=conditions))
-
     # --- Time entries ----------------------------------------------------
 
     def time_entries_for_company(self, company_id: int, days: int, limit: int = 5000) -> list[dict]:
