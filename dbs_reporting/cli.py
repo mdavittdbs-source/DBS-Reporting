@@ -7,7 +7,7 @@ from .connectwise import ConnectWiseClient
 
 def main() -> None:
     agent = create_agent(ConnectWiseClient(ConnectWiseSettings.from_env()))
-    conversation_id = None
+    history: list = []
     print(f"Using {agent.description}.")
     print("DBS reporting assistant. Ask about a client, e.g. \"most common issues at Joe's Pizza "
           "in the last 30 days\". Ctrl+C to quit.")
@@ -19,7 +19,7 @@ def main() -> None:
             return
         if not question:
             continue
-        answer, conversation_id = agent.ask(question, conversation_id)
+        answer, history = agent.respond(history, question)
         print("\n" + answer)
 
 

@@ -45,9 +45,24 @@ Code layout:
    pip install -r requirements.txt
    ```
 
+## Logins
+
+Everyone signs in with their own account and sees only their own saved chats. Create
+accounts on the machine running the bot:
+
+```bash
+python -m dbs_reporting.users add jsmith --name "Jane Smith"   # asks for a password
+python -m dbs_reporting.users list
+python -m dbs_reporting.users password jsmith                  # reset a password
+python -m dbs_reporting.users remove jsmith                    # also deletes their chats
+```
+
+Accounts and chats are stored in `data/dbs_reporting.db` (set `DB_PATH` to move it). Back up
+that file to keep chat history.
+
 ## Run
 
-Web chat (then open http://localhost:8000):
+Web chat (then open http://localhost:8000 and sign in):
 
 ```bash
 uvicorn dbs_reporting.web:app --host 0.0.0.0 --port 8000
@@ -76,9 +91,10 @@ Set `LLM_PROVIDER=claude` to switch back.
 
 ## Notes
 
-- **Access control.** Set `APP_USERNAME` / `APP_PASSWORD` to require a login. Run it on the
-  internal network or behind your VPN/SSO proxy; it exposes client data to anyone who can log in.
-- **Conversations** are kept in server memory and are lost on restart.
+- **Access control.** Run it on the internal network or VPN only; anyone with a login can ask
+  about any client. Five wrong passwords lock a username for 15 minutes. Sign-ins last 14 days.
+- **Chats** are saved per person with their full history, so follow-up questions keep context
+  even after a restart. Each chat keeps the model it started with.
 - **Limits.** A single ticket query is capped at 1000 tickets. Claude is told when this
   happens so it can suggest a narrower date range.
 - **Adding questions.** To support a new kind of question (agreements, configurations,
