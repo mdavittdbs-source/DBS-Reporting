@@ -1,6 +1,7 @@
 """End-to-end tests of logins and per-user chats, with ConnectWise and Claude mocked out."""
 
 import importlib
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +23,12 @@ def web(monkeypatch, tmp_path):
     from dbs_reporting import web as module
 
     module = importlib.reload(module)
+    from dbs_reporting import activity
+
+    monkeypatch.setattr(activity, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(activity, "_logger", None)
+    for handler in list(logging.getLogger("dbs_reporting.activity").handlers):
+        logging.getLogger("dbs_reporting.activity").removeHandler(handler)
     calls = []
 
     def fake_respond_stream(history, question, model=None):
@@ -273,3 +280,50 @@ def test_usage_visible_to_admins_only(web):
 
     text = usage.report(days=30)
     assert "Answers: 2" in text and "Alice A" in text and "Bob B" in text and "$0.07" in text
+
+
+def test_activity_log_and_history(web, tmp_path, monkeypatch):
+    from dbs_reporting import activity
+
+    module, _ = web
+    alice = login(module, "alice", "password-a")
+    bob = login(module, "bob", "password-b")
+    read_events(alice.post("/api/chat/stream", json={"question": "Printer issues at Jimmy's?"}))
+    read_events(bob.post("/api/chat/stream", json={"question": "Hours at Burger Barn?"}))
+
+    def broken(history, question, model=None):
+        raise RuntimeError("ConnectWise fell over")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(module.agent, "respond_stream", broken)
+    read_events(bob.post("/api/chat/stream", json={"question": "Will this work?"}))
+
+    log = (tmp_path / "logs" / "activity.log").read_text(encoding="utf-8")
+    assert "Alice A (alice)" in log and "Printer issues at Jimmy's?" in log
+    assert "answer to Printer issues at Jimmy's?" in log
+    assert "Usage: 15.0k in (3.0k cached) · 800 out · 2 calls · ≈ $0.033" in log
+    assert "Bob B (bob)" in log and "ERROR" in log and "ConnectWise fell over" in log
+
+    everything = activity.history_report(days=7, user=None, search=None, full=False, limit=50)
+    assert "Printer issues" in everything and "Burger Barn" in everything and "2 answer(s) shown." in everything
+    only_bob = activity.history_report(days=7, user="bob", search=None, full=False, limit=50)
+    assert "Burger Barn" in only_bob and "Printer issues" not in only_bob
+    searched = activity.history_report(days=7, user=None, search="printer", full=False, limit=50)
+    assert "Printer issues" in searched and "Burger Barn" not in searched
+
+
+def test_tool_calls_are_described():
+    from dbs_reporting.activity import tool_calls
+
+    claude = [
+        {"role": "user", "content": "q"},
+        {"role": "assistant", "content": [
+            {"type": "thinking", "thinking": "", "signature": "x"},
+            {"type": "tool_use", "id": "t1", "name": "get_ticket_totals", "input": {"days": 30, "group_by": "site"}}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "{}"}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+    ]
+    assert tool_calls(claude) == ["get_ticket_totals(days=30, group_by='site')"]
+    ollama = [{"role": "assistant", "content": "", "tool_calls": [
+        {"function": {"name": "find_company", "arguments": '{"name": "Jimmy"}'}}]}]
+    assert tool_calls(ollama) == ["find_company(name='Jimmy')"]

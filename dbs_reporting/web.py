@@ -19,6 +19,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
+from . import activity
 from .agent import create_agent
 from .config import ConnectWiseSettings
 from .connectwise import ConnectWiseClient
@@ -219,18 +220,25 @@ def _run(user: dict, question: str, conversation_id: str | None, title: str, mod
     Ends with {"type": "done", "answer", "conversation_id", "title", "model"}.
     """
     lock = _conversation_locks[conversation_id] if conversation_id else threading.Lock()
+    started = time.monotonic()
     with lock:
         history = store.get_conversation(user["id"], conversation_id)["history"] if conversation_id else []
-        for event in agent.respond_stream(history, question, model):
-            if event["type"] != "done":
-                yield event
-                continue
-            if conversation_id is None:
-                conversation_id = store.create_conversation(user["id"], title, model)
-            usage = event.get("usage")
-            store.save_turn(conversation_id, question, event["answer"], event["history"], model, usage)
-            yield {"type": "done", "answer": event["answer"], "conversation_id": conversation_id,
-                   "title": title[:80], "model": model, "usage": usage if user["is_admin"] else None}
+        try:
+            for event in agent.respond_stream(history, question, model):
+                if event["type"] != "done":
+                    yield event
+                    continue
+                if conversation_id is None:
+                    conversation_id = store.create_conversation(user["id"], title, model)
+                usage = event.get("usage")
+                store.save_turn(conversation_id, question, event["answer"], event["history"], model, usage)
+                activity.log_answer(user, conversation_id, model, question, event["answer"],
+                                    event["history"][len(history):], usage, time.monotonic() - started)
+                yield {"type": "done", "answer": event["answer"], "conversation_id": conversation_id,
+                       "title": title[:80], "model": model, "usage": usage if user["is_admin"] else None}
+        except Exception as exc:
+            activity.log_error(user, conversation_id, model, question, _friendly_error(exc)[1])
+            raise
 
 
 def _api_error_message(exc: anthropic.APIStatusError) -> str:
