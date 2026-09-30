@@ -1,16 +1,35 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(ENV_FILE)
 
 
 def _required(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
-        raise RuntimeError(f"Missing required environment variable {name} (see .env.example)")
+        if not ENV_FILE.exists():
+            hint = f"No settings file found at {ENV_FILE}."
+            if ENV_FILE.with_name(".env.txt").exists():
+                hint += " Found .env.txt instead: rename it to .env (Notepad added .txt)."
+            else:
+                hint += " Copy .env.example to .env and fill it in."
+        else:
+            hint = f"{ENV_FILE} exists but has no value for {name}."
+        raise RuntimeError(f"Missing setting {name}. {hint}")
     return value
+
+
+def _clean_site(value: str) -> str:
+    """Accept "https://host/", "host/v4_6_release" etc. and keep just the hostname."""
+    value = value.strip().strip('"').strip("'")
+    for prefix in ("https://", "http://"):
+        if value.lower().startswith(prefix):
+            value = value[len(prefix):]
+    return value.split("/")[0].strip()
 
 
 @dataclass(frozen=True)
@@ -25,7 +44,7 @@ class ConnectWiseSettings:
     @classmethod
     def from_env(cls) -> "ConnectWiseSettings":
         return cls(
-            site=_required("CW_SITE"),
+            site=_clean_site(_required("CW_SITE")),
             company_id=_required("CW_COMPANY_ID"),
             public_key=_required("CW_PUBLIC_KEY"),
             private_key=_required("CW_PRIVATE_KEY"),
