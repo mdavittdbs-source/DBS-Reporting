@@ -1,7 +1,7 @@
 """Web chat for managers: `uvicorn dbs_reporting.web:app`.
 
-Each person signs in with their own login (create them with `python -m dbs_reporting.users`)
-and sees only their own saved chats.
+Each person signs in with their own login (listed in users.txt, see userfile.py) and sees
+only their own saved chats.
 """
 
 import logging
@@ -21,6 +21,7 @@ from .agent import create_agent
 from .config import ConnectWiseSettings
 from .connectwise import ConnectWiseClient
 from .store import SESSION_DAYS, Store
+from .userfile import UsersFile
 
 log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
@@ -28,6 +29,9 @@ COOKIE = "dbs_session"
 
 app = FastAPI(title="DBS Reporting Assistant")
 store = Store()
+users_file = UsersFile(store)
+users_file.ensure_exists()
+users_file.refresh()
 agent = create_agent(ConnectWiseClient(ConnectWiseSettings.from_env()))
 
 # One question at a time per conversation, so two tabs can't interleave a chat's history.
@@ -39,6 +43,7 @@ MAX_FAILURES, LOCKOUT_SECONDS = 5, 15 * 60
 
 
 def current_user(dbs_session: str | None = Cookie(default=None)) -> dict:
+    users_file.refresh()
     user = store.session_user(dbs_session) if dbs_session else None
     if user is None:
         raise HTTPException(401, "Please sign in.")
@@ -50,6 +55,7 @@ def current_user(dbs_session: str | None = Cookie(default=None)) -> dict:
 
 @app.get("/")
 def index(dbs_session: str | None = Cookie(default=None)):
+    users_file.refresh()
     if not dbs_session or store.session_user(dbs_session) is None:
         return RedirectResponse("/login")
     return FileResponse(STATIC / "index.html")
@@ -76,10 +82,9 @@ def login(body: LoginRequest, response: Response) -> dict:
     if len(recent) >= MAX_FAILURES:
         raise HTTPException(429, "Too many failed attempts. Try again in 15 minutes.")
 
+    users_file.refresh()
     if store.user_count() == 0:
-        raise HTTPException(
-            403, "No logins have been created yet. Ask your admin to run: python -m dbs_reporting.users add <username>"
-        )
+        raise HTTPException(403, "No logins have been set up yet. Ask your admin to add you to users.txt.")
     user = store.authenticate(body.username, body.password)
     if user is None:
         _failed_logins[key].append(time.time())

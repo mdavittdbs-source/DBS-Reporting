@@ -129,14 +129,20 @@ def main() -> None:
             return
 
     from .store import Store
+    from .userfile import UsersFile
 
-    step(8, "Web chat logins")
+    step(8, "Web chat logins (users.txt)")
     store = Store()
+    users_file = UsersFile(store)
+    users_file.ensure_exists()
+    users_file.refresh()
+    for problem in users_file.problems:
+        print(f"    NOTE users.txt {problem}")
     count = store.user_count()
     if count == 0:
-        fail(f"no logins yet (database: {store.path}). Create one with: python -m dbs_reporting.users add <username>")
+        fail(f"no logins yet. Add a line per person to {users_file.path}")
         return
-    ok(f"{count} login(s) in {store.path}")
+    ok(f"{count} login(s) from {users_file.path}")
 
     print("\nAll checks passed. Run: python -m dbs_reporting.cli  or start the web chat with start-web.bat")
 

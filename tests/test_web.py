@@ -15,6 +15,10 @@ def web(monkeypatch, tmp_path):
     monkeypatch.setenv("CLAUDE_MODEL", "claude-opus-5-5")
     monkeypatch.setenv("CLAUDE_MODELS", "claude-opus-5-5,claude-haiku-4-5")
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("USERS_FILE", str(tmp_path / "users.txt"))
+    (tmp_path / "users.txt").write_text(
+        "alice | Alice A | password-a |\nbob | Bob B | password-b |\n", encoding="utf-8"
+    )
     from dbs_reporting import web as module
 
     module = importlib.reload(module)
@@ -28,8 +32,6 @@ def web(monkeypatch, tmp_path):
         ]
 
     monkeypatch.setattr(module.agent, "respond", fake_respond)
-    module.store.add_user("alice", "password-a", "Alice A")
-    module.store.add_user("bob", "password-b", "Bob B")
     return module, calls
 
 
@@ -114,3 +116,16 @@ def test_rejects_disabled_model(web):
     alice = login(module, "alice", "password-a")
     response = alice.post("/api/chat", json={"question": "hi", "model": "claude-bogus"})
     assert response.status_code == 400
+
+
+def test_removing_from_users_file_signs_out(web, tmp_path):
+    import os
+
+    module, _ = web
+    bob = login(module, "bob", "password-b")
+    assert bob.get("/api/me").status_code == 200
+    path = tmp_path / "users.txt"
+    path.write_text("\n".join(l for l in path.read_text().splitlines() if not l.startswith("bob")) + "\n")
+    stamp = path.stat().st_mtime + 10
+    os.utime(path, (stamp, stamp))
+    assert bob.get("/api/me").status_code == 401
