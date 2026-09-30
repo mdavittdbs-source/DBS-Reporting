@@ -21,6 +21,7 @@ Manager (web chat) ──► FastAPI ──► Claude (claude-opus-5-5) ──�
 | `get_company_tickets` | Tickets entered in the last N days, with breakdowns by type/subtype/item/board/priority/source/contact and a compact list of every ticket |
 | `get_ticket_details` | One ticket plus its notes (description, internal analysis, resolution) |
 | `get_company_time` | Hours logged in the last N days by technician, work type and ticket |
+| `get_ticket_totals` | Tickets across **all** clients in the last N days, ranked by client, site, board, type, priority, source or status, with open counts and top ticket types |
 
 Code layout:
 

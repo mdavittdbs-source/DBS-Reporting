@@ -11,6 +11,7 @@ from .connectwise import ConnectWiseClient
 
 MAX_DAYS = 730
 NOTE_CHARS = 1500
+TOTALS_LIMIT = 20000
 
 
 def _name(record: dict, key: str) -> str | None:
@@ -177,4 +178,70 @@ def build_tools(cw: ConnectWiseClient) -> list:
         except Exception as exc:
             return _error(exc)
 
-    return [find_company, get_company_tickets, get_ticket_details, get_company_time]
+    @beta_tool(eager_input_streaming=True)
+    def get_ticket_totals(days: int = 30, group_by: str = "company", board_name: str = "", top: int = 25) -> str:
+        """Count tickets across ALL clients in the last N days, ranked from most to fewest.
+
+        Use this for questions that compare or rank clients, sites, boards and so on, e.g. "which
+        clients had the most tickets this month", "sites with the most tickets", "ticket volume by
+        board". Don't look clients up one at a time for these. Returns totals, open counts, each
+        group's share of all tickets and its top ticket types.
+
+        Args:
+            days: How many days back to look, based on the date each ticket was entered.
+            group_by: What to rank: "company" (client), "site" (client + site/location on the ticket), "board", "type", "priority", "source" or "status".
+            board_name: Optional exact service board name to count only, e.g. "Help Desk".
+            top: How many groups to return (the rest are summarised as a count).
+        """
+        keys = {
+            "company": lambda t: _name(t, "company") or "(no company)",
+            "site": lambda t: f"{_name(t, 'company') or '(no company)'} – {_name(t, 'site') or '(no site)'}",
+            "board": lambda t: _name(t, "board") or "(none)",
+            "type": lambda t: _name(t, "type") or "(none)",
+            "priority": lambda t: _name(t, "priority") or "(none)",
+            "source": lambda t: _name(t, "source") or "(none)",
+            "status": lambda t: _name(t, "status") or "(none)",
+        }
+        if group_by not in keys:
+            return json.dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
+        try:
+            days = _clamp_days(days)
+            tickets = cw.tickets_since(days, board_name or None, limit=TOTALS_LIMIT)
+            key = keys[group_by]
+            totals: Counter = Counter()
+            open_counts: Counter = Counter()
+            types: dict[str, Counter] = {}
+            for t in tickets:
+                k = key(t)
+                totals[k] += 1
+                if not t.get("closedFlag"):
+                    open_counts[k] += 1
+                types.setdefault(k, Counter())[_name(t, "type") or "(none)"] += 1
+            top = max(1, min(int(top), 100))
+            result = {
+                "days": days,
+                "group_by": group_by,
+                "ticket_count": len(tickets),
+                "open_count": sum(open_counts.values()),
+                "group_count": len(totals),
+                "groups": [
+                    {
+                        "name": k,
+                        "tickets": n,
+                        "open": open_counts[k],
+                        "share_pct": round(100 * n / len(tickets), 1),
+                        "top_types": [[name, c] for name, c in types[k].most_common(3)],
+                    }
+                    for k, n in totals.most_common(top)
+                ],
+            }
+            if len(totals) > top:
+                result["other_groups"] = {"groups": len(totals) - top,
+                                          "tickets": sum(n for _, n in totals.most_common()[top:])}
+            if len(tickets) >= TOTALS_LIMIT:
+                result["note"] = f"Capped at {TOTALS_LIMIT} tickets; narrow the date range for exact totals."
+            return json.dumps(result)
+        except Exception as exc:
+            return _error(exc)
+
+    return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals]
