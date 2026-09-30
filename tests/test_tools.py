@@ -115,10 +115,11 @@ def test_ollama_agent_runs_tools(monkeypatch):
     agent = ollama_agent.OllamaAgent(make_client([]), SYSTEM_PROMPT)
     agent._http = httpx.Client(transport=httpx.MockTransport(handler))
 
-    answer, conversation_id = agent.ask("most common issues at Joe's Pizza?")
+    answer, history = agent.respond([], "most common issues at Joe's Pizza?")
     assert answer == "Top issue: printers."
     assert sent[0]["model"] == "test-model"
     assert sent[0]["tools"][0]["function"]["name"] == "find_company"
     tool_message = sent[1]["messages"][-1]
     assert tool_message["role"] == "tool"
     assert json.loads(tool_message["content"]) == [{"id": 42, "name": "Joe's Pizza"}]
+    assert json.loads(json.dumps(history)) == history

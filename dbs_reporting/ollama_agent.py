@@ -7,8 +7,6 @@ system prompt as the Claude agent.
 import json
 import os
 import re
-import threading
-import uuid
 from datetime import date
 
 import httpx
@@ -40,9 +38,6 @@ class OllamaAgent:
             }
             for spec in (tool.to_dict() for tool in self._tools.values())
         ]
-        self._conversations: dict[str, list] = {}
-        self._locks: dict[str, threading.Lock] = {}
-        self._guard = threading.Lock()
 
     @property
     def description(self) -> str:
@@ -54,13 +49,6 @@ class OllamaAgent:
 
     def model_choices(self) -> list[dict]:
         return [{"id": self._model, "label": f"{self._model} (local)"}]
-
-    def new_conversation(self) -> str:
-        conversation_id = uuid.uuid4().hex
-        with self._guard:
-            self._conversations[conversation_id] = []
-            self._locks[conversation_id] = threading.Lock()
-        return conversation_id
 
     def _chat(self, messages: list) -> dict:
         response = self._http.post(
@@ -94,43 +82,41 @@ class OllamaAgent:
         except Exception as exc:
             return json.dumps({"error": f"Bad arguments for {name}: {exc}"})
 
-    def ask(
-        self, question: str, conversation_id: str | None = None, model: str | None = None
-    ) -> tuple[str, str]:
-        # Only the one model from OLLAMA_MODEL is offered, so `model` is ignored.
-        if not conversation_id or conversation_id not in self._conversations:
-            conversation_id = self.new_conversation()
+    @property
+    def models(self) -> list[str]:
+        return [self._model]
 
-        with self._locks[conversation_id]:
-            history = self._conversations[conversation_id]
-            system = {
-                "role": "system",
-                "content": self._system_prompt.format(today=date.today().isoformat()),
-            }
-            messages = history + [{"role": "user", "content": question}]
+    def respond(self, history: list, question: str, model: str | None = None) -> tuple[str, list]:
+        """Same contract as ReportingAgent.respond. Only OLLAMA_MODEL is offered."""
+        if model is not None and model != self._model:
+            raise ValueError(f"Model {model!r} isn't enabled. This server uses {self._model!r}.")
+        system = {
+            "role": "system",
+            "content": self._system_prompt.format(today=date.today().isoformat()),
+        }
+        messages = list(history) + [{"role": "user", "content": question}]
 
-            for _ in range(MAX_STEPS):
-                reply = self._chat([system] + messages)
-                tool_calls = reply.get("tool_calls") or []
+        for _ in range(MAX_STEPS):
+            reply = self._chat([system] + messages)
+            tool_calls = reply.get("tool_calls") or []
+            messages.append({
+                "role": "assistant",
+                "content": reply.get("content") or "",
+                **({"tool_calls": tool_calls} if tool_calls else {}),
+            })
+            if not tool_calls:
+                break
+            for call in tool_calls:
+                function = call.get("function") or {}
+                name = function.get("name", "")
                 messages.append({
-                    "role": "assistant",
-                    "content": reply.get("content") or "",
-                    **({"tool_calls": tool_calls} if tool_calls else {}),
+                    "role": "tool",
+                    "tool_name": name,
+                    "content": self._run_tool(name, function.get("arguments")),
                 })
-                if not tool_calls:
-                    break
-                for call in tool_calls:
-                    function = call.get("function") or {}
-                    name = function.get("name", "")
-                    messages.append({
-                        "role": "tool",
-                        "tool_name": name,
-                        "content": self._run_tool(name, function.get("arguments")),
-                    })
-            else:
-                return "I couldn't finish that within the step limit. Try a narrower question.", conversation_id
+        else:
+            return "I couldn't finish that within the step limit. Try a narrower question.", list(history)
 
-            self._conversations[conversation_id] = messages
-            # Some local models include their reasoning in <think> tags; managers don't need it.
-            answer = re.sub(r"<think>.*?</think>", "", messages[-1].get("content") or "", flags=re.S).strip()
-            return answer or "I couldn't produce an answer for that.", conversation_id
+        # Some local models include their reasoning in <think> tags; managers don't need it.
+        answer = re.sub(r"<think>.*?</think>", "", messages[-1].get("content") or "", flags=re.S).strip()
+        return answer or "I couldn't produce an answer for that.", messages

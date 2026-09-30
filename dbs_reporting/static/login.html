@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · DBS Reporting</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #6b7280;
+    --border: #e3e6eb; --accent: #2458d6; --accent-text: #ffffff; --error: #c53030;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --panel: #1c2027; --text: #e6e8ec; --muted: #9aa3af;
+      --border: #2c323c; --accent: #5b8cff; --accent-text: #0d1117; --error: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
+         background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  form { width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--border);
+         border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 20px; margin: 0; }
+  p { margin: 0; color: var(--muted); }
+  label { display: flex; flex-direction: column; gap: 6px; font-weight: 500; }
+  input { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+          background: var(--bg); color: var(--text); }
+  button { font: inherit; font-weight: 600; padding: 10px; border: 0; border-radius: 8px;
+           background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  button:disabled { opacity: .6; }
+  #error { color: var(--error); min-height: 1.5em; }
+</style>
+</head>
+<body>
+<form id="form">
+  <h1>DBS Reporting Assistant</h1>
+  <p>Sign in to continue.</p>
+  <label>Username <input id="username" autocomplete="username" required autofocus></label>
+  <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+  <button id="submit">Sign in</button>
+  <div id="error" role="alert"></div>
+</form>
+<script>
+  const form = document.getElementById("form");
+  const error = document.getElementById("error");
+  const submit = document.getElementById("submit");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    error.textContent = "";
+    submit.disabled = true;
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: document.getElementById("username").value,
+          password: document.getElementById("password").value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Sign in failed");
+      location.href = "/";
+    } catch (err) {
+      error.textContent = err.message;
+      submit.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

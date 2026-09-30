@@ -1,8 +1,7 @@
 """The reporting agent: Claude plus the read-only ConnectWise tools."""
 
+import json
 import os
-import threading
-import uuid
 from datetime import date
 
 import anthropic
@@ -78,16 +77,19 @@ How to answer:
 issue that suggests a project or a user who needs training."""
 
 
+def _to_json(block) -> dict:
+    """SDK content blocks -> plain dicts, so a conversation can be saved and replayed later."""
+    if hasattr(block, "model_dump"):
+        return block.model_dump(mode="json", exclude_none=True)
+    return block
+
+
 class ReportingAgent:
     def __init__(self, cw: ConnectWiseClient, client: anthropic.Anthropic | None = None):
         self._client = client or anthropic.Anthropic()
         self._tools = build_tools(cw)
         self.default_model, self.models = configured_models()
         self._effort = os.environ.get("CLAUDE_EFFORT", "medium").strip() or "medium"
-        self._conversations: dict[str, list] = {}
-        self._conversation_models: dict[str, str] = {}
-        self._locks: dict[str, threading.Lock] = {}
-        self._guard = threading.Lock()
 
     @property
     def description(self) -> str:
@@ -96,69 +98,45 @@ class ReportingAgent:
     def model_choices(self) -> list[dict]:
         return [{"id": m, "label": model_label(m)} for m in self.models]
 
-    def new_conversation(self, model: str | None = None) -> str:
-        conversation_id = uuid.uuid4().hex
-        with self._guard:
-            self._conversations[conversation_id] = []
-            self._conversation_models[conversation_id] = model or self.default_model
-            self._locks[conversation_id] = threading.Lock()
-        return conversation_id
+    def respond(self, history: list, question: str, model: str | None = None) -> tuple[str, list]:
+        """Answer `question` given a conversation's saved `history`.
 
-    def ask(
-        self, question: str, conversation_id: str | None = None, model: str | None = None
-    ) -> tuple[str, str]:
-        """Answer a question, continuing the conversation if an id is given.
-
-        `model` must be one of the configured models. A conversation keeps the model it started
-        with; picking a different model starts a new conversation.
-
-        Returns (answer_text, conversation_id).
+        Returns (answer_text, updated_history). The history is plain JSON; pass it back
+        unchanged on the next turn. On a refusal the original history is returned.
         """
-        if model is not None and model not in self.models:
+        model = model or self.default_model
+        if model not in self.models:
             raise ValueError(f"Model {model!r} isn't enabled. Choose one of: {', '.join(self.models)}")
-        if (
-            not conversation_id
-            or conversation_id not in self._conversations
-            or (model is not None and model != self._conversation_models[conversation_id])
-        ):
-            conversation_id = self.new_conversation(model)
-        model = self._conversation_models[conversation_id]
 
-        with self._locks[conversation_id]:
-            history = self._conversations[conversation_id]
-            # Work on a copy so a failed turn leaves the stored history untouched.
-            messages = history + [{"role": "user", "content": question}]
+        messages = list(history) + [{"role": "user", "content": question}]
+        runner = self._client.beta.messages.tool_runner(
+            model=model,
+            max_tokens=16000,
+            system=SYSTEM_PROMPT.format(today=date.today().isoformat()),
+            tools=self._tools,
+            messages=messages,
+            max_iterations=20,
+            **request_options(model, self._effort),
+        )
 
-            runner = self._client.beta.messages.tool_runner(
-                model=model,
-                max_tokens=16000,
-                system=SYSTEM_PROMPT.format(today=date.today().isoformat()),
-                tools=self._tools,
-                messages=messages,
-                max_iterations=20,
-                **request_options(model, self._effort),
-            )
+        final = None
+        for message in runner:
+            final = message
+            # Mirror the history: the runner keeps its own copy and doesn't expose it.
+            messages.append({"role": "assistant", "content": [_to_json(b) for b in message.content]})
+            tool_response = runner.generate_tool_call_response()
+            if tool_response is not None:
+                messages.append(json.loads(json.dumps(tool_response, default=_to_json)))
 
-            final = None
-            for message in runner:
-                final = message
-                # Mirror the history: the runner keeps its own copy and doesn't expose it.
-                messages.append({"role": "assistant", "content": message.content})
-                tool_response = runner.generate_tool_call_response()
-                if tool_response is not None:
-                    messages.append(tool_response)
+        if final is None:
+            raise RuntimeError("No response from Claude")
+        if final.stop_reason == "refusal":
+            return "Sorry, I can't help with that request.", list(history)
 
-            if final is None:
-                raise RuntimeError("No response from Claude")
-            if final.stop_reason == "refusal":
-                return "Sorry, I can't help with that request.", conversation_id
-
-            answer = "\n".join(b.text for b in final.content if b.type == "text").strip()
-            if final.stop_reason == "max_tokens":
-                answer += "\n\n_(Answer was cut off. Try a narrower question.)_"
-
-            self._conversations[conversation_id] = messages
-            return answer or "I couldn't produce an answer for that.", conversation_id
+        answer = "\n".join(b.text for b in final.content if b.type == "text").strip()
+        if final.stop_reason == "max_tokens":
+            answer += "\n\n_(Answer was cut off. Try a narrower question.)_"
+        return answer or "I couldn't produce an answer for that.", messages
 
 
 def create_agent(cw: ConnectWiseClient):

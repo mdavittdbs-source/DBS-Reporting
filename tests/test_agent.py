@@ -40,26 +40,26 @@ def test_default_and_choices(monkeypatch):
     assert agent.models == ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-4-5"]
 
 
-def test_model_choice_and_switching(monkeypatch):
+def test_respond_saves_replayable_history(monkeypatch):
     monkeypatch.setenv("CLAUDE_MODEL", "claude-opus-5-5")
     monkeypatch.setenv("CLAUDE_MODELS", "claude-opus-5-5,claude-haiku-4-5")
     sent = []
     agent = ReportingAgent(make_client([]), fake_claude(sent))
 
-    _, first = agent.ask("hi")
+    answer, history = agent.respond([], "hi")
+    assert answer == "ok"
     assert sent[-1][1]["model"] == "claude-opus-5-5"
     assert sent[-1][0]["anthropic-beta"] == "server-side-fallback-2026-07-01"
+    # History must survive a JSON round trip (it's saved to the database).
+    history = json.loads(json.dumps(history))
 
-    _, same = agent.ask("follow up", first)
-    assert same == first
+    _, history = agent.respond(history, "follow up")
     assert len(sent[-1][1]["messages"]) == 3
 
-    _, switched = agent.ask("again", first, "claude-haiku-4-5")
-    assert switched != first
+    agent.respond([], "again", "claude-haiku-4-5")
     body = sent[-1][1]
     assert body["model"] == "claude-haiku-4-5"
-    assert len(body["messages"]) == 1
     assert "thinking" not in body and "fallbacks" not in body
 
     with pytest.raises(ValueError):
-        agent.ask("nope", None, "claude-not-enabled")
+        agent.respond([], "nope", "claude-not-enabled")

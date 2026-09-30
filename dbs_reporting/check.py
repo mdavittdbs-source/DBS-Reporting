@@ -128,7 +128,17 @@ def main() -> None:
             fail(f"{type(exc).__name__}: {exc}")
             return
 
-    print("\nAll checks passed. Run: python -m dbs_reporting.cli")
+    from .store import Store
+
+    step(8, "Web chat logins")
+    store = Store()
+    count = store.user_count()
+    if count == 0:
+        fail(f"no logins yet (database: {store.path}). Create one with: python -m dbs_reporting.users add <username>")
+        return
+    ok(f"{count} login(s) in {store.path}")
+
+    print("\nAll checks passed. Run: python -m dbs_reporting.cli  or start the web chat with start-web.bat")
 
 
 if __name__ == "__main__":
