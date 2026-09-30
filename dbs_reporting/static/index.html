@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DBS Reporting Assistant</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #6b7280;
+    --border: #e3e6eb; --accent: #2458d6; --accent-text: #ffffff; --user: #e8eefc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --panel: #1c2027; --text: #e6e8ec; --muted: #9aa3af;
+      --border: #2c323c; --accent: #5b8cff; --accent-text: #0d1117; --user: #243150;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column;
+         min-height: 100vh; }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 8px 0 16px; }
+  h1 { font-size: 18px; margin: 0; }
+  header button { background: none; border: 1px solid var(--border); color: var(--text);
+                  border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  #log { flex: 1; display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }
+  .msg { padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border);
+         background: var(--panel); overflow-x: auto; }
+  .msg.user { background: var(--user); align-self: flex-end; max-width: 85%; white-space: pre-wrap; }
+  .msg.error { border-color: #d64545; }
+  .msg table { border-collapse: collapse; margin: 8px 0; }
+  .msg th, .msg td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; }
+  .msg p:first-child { margin-top: 0; } .msg p:last-child { margin-bottom: 0; }
+  .hint { color: var(--muted); }
+  .hint button { display: block; margin: 6px 0; background: var(--panel); color: var(--text);
+                 border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+                 cursor: pointer; text-align: left; width: 100%; }
+  form { display: flex; gap: 8px; position: sticky; bottom: 0; background: var(--bg); padding: 8px 0 16px; }
+  textarea { flex: 1; resize: none; font: inherit; padding: 10px 12px; border-radius: 10px;
+             border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  form button { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 10px;
+                padding: 0 18px; font-weight: 600; cursor: pointer; }
+  form button:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>DBS Reporting Assistant</h1>
+    <button id="new" type="button">New chat</button>
+  </header>
+  <div id="log">
+    <div class="hint" id="hint">
+      Ask about any client in ConnectWise. For example:
+      <button type="button">What are the most common issues in the past 30 days at Joe's Pizza?</button>
+      <button type="button">How many hours did we spend on Joe's Pizza last month, and on what?</button>
+      <button type="button">Which open tickets at Joe's Pizza are oldest?</button>
+    </div>
+  </div>
+  <form id="form">
+    <textarea id="q" rows="2" placeholder="Ask a question… (Enter to send, Shift+Enter for a new line)"></textarea>
+    <button id="send">Ask</button>
+  </form>
+</main>
+<script>
+  const log = document.getElementById("log");
+  const form = document.getElementById("form");
+  const q = document.getElementById("q");
+  const send = document.getElementById("send");
+  let conversationId = null;
+
+  function add(kind, content, html) {
+    document.getElementById("hint")?.remove();
+    const div = document.createElement("div");
+    div.className = "msg " + kind;
+    if (html) div.innerHTML = DOMPurify.sanitize(marked.parse(content));
+    else div.textContent = content;
+    log.appendChild(div);
+    div.scrollIntoView({ behavior: "smooth", block: "end" });
+    return div;
+  }
+
+  async function ask(question) {
+    add("user", question, false);
+    const pending = add("bot", "Looking that up in ConnectWise…", false);
+    send.disabled = true;
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, conversation_id: conversationId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      conversationId = data.conversation_id;
+      pending.innerHTML = DOMPurify.sanitize(marked.parse(data.answer));
+    } catch (err) {
+      pending.classList.add("error");
+      pending.textContent = "Something went wrong: " + err.message;
+    } finally {
+      send.disabled = false;
+      q.focus();
+    }
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const question = q.value.trim();
+    if (!question || send.disabled) return;
+    q.value = "";
+    ask(question);
+  });
+  q.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+  document.querySelectorAll(".hint button").forEach((b) =>
+    b.addEventListener("click", () => ask(b.textContent)));
+  document.getElementById("new").addEventListener("click", () => location.reload());
+</script>
+</body>
+</html>
