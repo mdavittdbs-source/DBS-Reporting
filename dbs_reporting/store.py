@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
     display_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     is_admin INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -79,6 +80,9 @@ class Store:
         self.path = path
         with self._db() as db:
             db.executescript(SCHEMA)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+            if "active" not in columns:  # databases created before users.txt support
+                db.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
 
     @contextmanager
     def _db(self):
@@ -120,10 +124,48 @@ class Store:
         with self._db() as db:
             return db.execute("DELETE FROM users WHERE username = ?", (username,)).rowcount > 0
 
+    def sync_users(self, users: list[dict], keep: set[str] = frozenset()) -> None:
+        """Make the accounts match a users file: `users` is a list of dicts with username,
+        display_name, password_hash and is_admin. Anyone not listed is deactivated (signed out,
+        can't sign in) but their chats are kept, so adding them back restores everything.
+        Usernames in `keep` (lines with a typo) are left exactly as they are."""
+        with self._db() as db:
+            listed = {k.lower() for k in keep}
+            for u in users:
+                listed.add(u["username"].lower())
+                row = db.execute("SELECT id, password_hash FROM users WHERE username = ?",
+                                 (u["username"],)).fetchone()
+                if row is None:
+                    db.execute(
+                        "INSERT INTO users (username, display_name, password_hash, is_admin, active, created_at)"
+                        " VALUES (?, ?, ?, ?, 1, ?)",
+                        (u["username"], u["display_name"], u["password_hash"], int(u["is_admin"]), _now()),
+                    )
+                    continue
+                if row["password_hash"] != u["password_hash"]:
+                    db.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+                db.execute(
+                    "UPDATE users SET display_name = ?, password_hash = ?, is_admin = ?, active = 1 WHERE id = ?",
+                    (u["display_name"], u["password_hash"], int(u["is_admin"]), row["id"]),
+                )
+            for row in db.execute("SELECT id, username FROM users WHERE active = 1").fetchall():
+                if row["username"].lower() not in listed:
+                    db.execute("UPDATE users SET active = 0 WHERE id = ?", (row["id"],))
+                    db.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+
+    def active_accounts(self) -> list[dict]:
+        """Username, display name, hash and admin flag for every active login."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT username, display_name, password_hash, is_admin FROM users WHERE active = 1"
+                " ORDER BY username"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def list_users(self) -> list[dict]:
         with self._db() as db:
             rows = db.execute(
-                "SELECT u.id, u.username, u.display_name, u.is_admin, u.created_at,"
+                "SELECT u.id, u.username, u.display_name, u.is_admin, u.active, u.created_at,"
                 " (SELECT COUNT(*) FROM conversations c WHERE c.user_id = u.id) AS chats"
                 " FROM users u ORDER BY u.username"
             ).fetchall()
@@ -131,11 +173,13 @@ class Store:
 
     def user_count(self) -> int:
         with self._db() as db:
-            return db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            return db.execute("SELECT COUNT(*) FROM users WHERE active = 1").fetchone()[0]
 
     def authenticate(self, username: str, password: str) -> dict | None:
         with self._db() as db:
-            row = db.execute("SELECT * FROM users WHERE username = ?", (username.strip(),)).fetchone()
+            row = db.execute(
+                "SELECT * FROM users WHERE username = ? AND active = 1", (username.strip(),)
+            ).fetchone()
         if row is None:
             verify_password(password, hash_password("timing-equaliser"))
             return None
@@ -158,7 +202,8 @@ class Store:
         with self._db() as db:
             row = db.execute(
                 "SELECT u.id, u.username, u.display_name, u.is_admin FROM sessions s"
-                " JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?",
+                " JOIN users u ON u.id = s.user_id"
+                " WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1",
                 (_token_hash(token), _now()),
             ).fetchone()
             return dict(row) if row else None

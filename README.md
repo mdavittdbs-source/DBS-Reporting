@@ -47,18 +47,25 @@ Code layout:
 
 ## Logins
 
-Everyone signs in with their own account and sees only their own saved chats. Create
-accounts on the machine running the bot:
+Everyone signs in with their own account and sees only their own saved chats. Accounts are
+listed in **`users.txt`** in the project folder, created automatically on first run. Edit it
+in any editor, one person per line:
 
-```bash
-python -m dbs_reporting.users add jsmith --name "Jane Smith"   # asks for a password
-python -m dbs_reporting.users list
-python -m dbs_reporting.users password jsmith                  # reset a password
-python -m dbs_reporting.users remove jsmith                    # also deletes their chats
+```
+username | Display Name | password | admin
+jsmith   | Jane Smith   | Welcome2026! |
+mdavitt  | Matt Davitt  | S0mething-Long | admin
 ```
 
-Accounts and chats are stored in `data/dbs_reporting.db` (set `DB_PATH` to move it). Back up
-that file to keep chat history.
+- Type plain passwords. The bot replaces them with a scrambled (hashed) version the next
+  time it reads the file, within seconds of saving.
+- To change a password, type a new one over the scrambled text.
+- Delete a line to remove access. That person is signed out immediately, and their chats
+  are kept if you add them back.
+- Run `python -m dbs_reporting.users` to apply the file now and see any problems.
+
+`users.txt` and the chat database (`data/dbs_reporting.db`, override with `DB_PATH`) are
+gitignored. Back up both.
 
 ## Run
 
