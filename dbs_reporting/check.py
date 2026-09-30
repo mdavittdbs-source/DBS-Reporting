@@ -98,15 +98,30 @@ def main() -> None:
         fail(f"HTTP {exc.response.status_code}: {exc.response.text[:300]}")
         return
 
-    step(7, "Anthropic API key")
-    try:
-        import anthropic
+    if os.environ.get("LLM_PROVIDER", "claude").strip().lower() == "ollama":
+        url = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+        model = os.environ.get("OLLAMA_MODEL", "qwen3:14b").strip()
+        step(7, f"Ollama at {url} with model {model!r}")
+        try:
+            tags = httpx.get(f"{url}/api/tags", timeout=10).json()
+        except Exception as exc:
+            fail(f"can't reach Ollama ({type(exc).__name__}). Is the Ollama app running?")
+            return
+        installed = [m["name"] for m in tags.get("models", [])]
+        if model not in installed and f"{model}:latest" not in installed:
+            fail(f"model not downloaded. Run: ollama pull {model}   (installed: {installed or 'none'})")
+            return
+        ok("Ollama is running and the model is downloaded")
+    else:
+        step(7, "Anthropic API key")
+        try:
+            import anthropic
 
-        anthropic.Anthropic().models.retrieve("claude-opus-5-5")
-        ok("key works")
-    except Exception as exc:
-        fail(f"{type(exc).__name__}: {exc}")
-        return
+            anthropic.Anthropic().models.retrieve("claude-opus-5-5")
+            ok("key works")
+        except Exception as exc:
+            fail(f"{type(exc).__name__}: {exc}")
+            return
 
     print("\nAll checks passed. Run: python -m dbs_reporting.cli")
 

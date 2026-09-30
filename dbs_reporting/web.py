@@ -6,13 +6,14 @@ import secrets
 from pathlib import Path
 
 import anthropic
+import httpx
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 
-from .agent import ReportingAgent
+from .agent import create_agent
 from .config import ConnectWiseSettings
 from .connectwise import ConnectWiseClient
 
@@ -35,7 +36,7 @@ def require_login(credentials: HTTPBasicCredentials | None = Depends(security)) 
 
 
 app = FastAPI(title="DBS Reporting Assistant", dependencies=[Depends(require_login)])
-agent = ReportingAgent(ConnectWiseClient(ConnectWiseSettings.from_env()))
+agent = create_agent(ConnectWiseClient(ConnectWiseSettings.from_env()))
 
 
 class ChatRequest(BaseModel):
@@ -68,4 +69,13 @@ async def chat(request: ChatRequest) -> ChatResponse:
     except anthropic.APIConnectionError:
         log.exception("Claude API connection error")
         raise HTTPException(502, "Couldn't reach the AI service.")
+    except httpx.ConnectError:
+        log.exception("Ollama connection error")
+        raise HTTPException(502, "Couldn't reach Ollama. Is it running on the server?")
+    except httpx.TimeoutException:
+        log.exception("Ollama timeout")
+        raise HTTPException(504, "The local AI model took too long. Try a narrower question.")
+    except RuntimeError as exc:
+        log.exception("Agent error")
+        raise HTTPException(502, str(exc))
     return ChatResponse(answer=answer, conversation_id=conversation_id)

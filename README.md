@@ -65,6 +65,15 @@ Tests (no network or API keys needed):
 pytest
 ```
 
+## Running on a local model (Ollama)
+
+Set `LLM_PROVIDER=ollama` in `.env` to use a free local model through
+[Ollama](https://ollama.com) instead of Claude. Pick a model that supports tool calling,
+download it with `ollama pull <model>`, and set `OLLAMA_MODEL` to its name. Run
+`python -m dbs_reporting.check` to confirm Ollama is reachable. Answers are usually
+slower and less accurate than Claude's, especially for clients with many tickets.
+Set `LLM_PROVIDER=claude` to switch back.
+
 ## Notes
 
 - **Access control.** Set `APP_USERNAME` / `APP_PASSWORD` to require a login. Run it on the
