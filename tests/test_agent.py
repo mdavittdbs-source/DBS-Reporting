@@ -48,12 +48,15 @@ def fake_claude(sent: list, turns: list | None = None) -> anthropic.Anthropic:
 
 def test_request_options_per_model():
     opus = request_options("claude-opus-5-5", "medium")
-    assert opus["thinking"] == {"type": "adaptive"}
+    assert opus["thinking"] == {"type": "adaptive", "block_binding": {"prefix_mismatch_behavior": "drop_block"}}
     assert opus["output_config"] == {"effort": "medium"}
     assert opus["fallbacks"] == "default"
+    assert opus["betas"] == ["thinking-binding-controls-2026-08-01", "server-side-fallback-2026-07-01"]
     assert request_options("claude-haiku-4-5", "medium") == {}
-    assert "fallbacks" not in request_options("claude-sonnet-5", "medium")
-    assert request_options("claude-some-future-model", "medium") == {"thinking": {"type": "adaptive"}}
+    sonnet5 = request_options("claude-sonnet-5", "medium")
+    assert "fallbacks" not in sonnet5 and sonnet5["betas"] == ["thinking-binding-controls-2026-08-01"]
+    future = request_options("claude-some-future-model", "medium")
+    assert future["thinking"]["type"] == "adaptive" and "block_binding" in future["thinking"]
 
 
 def test_default_and_choices(monkeypatch):
@@ -73,7 +76,7 @@ def test_respond_saves_replayable_history(monkeypatch):
     answer, history = agent.respond([], "hi")
     assert answer == "ok"
     assert sent[-1][1]["model"] == "claude-opus-5-5"
-    assert sent[-1][0]["anthropic-beta"] == "server-side-fallback-2026-07-01"
+    assert sent[-1][0]["anthropic-beta"] == "thinking-binding-controls-2026-08-01,server-side-fallback-2026-07-01"
     # History must survive a JSON round trip (it's saved to the database).
     history = json.loads(json.dumps(history))
 
@@ -111,3 +114,25 @@ def test_respond_stream_events(monkeypatch):
     assert roles == ["user", "assistant", "user", "assistant"]
     assert "Joe's Pizza" in json.dumps(done["history"][2])
     assert json.loads(json.dumps(done["history"])) == done["history"]
+
+
+def test_system_prompt_is_frozen_and_date_goes_with_question(monkeypatch):
+    from datetime import date
+
+    from dbs_reporting.agent import SYSTEM_PROMPT
+
+    monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+    monkeypatch.delenv("CLAUDE_MODELS", raising=False)
+    sent = []
+    agent = ReportingAgent(make_client([]), fake_claude(sent))
+    _, history = agent.respond([], "hi")
+    agent.respond(json.loads(json.dumps(history)), "again")
+    first, second = sent[0][1], sent[1][1]
+    # Same instructions every turn (no date in them), so saved reasoning stays valid.
+    assert first["system"] == second["system"] == SYSTEM_PROMPT and "{today}" not in SYSTEM_PROMPT
+    assert first["messages"][0]["content"].startswith(f"(Today's date: {date.today().isoformat()})")
+    assert first["messages"][0]["content"].endswith("hi")
+    # The second request replays the first turn exactly as it was sent.
+    assert second["messages"][:2] == first["messages"][:1] + [second["messages"][1]]
+    assert second["messages"][0] == first["messages"][0]
+    assert second["thinking"]["block_binding"] == {"prefix_mismatch_behavior": "drop_block"}

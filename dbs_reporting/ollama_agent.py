@@ -8,12 +8,11 @@ import json
 import os
 import re
 from collections.abc import Iterator
-from datetime import date
 
 import httpx
 
 from .connectwise import ConnectWiseClient
-from .agent import TOOL_STATUS
+from .agent import TOOL_STATUS, dated
 from .tools import build_tools
 
 DEFAULT_MODEL = "qwen3:14b"
@@ -99,11 +98,8 @@ class OllamaAgent:
         """Same events as ReportingAgent.respond_stream; the answer arrives in one piece."""
         if model is not None and model != self._model:
             raise ValueError(f"Model {model!r} isn't enabled. This server uses {self._model!r}.")
-        system = {
-            "role": "system",
-            "content": self._system_prompt.format(today=date.today().isoformat()),
-        }
-        messages = list(history) + [{"role": "user", "content": question}]
+        system = {"role": "system", "content": self._system_prompt}
+        messages = list(history) + [{"role": "user", "content": dated(question)}]
 
         for _ in range(MAX_STEPS):
             reply = self._chat([system] + messages)

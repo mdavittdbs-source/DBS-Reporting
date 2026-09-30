@@ -229,6 +229,13 @@ def _run(user: dict, question: str, conversation_id: str | None, title: str, mod
                    "title": title[:80], "model": model}
 
 
+def _api_error_message(exc: anthropic.APIStatusError) -> str:
+    """The explanation the Claude API gave, e.g. which part of the request it rejected."""
+    body = exc.body if isinstance(exc.body, dict) else {}
+    message = (body.get("error") or {}).get("message") or exc.message or ""
+    return message[:400] or "no details were given."
+
+
 def _friendly_error(exc: Exception) -> tuple[int, str]:
     """HTTP status and a message people can act on, for errors while answering."""
     if isinstance(exc, ValueError):
@@ -237,7 +244,7 @@ def _friendly_error(exc: Exception) -> tuple[int, str]:
         return 429, "The AI service is busy. Please try again in a minute."
     if isinstance(exc, anthropic.APIStatusError):
         log.exception("Claude API error")
-        return 502, f"AI service error ({exc.status_code})."
+        return 502, f"AI service error ({exc.status_code}): {_api_error_message(exc)}"
     if isinstance(exc, anthropic.APIConnectionError):
         log.exception("Claude API connection error")
         return 502, "Couldn't reach the AI service."
