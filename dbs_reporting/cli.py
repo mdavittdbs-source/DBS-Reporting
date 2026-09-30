@@ -9,7 +9,7 @@ def main() -> None:
     agent = create_agent(ConnectWiseClient(ConnectWiseSettings.from_env()))
     history: list = []
     print(f"Using {agent.description}.")
-    print("DBS reporting assistant. Ask about a client, e.g. \"most common issues at Joe's Pizza "
+    print("DBS Automated Virtual Information Desk. Ask about a client, e.g. \"most common issues at Jimmy's Grille "
           "in the last 30 days\". Ctrl+C to quit.")
     while True:
         try:

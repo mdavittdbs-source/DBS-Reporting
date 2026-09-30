@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
 COOKIE = "dbs_session"
 
-app = FastAPI(title="DBS Reporting Assistant")
+app = FastAPI(title="DBS Automated Virtual Information Desk")
 store = Store()
 users_file = UsersFile(store)
 users_file.ensure_exists()

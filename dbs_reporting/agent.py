@@ -9,7 +9,7 @@ import anthropic
 from .connectwise import ConnectWiseClient
 from .tools import build_tools
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "claude-sonnet-5-5"
 
 # What each model accepts. "effort" and "fallback" are only sent to models that support them;
 # anything not listed here gets adaptive thinking only.
