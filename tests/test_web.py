@@ -365,3 +365,27 @@ def test_charts_and_excel_export(web, monkeypatch):
     assert bob.get(f"/api/answers/{done['answer_id']}/export.xlsx").status_code == 404
     assert module.app.url_path_for("static", path="vendor/chart.umd.min.js")
     assert bob.get("/static/vendor/chart.umd.min.js").status_code == 200
+
+
+def test_question_to_a_deleted_chat_explains(web, monkeypatch):
+    module, _ = web
+    alice = login(module, "alice", "password-a")
+    chat_id = alice.post("/api/chat", json={"question": "first"}).json()["conversation_id"]
+    real_resolve = module._resolve
+
+    def resolve_then_delete(user, request):
+        result = real_resolve(user, request)
+        module.store.delete_conversation(user["id"], chat_id)  # deleted in another tab meanwhile
+        return result
+
+    monkeypatch.setattr(module, "_resolve", resolve_then_delete)
+    events = read_events(alice.post("/api/chat/stream", json={"question": "more", "conversation_id": chat_id}))
+    assert events == [{"type": "error", "message": "Chat not found. It may have been deleted."}]
+
+
+def test_old_failed_logins_are_forgotten(web):
+    module, _ = web
+    old = module.time.time() - module.LOCKOUT_SECONDS - 60
+    module._failed_logins.update({f"typo{i}": [old] for i in range(600)})
+    TestClient(module.app).post("/api/login", json={"username": "alice", "password": "wrong"})
+    assert set(module._failed_logins) == {"alice"}

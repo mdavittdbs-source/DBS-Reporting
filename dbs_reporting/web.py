@@ -47,6 +47,16 @@ _failed_logins: dict[str, list[float]] = defaultdict(list)
 MAX_FAILURES, LOCKOUT_SECONDS = 5, 15 * 60
 
 
+def _forget_old_failures() -> None:
+    """Drop names whose failed logins have all expired, so the record doesn't grow forever."""
+    if len(_failed_logins) < 500:
+        return
+    cutoff = time.time() - LOCKOUT_SECONDS
+    for name, times in list(_failed_logins.items()):
+        if not times or times[-1] < cutoff:
+            _failed_logins.pop(name, None)
+
+
 def current_user(dbs_session: str | None = Cookie(default=None)) -> dict:
     users_file.refresh()
     user = store.session_user(dbs_session) if dbs_session else None
@@ -135,6 +145,7 @@ def login(body: LoginRequest, response: Response) -> dict:
     user = store.authenticate(body.username, body.password)
     if user is None:
         _failed_logins[key].append(time.time())
+        _forget_old_failures()
         raise HTTPException(401, "Wrong username or password.")
     _failed_logins.pop(key, None)
 
@@ -173,7 +184,7 @@ def conversations(user: dict = Depends(current_user)) -> list[dict]:
 
 @app.get("/api/conversations/{conversation_id}")
 def conversation(conversation_id: str, user: dict = Depends(current_user)) -> dict:
-    found = store.get_conversation(user["id"], conversation_id)
+    found = store.get_conversation(user["id"], conversation_id, with_history=False)
     if found is None:
         raise HTTPException(404, "Chat not found.")
     return {
@@ -221,7 +232,7 @@ class ChatResponse(BaseModel):
 def _resolve(user: dict, request: ChatRequest) -> tuple[str | None, str, str]:
     """Check the request and work out (conversation_id or None for a new chat, title, model)."""
     if request.conversation_id:
-        found = store.get_conversation(user["id"], request.conversation_id)
+        found = store.get_conversation(user["id"], request.conversation_id, with_history=False)
         if found is None:
             raise HTTPException(404, "Chat not found.")
         # A chat keeps the model it started with, so answers stay consistent and Claude keeps its
@@ -244,7 +255,12 @@ def _run(user: dict, question: str, conversation_id: str | None, title: str, mod
     lock = _conversation_locks[conversation_id] if conversation_id else threading.Lock()
     started = time.monotonic()
     with lock:
-        history = store.get_conversation(user["id"], conversation_id)["history"] if conversation_id else []
+        history = []
+        if conversation_id:
+            found = store.get_conversation(user["id"], conversation_id)
+            if found is None:  # deleted in another tab since the question was sent
+                raise ValueError("Chat not found. It may have been deleted.")
+            history = found["history"]
         try:
             for event in agent.respond_stream(history, question, model):
                 if event["type"] != "done":

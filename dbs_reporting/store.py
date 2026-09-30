@@ -235,16 +235,19 @@ class Store:
             )
         return conversation_id
 
-    def get_conversation(self, user_id: int, conversation_id: str) -> dict | None:
-        """Return the conversation only if it belongs to `user_id`."""
+    def get_conversation(self, user_id: int, conversation_id: str, with_history: bool = True) -> dict | None:
+        """Return the conversation only if it belongs to `user_id`. The saved history holds every
+        tool result and can be large, so leave it out (with_history=False) when it isn't needed."""
+        columns = "*" if with_history else "id, user_id, title, model, created_at, updated_at"
         with self._db() as db:
             row = db.execute(
-                "SELECT * FROM conversations WHERE id = ? AND user_id = ?", (conversation_id, user_id)
+                f"SELECT {columns} FROM conversations WHERE id = ? AND user_id = ?", (conversation_id, user_id)
             ).fetchone()
         if row is None:
             return None
         conversation = dict(row)
-        conversation["history"] = json.loads(conversation["history"])
+        if with_history:
+            conversation["history"] = json.loads(conversation["history"])
         return conversation
 
     def list_conversations(self, user_id: int) -> list[dict]:

@@ -143,3 +143,19 @@ def test_system_prompt_is_frozen_and_date_goes_with_question(monkeypatch):
     assert second["messages"][:2] == first["messages"][:1] + [second["messages"][1]]
     assert second["messages"][0] == first["messages"][0]
     assert second["thinking"]["block_binding"] == {"prefix_mismatch_behavior": "drop_block"}
+
+
+def test_cut_off_tool_call_keeps_the_chat_usable(monkeypatch):
+    monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+    monkeypatch.delenv("CLAUDE_MODELS", raising=False)
+    sent = []
+    turns = [([{"type": "text", "text": "Let me check."},
+               {"type": "tool_use", "id": "tu_1", "name": "find_company", "input": {"name": "Joe"}}], "max_tokens")]
+    agent = ReportingAgent(make_client([]), fake_claude(sent, turns))
+    answer, history = agent.respond([], "issues at Joe's?")
+    assert "cut off" in answer
+    # The unanswered tool call gets a result, so the next question isn't rejected by the API.
+    assert history[-1]["role"] == "user"
+    assert history[-1]["content"][0]["tool_use_id"] == "tu_1" and history[-1]["content"][0]["is_error"]
+    agent.respond(json.loads(json.dumps(history)), "try again")
+    assert len(sent) == 2

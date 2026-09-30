@@ -10,8 +10,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<script src="/static/vendor/marked.min.js"></script>
+<script src="/static/vendor/purify.min.js"></script>
 <script src="/static/vendor/chart.umd.min.js"></script>
 <style>
   :root {
@@ -360,6 +360,7 @@
   let modelInfo = { default: null, models: [] };
   let isAdmin = false;
   let busy = false;
+  let view = 0;  // changes whenever another chat is shown, so a finishing answer can't land in the wrong one
 
   const EXAMPLES = [
     "What are the most common issues in the past 30 days at Jimmy's Grille?",
@@ -455,7 +456,7 @@
              tooltip: "#21211e",
              series: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"] },
   };
-  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");  // also picks the logo
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const liveCharts = [];  // {spec, canvas, chart} so charts can redraw when the theme changes
 
@@ -546,7 +547,7 @@
   function labelPadding(spec) {
     const mode = labelMode(spec);
     if (mode === "tips") {
-      const widest = Math.max(...spec.series[0].values.map((v) => textWidth(Number(v).toLocaleString())));
+      const widest = Math.max(0, ...spec.series[0].values.map((v) => v == null ? 0 : textWidth(Number(v).toLocaleString())));
       return spec.type === "hbar" ? { right: Math.ceil(widest) + 8 } : { top: 18 };
     }
     if (mode === "ends") return { right: Math.ceil(Math.max(...spec.series.map((s) => textWidth(s.name)))) + 12 };
@@ -562,7 +563,9 @@
       if (mode === "tips") {
         if (!chart.isDatasetVisible(0)) return ctx.restore();
         chart.getDatasetMeta(0).data.forEach((bar, i) => {
-          const text = Number(spec.series[0].values[i]).toLocaleString();
+          const value = spec.series[0].values[i];
+          if (value == null) return;
+          const text = Number(value).toLocaleString();
           if (spec.type === "hbar") {
             ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(text, bar.x + 6, bar.y);
           } else {
@@ -748,7 +751,7 @@
     if (isAdmin && usage) actions.appendChild(usageTag(usage));
     actions.appendChild(copy);
     if (answerId) {
-      actions.appendChild(actionButton("Excel", DOWNLOAD, () => { location.href = `/api/answers/${answerId}/export.xlsx`; }));
+      actions.appendChild(actionButton("Excel", DOWNLOAD, () => download(`/api/answers/${answerId}/export.xlsx`, "")));
     }
     actions.appendChild(actionButton("PDF", DOWNLOAD, () => printReport(question || chatTitle.textContent, text, charts)));
     div.append(answer);
@@ -939,9 +942,17 @@
       : "Model for this chat. It can't be changed after the first question.";
   }
 
+  // Empty the conversation view, freeing its charts.
+  function clearMessages() {
+    view++;
+    for (const entry of liveCharts) entry.chart?.destroy();
+    liveCharts.length = 0;
+    messages.innerHTML = "";
+  }
+
   function newChat() {
     conversationId = null;
-    messages.innerHTML = "";
+    clearMessages();
     chatTitle.textContent = "New chat";
     setModel(modelInfo.default, false);
     showStart();
@@ -957,7 +968,7 @@
       conversationId = chat.id;
       chatTitle.textContent = chat.title;
       setModel(chat.model, true);
-      messages.innerHTML = "";
+      clearMessages();
       let lastQuestion = "";
       for (const t of chat.turns) {
         if (t.role === "user") { addUser(t.text); lastQuestion = t.text; }
@@ -997,6 +1008,8 @@
     if (busy) return;
     busy = true;
     updateSend();
+    const askedIn = view;
+    const shown = () => view === askedIn;  // false once the person has opened another chat
     messages.querySelector(".start")?.remove();
     addUser(question);
     const thinking = addThinking();
@@ -1010,6 +1023,7 @@
       if (follow) scrollToEnd();
     };
     const dropStreamed = () => {
+      if (frame) { cancelAnimationFrame(frame); frame = 0; }
       text = "";
       if (streamed) { streamed.parentElement.remove(); streamed = null; }
       thinking.el.hidden = false;
@@ -1027,6 +1041,9 @@
       }
       let result = null;
       await readEvents(response, (event) => {
+        if (event.type === "error") throw new Error(event.message);
+        if (event.type === "done") { result = event; return; }
+        if (!shown()) return;  // keep reading so the answer finishes and is saved
         if (event.type === "status") {
           thinking.setStatus(event.text);
         } else if (event.type === "reset") {
@@ -1043,15 +1060,18 @@
           }
           text += event.text;
           if (!frame) frame = requestAnimationFrame(render);
-        } else if (event.type === "done") {
-          result = event;
-        } else if (event.type === "error") {
-          throw new Error(event.message);
         }
       });
       if (!result) throw new Error("The connection was lost before the answer finished.");
       if (frame) cancelAnimationFrame(frame);
       thinking.stop();
+      if (!shown()) {
+        // Reopened this same chat meanwhile: reload it to show the answer. Otherwise just say where it went.
+        if (result.conversation_id === conversationId) { openChat(conversationId); return; }
+        toast(`Answer saved in “${result.title}”`);
+        loadChats();
+        return;
+      }
       thinking.el.remove();
       if (streamed) streamed.parentElement.remove();
       addAnswer(result.answer, result.usage, result.charts, result.answer_id, question);
@@ -1063,8 +1083,9 @@
       loadChats();
     } catch (err) {
       if (frame) cancelAnimationFrame(frame);
-      if (streamed) streamed.parentElement.remove();
       thinking.stop();
+      if (!shown()) { toast("That answer didn't go through: " + err.message); return; }
+      if (streamed) streamed.parentElement.remove();
       thinking.el.hidden = false;
       thinking.el.className = "msg error";
       thinking.el.textContent = "That didn't go through: " + err.message;
@@ -1116,9 +1137,8 @@
 
   // Custom logo from the branding folder. Dark-mode viewers get logo-dark if it exists,
   // otherwise the normal logo. Swaps live when the system theme changes.
-  const darkMode = window.matchMedia("(prefers-color-scheme: dark)");
   function loadLogo() {
-    const sources = darkMode.matches ? ["/logo-dark", "/logo"] : ["/logo"];
+    const sources = darkQuery.matches ? ["/logo-dark", "/logo"] : ["/logo"];
     const tryNext = () => {
       const src = sources.shift();
       if (!src) return;
@@ -1135,7 +1155,7 @@
     };
     tryNext();
   }
-  darkMode.addEventListener("change", loadLogo);
+  darkQuery.addEventListener("change", loadLogo);
   loadLogo();
 
   (async () => {
