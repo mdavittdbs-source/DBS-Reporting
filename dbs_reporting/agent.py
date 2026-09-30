@@ -81,6 +81,8 @@ several companies and it isn't obvious which one is meant, ask a short clarifyin
 tickets"), use get_ticket_totals. Don't look clients up one by one. "Sites" usually means the site \
 or location on the ticket (group_by="site"); if it could also mean clients, answer by site and \
 offer the by-client view.
+- SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
+times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
 what actually went wrong, based on their summaries (e.g. "printer offline", "Outlook password \
 prompts", "POS terminal won't connect"), and give a count for each group. Mention the ticket \
@@ -92,6 +94,8 @@ returns an error, tell the user plainly what failed.
 How to answer:
 - Lead with the answer. Managers read this quickly.
 - Use a short ranked list or small table for breakdowns, and cite example ticket numbers (#12345).
+- When a chart would make a comparison or trend clearer (3+ items, or change over time), call \
+create_chart with numbers from your tool results. Keep the key numbers in your text too.
 - State the date range and total ticket count you analyzed.
 - End with one or two practical observations when the data supports them, such as a recurring \
 issue that suggests a project or a user who needs training."""
@@ -104,6 +108,8 @@ TOOL_STATUS = {
     "get_ticket_details": "Reading ticket notes…",
     "get_company_time": "Adding up time entries…",
     "get_ticket_totals": "Counting tickets across all clients…",
+    "get_sla_performance": "Checking SLA performance…",
+    "create_chart": "Drawing a chart…",
 }
 
 
@@ -210,13 +216,5 @@ class ReportingAgent:
                "usage": usage}
 
 
-def create_agent(cw: ConnectWiseClient):
-    """Build the agent for the provider chosen by LLM_PROVIDER in .env ("claude" or "ollama")."""
-    provider = os.environ.get("LLM_PROVIDER", "claude").strip().lower()
-    if provider == "ollama":
-        from .ollama_agent import OllamaAgent
-
-        return OllamaAgent(cw, SYSTEM_PROMPT)
-    if provider != "claude":
-        raise RuntimeError(f"LLM_PROVIDER must be 'claude' or 'ollama', not {provider!r}")
+def create_agent(cw: ConnectWiseClient) -> ReportingAgent:
     return ReportingAgent(cw)

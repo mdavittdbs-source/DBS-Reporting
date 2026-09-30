@@ -2,11 +2,14 @@
 
 import json
 from collections import Counter
+from datetime import datetime, timezone
+from statistics import median
 from typing import Any
 
 import httpx
 from anthropic import beta_tool
 
+from .charts import validate_chart
 from .connectwise import ConnectWiseClient
 
 MAX_DAYS = 730
@@ -73,6 +76,34 @@ def _error(exc: Exception) -> str:
 
 def _clamp_days(days: int) -> int:
     return max(1, min(int(days), MAX_DAYS))
+
+
+# --- SLA helpers ---------------------------------------------
+
+
+def parse_dt(value) -> datetime | None:
+    """ConnectWise timestamps like 2026-09-20T10:00:00Z (or a date) -> aware datetime."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _hours_between(start, end) -> float | None:
+    a, b = parse_dt(start), parse_dt(end)
+    if not a or not b or b < a:
+        return None
+    return (b - a).total_seconds() / 3600
+
+
+def _stats(values: list[float]) -> dict:
+    if not values:
+        return {"count": 0, "median_hours": None, "average_hours": None}
+    return {"count": len(values), "median_hours": round(median(values), 1),
+            "average_hours": round(sum(values) / len(values), 1)}
 
 
 def build_tools(cw: ConnectWiseClient) -> list:
@@ -244,4 +275,105 @@ def build_tools(cw: ConnectWiseClient) -> list:
         except Exception as exc:
             return _error(exc)
 
-    return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals]
+    @beta_tool(eager_input_streaming=True)
+    def get_sla_performance(days: int = 30, group_by: str = "company", company_id: int = 0,
+                            board_name: str = "", top: int = 25) -> str:
+        """SLA performance for tickets entered in the last N days, for all clients or one.
+
+        For each group: tickets, how many ConnectWise marks as within SLA vs. breached, the percent
+        within SLA, and median/average hours to first response and to resolution, plus open count.
+        Use for "which clients had the most SLA breaches", "average response time by board", etc.
+
+        Args:
+            days: How many days back to look, based on the date each ticket was entered.
+            group_by: How to break it down: "company", "board", "priority", "sla" (the SLA name) or "overall".
+            company_id: Optional ConnectWise company id from find_company to look at one client; 0 for all.
+            board_name: Optional exact service board name to include only, e.g. "Help Desk".
+            top: How many groups to return, ranked by number of SLA breaches then ticket count.
+        """
+        keys = {
+            "company": lambda t: _name(t, "company") or "(no company)",
+            "board": lambda t: _name(t, "board") or "(none)",
+            "priority": lambda t: _name(t, "priority") or "(none)",
+            "sla": lambda t: _name(t, "sla") or "(no SLA)",
+            "overall": lambda t: "All tickets",
+        }
+        if group_by not in keys:
+            return json.dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
+        try:
+            days = _clamp_days(days)
+            tickets = cw.tickets_for_sla(days, company_id or None, board_name or None, limit=TOTALS_LIMIT)
+            groups: dict[str, dict] = {}
+            for t in tickets:
+                g = groups.setdefault(keys[group_by](t), {"tickets": 0, "open": 0, "in_sla": 0, "breached": 0,
+                                                           "sla_unknown": 0, "respond": [], "resolve": []})
+                g["tickets"] += 1
+                if not t.get("closedFlag"):
+                    g["open"] += 1
+                flag = t.get("isInSla")
+                g["in_sla" if flag is True else "breached" if flag is False else "sla_unknown"] += 1
+                entered = _date_entered(t)
+                if (h := _hours_between(entered, t.get("dateResponded"))) is not None:
+                    g["respond"].append(h)
+                if (h := _hours_between(entered, t.get("dateResolved") or t.get("closedDate"))) is not None:
+                    g["resolve"].append(h)
+
+            def row(name: str, g: dict) -> dict:
+                known = g["in_sla"] + g["breached"]
+                return {"name": name, "tickets": g["tickets"], "open": g["open"], "in_sla": g["in_sla"],
+                        "breached": g["breached"], "sla_unknown": g["sla_unknown"],
+                        "percent_in_sla": round(100 * g["in_sla"] / known, 1) if known else None,
+                        "first_response": _stats(g["respond"]), "resolution": _stats(g["resolve"])}
+
+            ranked = sorted(groups.items(), key=lambda kv: (-kv[1]["breached"], -kv[1]["tickets"]))
+            top = max(1, min(int(top), 100))
+            everything = {"tickets": 0, "open": 0, "in_sla": 0, "breached": 0, "sla_unknown": 0,
+                          "respond": [], "resolve": []}
+            for g in groups.values():
+                for k in everything:
+                    everything[k] += g[k]
+            result = {
+                "days": days,
+                "group_by": group_by,
+                "overall": row("All tickets", everything),
+                "groups": [row(name, g) for name, g in ranked[:top]],
+                "note": ("in_sla/breached use ConnectWise's own SLA flag on each ticket. Response and "
+                         "resolution times are calendar hours from entry, not business hours, so they can "
+                         "be longer than the SLA clock."),
+            }
+            if len(ranked) > top:
+                result["other_groups"] = len(ranked) - top
+            if len(tickets) >= TOTALS_LIMIT:
+                result["limit_note"] = f"Capped at {TOTALS_LIMIT} tickets; narrow the date range."
+            return json.dumps(result)
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
+    def create_chart(title: str, chart_type: str, labels: list[str], series: list[dict],
+                     subtitle: str = "", x_label: str = "", y_label: str = "") -> str:
+        """Add a chart to your answer. It's drawn below your text and can be exported.
+
+        Use it when a picture makes the numbers clearer: ranking 3+ clients/sites/boards, a trend
+        over time, or a breakdown within groups. Use numbers from your tool results only. Don't
+        chart a single number. At most two charts per answer.
+
+        Args:
+            title: Short title, e.g. "Tickets by site, last 30 days".
+            chart_type: "hbar" to rank named items (best for clients/sites, long names), "bar" for a few short categories, "line" for a trend over time (labels are dates/weeks/months in order), "stacked_bar" for parts of a whole within each label.
+            labels: Category or time labels, in display order (for rankings, largest first). At most 50.
+            series: One or more series, each {"name": "Tickets", "values": [31, 18, ...]} with one number per label. Use one series unless comparing groups; at most 8 series. All series share one axis, so only combine numbers in the same unit.
+            subtitle: Optional one-line context, e.g. the date range.
+            x_label: Optional axis label for the categories.
+            y_label: Optional axis label for the values, e.g. "Tickets" or "Hours".
+        """
+        chart, error = validate_chart({"title": title, "chart_type": chart_type, "labels": labels,
+                                       "series": series, "subtitle": subtitle, "x_label": x_label,
+                                       "y_label": y_label})
+        if error:
+            return json.dumps({"error": f"Chart not added: {error}"})
+        return json.dumps({"chart_added": True, "note": "The chart appears below your answer; refer to it "
+                           "rather than repeating every value."})
+
+    return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
+            get_sla_performance, create_chart]

@@ -12,7 +12,6 @@ def web(monkeypatch, tmp_path):
     for name in ("CW_SITE", "CW_COMPANY_ID", "CW_PUBLIC_KEY", "CW_PRIVATE_KEY", "CW_CLIENT_ID"):
         monkeypatch.setenv(name, "x")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
-    monkeypatch.setenv("LLM_PROVIDER", "claude")
     monkeypatch.setenv("CLAUDE_MODEL", "claude-opus-5-5")
     monkeypatch.setenv("CLAUDE_MODELS", "claude-opus-5-5,claude-haiku-4-5")
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
@@ -324,6 +323,45 @@ def test_tool_calls_are_described():
         {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
     ]
     assert tool_calls(claude) == ["get_ticket_totals(days=30, group_by='site')"]
-    ollama = [{"role": "assistant", "content": "", "tool_calls": [
-        {"function": {"name": "find_company", "arguments": '{"name": "Jimmy"}'}}]}]
-    assert tool_calls(ollama) == ["find_company(name='Jimmy')"]
+
+
+def test_charts_and_excel_export(web, monkeypatch):
+    import io
+
+    from openpyxl import load_workbook
+
+    module, _ = web
+    chart_input = {"title": "Tickets by site", "chart_type": "hbar", "labels": ["Downtown", "Airport"],
+                   "series": [{"name": "Tickets", "values": [31, 18]}]}
+
+    def with_chart(history, question, model=None):
+        answer = "| Site | Tickets |\n|---|---|\n| Downtown | 31 |\n| Airport | 18 |"
+        yield {"type": "text", "text": answer}
+        yield {"type": "done", "answer": answer, "usage": None, "history": history + [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "c1", "name": "create_chart",
+                                               "input": chart_input}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "c1",
+                                          "content": '{"chart_added": true}'}]},
+            {"role": "assistant", "content": [{"type": "text", "text": answer}]},
+        ]}
+
+    monkeypatch.setattr(module.agent, "respond_stream", with_chart)
+    alice = login(module, "alice", "password-a")
+    done = read_events(alice.post("/api/chat/stream", json={"question": "sites?"}))[-1]
+    assert [c["title"] for c in done["charts"]] == ["Tickets by site"] and done["answer_id"]
+
+    turns = alice.get(f"/api/conversations/{done['conversation_id']}").json()["turns"]
+    assert turns[1]["charts"][0]["labels"] == ["Downtown", "Airport"] and turns[1]["id"] == done["answer_id"]
+
+    response = alice.get(f"/api/answers/{done['answer_id']}/export.xlsx")
+    assert response.status_code == 200
+    assert "attachment" in response.headers["content-disposition"]
+    wb = load_workbook(io.BytesIO(response.content))
+    assert wb.sheetnames == ["Summary", "Table 1", "Chart 1"]
+
+    # Only the person who asked can download it.
+    bob = login(module, "bob", "password-b")
+    assert bob.get(f"/api/answers/{done['answer_id']}/export.xlsx").status_code == 404
+    assert module.app.url_path_for("static", path="vendor/chart.umd.min.js")
+    assert bob.get("/static/vendor/chart.umd.min.js").status_code == 200

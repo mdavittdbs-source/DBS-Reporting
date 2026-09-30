@@ -12,7 +12,7 @@ with counts and example ticket numbers. Follow-up questions ("what about the las
 ## How it works
 
 ```
-Manager (web chat) ──► FastAPI ──► Claude (claude-opus-5-5) ──► tools ──► ConnectWise REST API
+Manager (web chat) ──► FastAPI ──► Claude (claude-sonnet-5-5) ──► tools ──► ConnectWise REST API
 ```
 
 | Tool | What it does |
@@ -22,12 +22,15 @@ Manager (web chat) ──► FastAPI ──► Claude (claude-opus-5-5) ──�
 | `get_ticket_details` | One ticket plus its notes (description, internal analysis, resolution) |
 | `get_company_time` | Hours logged in the last N days by technician, work type and ticket |
 | `get_ticket_totals` | Tickets across **all** clients in the last N days, ranked by client, site, board, type, priority, source or status, with open counts and top ticket types |
+| `get_sla_performance` | In-SLA vs. breached tickets and first-response/resolution times, by client, board, priority or SLA |
+| `create_chart` | Adds a chart under the answer (bar, horizontal bar, line or stacked bar) |
 
 Code layout:
 
 - `dbs_reporting/connectwise.py`: ConnectWise API client (auth, paging, queries)
 - `dbs_reporting/tools.py`: the tools Claude can call
 - `dbs_reporting/agent.py`: system prompt, the Claude tool loop and conversation memory
+- `dbs_reporting/charts.py` + `exports.py`: chart checks and the Excel export
 - `dbs_reporting/web.py` + `static/index.html`: the web chat
 - `dbs_reporting/cli.py`: a terminal version for testing
 
@@ -94,6 +97,20 @@ Tests (no network or API keys needed):
 pytest
 ```
 
+## Charts and exports
+
+Ask for a report or a chart ("chart tickets by site for the last 30 days", "graph weekly tickets at
+Jimmy's Grille") and David draws bar, horizontal bar, line or stacked bar charts under its answer,
+using the numbers it pulled from ConnectWise. Under each answer:
+
+- **Excel** downloads an `.xlsx` with the answer, every table as its own sheet, and every chart as a
+  sheet with its data and a native Excel chart.
+- **PDF** opens a printable report (logo, question, answer and charts); choose *Save as PDF*.
+- Each chart has **Show table** (the numbers behind it) and **Download PNG** (for emails and slides).
+
+Charts are saved with the chat, so they come back when you reopen it. Chart.js is bundled in
+`dbs_reporting/static/vendor`, so nothing extra is needed on the network.
+
 ## Token usage and cost
 
 Every answer records the tokens it used (across all of its steps) and an estimated cost.
@@ -121,14 +138,6 @@ answer, token usage and any errors:
 
 The chat sidebar tells people their questions and answers are logged for admins.
 
-## Running on a local model (Ollama)
-
-Set `LLM_PROVIDER=ollama` in `.env` to use a free local model through
-[Ollama](https://ollama.com) instead of Claude. Pick a model that supports tool calling,
-download it with `ollama pull <model>`, and set `OLLAMA_MODEL` to its name. Run
-`python -m dbs_reporting.check` to confirm Ollama is reachable. Answers are usually
-slower and less accurate than Claude's, especially for clients with many tickets.
-Set `LLM_PROVIDER=claude` to switch back.
 
 ## Notes
 

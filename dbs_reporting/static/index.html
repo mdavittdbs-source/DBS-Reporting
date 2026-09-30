@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
 <style>
   :root {
     --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -204,6 +205,21 @@
   .answer td:not(:first-child), .answer th:not(:first-child) { text-align: right; }
   .actions { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
   .actions button { opacity: 0; transition: opacity .15s; }
+  .charts { display: grid; gap: 14px; margin-top: 16px; }
+  .chart-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px 10px; min-width: 0; }
+  .chart-card h4 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.005em; text-wrap: balance; }
+  .chart-card .chart-sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+  .chart-box { position: relative; margin-top: 10px; }
+  .chart-tools { display: flex; gap: 4px; margin-top: 6px; }
+  .chart-tools button { background: none; border: 0; color: var(--muted); font-size: 12px; padding: 4px 8px;
+                        border-radius: 6px; }
+  .chart-tools button:hover { color: var(--text); background: rgba(120, 110, 90, .1); }
+  .chart-table { width: 100%; margin-top: 8px; font-size: 13px; font-variant-numeric: tabular-nums;
+                 border-collapse: collapse; }
+  .chart-table th { text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border-strong);
+                    padding: 4px 12px 4px 0; }
+  .chart-table td { border-bottom: 1px solid var(--border); padding: 5px 12px 5px 0; }
+  .chart-table td:not(:first-child), .chart-table th:not(:first-child) { text-align: right; }
   .usage { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; padding: 4px 8px 4px 0;
            cursor: help; }
   .msg.bot:hover .actions button, .actions button:focus-visible { opacity: 1; }
@@ -428,7 +444,296 @@
     return span;
   }
 
-  function addAnswer(text, usage) {
+  // ---------- Charts ----------
+  // Validated categorical palette (dataviz reference instance), stepped separately for each mode,
+  // checked against this page's surfaces. Series take slots in fixed order; never more than 8.
+  const CHART_THEMES = {
+    light: { surface: "#f7f6f3", grid: "#e2dfd8", axis: "#cfcbc2", text: "#1c1b19", muted: "#6f6b63",
+             tooltip: "#ffffff",
+             series: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"] },
+    dark:  { surface: "#151513", grid: "#2e2d29", axis: "#3d3b36", text: "#ecebe6", muted: "#a29e94",
+             tooltip: "#21211e",
+             series: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"] },
+  };
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const liveCharts = [];  // {spec, canvas, chart} so charts can redraw when the theme changes
+
+  function chartHeight(spec) {
+    const legend = spec.series.length > 1 ? 28 : 0;
+    return spec.type === "hbar" ? Math.max(140, spec.labels.length * 30 + 50 + legend) : 280 + legend;
+  }
+
+  function chartConfig(spec, t, forExport) {
+    const horizontal = spec.type === "hbar";
+    const stacked = spec.type === "stacked_bar";
+    const line = spec.type === "line";
+    const many = spec.series.length > 1;
+    const datasets = spec.series.map((s, i) => {
+      const color = t.series[i % 8];
+      if (line) {
+        return { label: s.name, data: s.values, borderColor: color, backgroundColor: many ? color : color + "1a",
+                 fill: many ? false : "origin", borderWidth: 2, tension: 0, pointRadius: 4, pointHoverRadius: 6,
+                 pointBackgroundColor: color, pointBorderColor: t.surface, pointBorderWidth: 2,
+                 borderCapStyle: "round", borderJoinStyle: "round" };
+      }
+      const top = i === spec.series.length - 1;
+      return { label: s.name, data: s.values, backgroundColor: color, maxBarThickness: 24,
+               borderRadius: stacked && !top ? 0 : 4, borderSkipped: "start",
+               // Stacked segments are separated by a 2px gap in the surface color, not a drawn border.
+               borderWidth: stacked ? { top: horizontal ? 0 : 2, right: horizontal ? 2 : 0 } : 0,
+               borderColor: t.surface, categoryPercentage: 0.8, barPercentage: many && !stacked ? 0.92 : 0.8 };
+    });
+    const valueAxis = {
+      beginAtZero: true, stacked, grid: { color: t.grid, lineWidth: 1, drawTicks: false }, border: { display: false },
+      ticks: { color: t.muted, padding: 6, callback: (v) => Number(v).toLocaleString() },
+      title: { display: !!spec.y_label, text: spec.y_label, color: t.muted },
+    };
+    const categoryAxis = {
+      stacked, grid: { display: false }, border: { color: t.axis },
+      ticks: { color: t.muted, autoSkip: !horizontal, maxRotation: 0 },
+      title: { display: !!spec.x_label, text: spec.x_label, color: t.muted },
+    };
+    return {
+      type: line ? "line" : "bar",
+      data: { labels: spec.labels, datasets },
+      options: {
+        indexAxis: horizontal ? "y" : "x",
+        responsive: !forExport, maintainAspectRatio: false,
+        animation: forExport || reduceMotion.matches ? false : { duration: 300 },
+        interaction: line ? { mode: "index", intersect: false } : { mode: "nearest", intersect: true },
+        font: { family: getComputedStyle(document.body).fontFamily },
+        scales: horizontal ? { x: valueAxis, y: categoryAxis } : { x: categoryAxis, y: valueAxis },
+        layout: { padding: labelPadding(spec) },
+        plugins: {
+          legend: { display: many, position: "top", align: "start",
+                    labels: { color: t.muted, usePointStyle: true, boxWidth: 12, boxHeight: 12, padding: 14,
+                              // A short stroke for lines, a square for bars, always in the series color.
+                              generateLabels: (chart) => chart.data.datasets.map((d, i) => ({
+                                text: d.label, datasetIndex: i, hidden: !chart.isDatasetVisible(i),
+                                fontColor: t.muted, fillStyle: t.series[i % 8], strokeStyle: t.series[i % 8],
+                                lineWidth: line ? 3 : 0, pointStyle: line ? "line" : "rect", rotation: 0,
+                              })) } },
+          tooltip: { backgroundColor: t.tooltip, titleColor: t.muted, bodyColor: t.text, borderColor: t.grid,
+                     borderWidth: 1, padding: 10, usePointStyle: true, boxPadding: 4,
+                     callbacks: {
+                       labelPointStyle: () => ({ pointStyle: "line", rotation: 0 }),
+                       // Values lead, series names follow.
+                       label: (ctx) => ` ${Number(ctx.raw).toLocaleString()}  ${many ? ctx.dataset.label : ""}`,
+                     } },
+        },
+      },
+      plugins: [{ id: "surface", beforeDraw: (chart) => {
+        const { ctx, width, height } = chart;
+        ctx.save(); ctx.fillStyle = forExport ? "#ffffff" : t.surface; ctx.fillRect(0, 0, width, height); ctx.restore();
+      } }, directLabels(spec, t)],
+    };
+  }
+
+  // Selective direct labels: each value at the bar tip for a single-series ranking (up to 15 bars),
+  // and each series' name at the end of its line for 2-4 lines. Nothing on busier charts.
+  const LABEL_FONT = "11px " + getComputedStyle(document.body).fontFamily;
+  function labelMode(spec) {
+    if ((spec.type === "bar" || spec.type === "hbar") && spec.series.length === 1 && spec.labels.length <= 15) return "tips";
+    if (spec.type === "line" && spec.series.length >= 2 && spec.series.length <= 4) return "ends";
+    return null;
+  }
+  function textWidth(text) {
+    const ctx = textWidth.ctx || (textWidth.ctx = document.createElement("canvas").getContext("2d"));
+    ctx.font = LABEL_FONT;
+    return ctx.measureText(text).width;
+  }
+  function labelPadding(spec) {
+    const mode = labelMode(spec);
+    if (mode === "tips") {
+      const widest = Math.max(...spec.series[0].values.map((v) => textWidth(Number(v).toLocaleString())));
+      return spec.type === "hbar" ? { right: Math.ceil(widest) + 8 } : { top: 18 };
+    }
+    if (mode === "ends") return { right: Math.ceil(Math.max(...spec.series.map((s) => textWidth(s.name)))) + 12 };
+    return 0;
+  }
+  function directLabels(spec, t) {
+    const mode = labelMode(spec);
+    return { id: "directLabels", afterDatasetsDraw: (chart) => {
+      if (!mode) return;
+      const { ctx, chartArea } = chart;
+      ctx.save();
+      ctx.font = LABEL_FONT; ctx.fillStyle = t.muted;
+      if (mode === "tips") {
+        if (!chart.isDatasetVisible(0)) return ctx.restore();
+        chart.getDatasetMeta(0).data.forEach((bar, i) => {
+          const text = Number(spec.series[0].values[i]).toLocaleString();
+          if (spec.type === "hbar") {
+            ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(text, bar.x + 6, bar.y);
+          } else {
+            ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText(text, bar.x, bar.y - 4);
+          }
+        });
+      } else {
+        // Place each name beside its line's last point, nudged apart so no two overlap.
+        const ends = [];
+        spec.series.forEach((s, i) => {
+          if (!chart.isDatasetVisible(i)) return;
+          const points = chart.getDatasetMeta(i).data;
+          const last = points[points.length - 1];
+          if (last) ends.push({ name: s.name, x: last.x, y: last.y });
+        });
+        ends.sort((a, b) => a.y - b.y);
+        const gap = 14;
+        for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + gap);
+        const overflow = ends.length ? ends[ends.length - 1].y - chartArea.bottom : 0;
+        if (overflow > 0) ends.forEach((e) => { e.y -= overflow; });
+        ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ends.forEach((e) => ctx.fillText(e.name, e.x + 8, e.y));
+      }
+      ctx.restore();
+    } };
+  }
+
+  function themeName() { return darkQuery.matches ? "dark" : "light"; }
+
+  function drawChart(entry) {
+    if (entry.chart) entry.chart.destroy();
+    entry.chart = new Chart(entry.canvas, chartConfig(entry.spec, CHART_THEMES[themeName()], false));
+  }
+  darkQuery.addEventListener("change", () => liveCharts.forEach((e) => e.canvas.isConnected && drawChart(e)));
+
+  // A light-theme, fixed-size rendering for PNG downloads and PDF reports.
+  function chartImage(spec) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1200; canvas.height = Math.round(chartHeight(spec) * 1.8);
+    canvas.style.cssText = "position:fixed;left:-99999px;top:0";
+    document.body.appendChild(canvas);
+    const t = { ...CHART_THEMES.light, surface: "#ffffff" };
+    const config = chartConfig(spec, t, true);
+    config.options.devicePixelRatio = 1;
+    config.options.font = { ...config.options.font, size: 20 };
+    const chart = new Chart(canvas, config);
+    const url = chart.toBase64Image("image/png");
+    chart.destroy(); canvas.remove();
+    return url;
+  }
+
+  function download(url, filename) {
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  function slug(text) { return (text || "chart").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50); }
+
+  function chartTable(spec) {
+    const table = document.createElement("table");
+    table.className = "chart-table";
+    const head = table.insertRow();
+    for (const h of [spec.x_label || "", ...spec.series.map((s) => s.name)]) {
+      const th = document.createElement("th"); th.textContent = h; head.appendChild(th);
+    }
+    spec.labels.forEach((label, i) => {
+      const row = table.insertRow();
+      row.insertCell().textContent = label;
+      for (const s of spec.series) row.insertCell().textContent = s.values[i] == null ? "–" : Number(s.values[i]).toLocaleString();
+    });
+    return table;
+  }
+
+  function chartCard(spec) {
+    const card = document.createElement("figure");
+    card.className = "chart-card";
+    card.style.margin = "0";
+    const title = document.createElement("h4"); title.textContent = spec.title;
+    card.appendChild(title);
+    if (spec.subtitle) {
+      const sub = document.createElement("p"); sub.className = "chart-sub"; sub.textContent = spec.subtitle;
+      card.appendChild(sub);
+    }
+    const box = document.createElement("div");
+    box.className = "chart-box";
+    box.style.height = chartHeight(spec) + "px";
+    const canvas = document.createElement("canvas");
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", `${spec.title}. Use "Show table" for the values.`);
+    box.appendChild(canvas);
+    card.appendChild(box);
+    const tools = document.createElement("div");
+    tools.className = "chart-tools";
+    const tableBtn = document.createElement("button");
+    tableBtn.type = "button"; tableBtn.textContent = "Show table";
+    let table = null;
+    tableBtn.onclick = () => {
+      if (table) { table.remove(); table = null; tableBtn.textContent = "Show table"; return; }
+      table = chartTable(spec); card.appendChild(table); tableBtn.textContent = "Hide table";
+    };
+    const png = document.createElement("button");
+    png.type = "button"; png.textContent = "Download PNG";
+    png.onclick = () => download(chartImage(spec), `${slug(spec.title)}.png`);
+    tools.append(tableBtn, png);
+    card.appendChild(tools);
+    const entry = { spec, canvas, chart: null };
+    liveCharts.push(entry);
+    requestAnimationFrame(() => drawChart(entry));
+    return card;
+  }
+
+  // ---------- Exports ----------
+  function printReport(question, text, charts) {
+    const win = window.open("", "_blank");
+    if (!win) { toast("Allow pop-ups for this site to create the PDF."); return; }
+    const doc = win.document;
+    doc.open();
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"><title></title><style>
+      body { font: 13px/1.55 "Geist", "Segoe UI", system-ui, sans-serif; color: #1c1b19; margin: 32px 40px; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+               border-bottom: 2px solid #183e7c; padding-bottom: 12px; margin-bottom: 18px; }
+      header img { height: 44px; } header .meta { text-align: right; font-size: 11px; color: #6f6b63; }
+      h1 { font-size: 18px; margin: 0 0 14px; letter-spacing: -.01em; }
+      table { border-collapse: collapse; margin: 10px 0; font-variant-numeric: tabular-nums; }
+      th { text-align: left; font-weight: 600; border-bottom: 1px solid #cfcbc2; padding: 4px 14px 4px 0; }
+      td { border-bottom: 1px solid #e2dfd8; padding: 4px 14px 4px 0; }
+      td:not(:first-child), th:not(:first-child) { text-align: right; }
+      figure { margin: 18px 0; break-inside: avoid; } figure img { width: 100%; }
+      figcaption { font-weight: 600; margin-bottom: 4px; } figcaption span { font-weight: 400; color: #6f6b63; }
+      footer { margin-top: 28px; font-size: 10px; color: #9a958b; }
+      @page { margin: 14mm; }
+    </style></head><body></body></html>`);
+    doc.close();
+    doc.title = `David report – ${question.slice(0, 60)}`;
+    const header = doc.createElement("header");
+    const logo = doc.createElement("img"); logo.src = "/logo"; logo.alt = ""; logo.onerror = () => logo.remove();
+    const meta = doc.createElement("div"); meta.className = "meta";
+    meta.textContent = `Prepared by David · ${new Date().toLocaleString()}`;
+    header.append(logo, meta);
+    const h1 = doc.createElement("h1"); h1.textContent = question;
+    const body = doc.createElement("section");
+    body.innerHTML = DOMPurify.sanitize(marked.parse(text));
+    doc.body.append(header, h1, body);
+    for (const spec of charts || []) {
+      const fig = doc.createElement("figure");
+      const cap = doc.createElement("figcaption"); cap.textContent = spec.title;
+      if (spec.subtitle) { const sub = doc.createElement("span"); sub.textContent = " · " + spec.subtitle; cap.appendChild(sub); }
+      const img = doc.createElement("img"); img.src = chartImage(spec); img.alt = spec.title;
+      fig.append(cap, img);
+      doc.body.appendChild(fig);
+    }
+    const footer = doc.createElement("footer");
+    footer.textContent = "Generated from live ConnectWise data. Check key numbers before sharing.";
+    doc.body.appendChild(footer);
+    const go = () => { win.focus(); win.print(); };
+    if (logo.isConnected && !logo.complete) { logo.onload = go; logo.onerror = () => { logo.remove(); go(); }; }
+    else setTimeout(go, 50);
+  }
+
+  function actionButton(label, icon, onclick) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = icon + label;
+    b.onclick = onclick;
+    return b;
+  }
+
+  const DOWNLOAD = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5v8m0 0L4.5 7M8 10.5 11.5 7M3 13.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function addAnswer(text, usage, charts, answerId, question) {
     const div = document.createElement("div");
     div.className = "msg bot";
     const answer = document.createElement("div");
@@ -442,7 +747,18 @@
     copy.onclick = () => copyText(text);
     if (isAdmin && usage) actions.appendChild(usageTag(usage));
     actions.appendChild(copy);
-    div.append(answer, actions);
+    if (answerId) {
+      actions.appendChild(actionButton("Excel", DOWNLOAD, () => { location.href = `/api/answers/${answerId}/export.xlsx`; }));
+    }
+    actions.appendChild(actionButton("PDF", DOWNLOAD, () => printReport(question || chatTitle.textContent, text, charts)));
+    div.append(answer);
+    if (charts && charts.length && window.Chart) {
+      const wrap = document.createElement("div");
+      wrap.className = "charts";
+      for (const spec of charts) wrap.appendChild(chartCard(spec));
+      div.appendChild(wrap);
+    }
+    div.appendChild(actions);
     messages.appendChild(div);
     return div;
   }
@@ -642,7 +958,11 @@
       chatTitle.textContent = chat.title;
       setModel(chat.model, true);
       messages.innerHTML = "";
-      for (const t of chat.turns) t.role === "user" ? addUser(t.text) : addAnswer(t.text, t.usage);
+      let lastQuestion = "";
+      for (const t of chat.turns) {
+        if (t.role === "user") { addUser(t.text); lastQuestion = t.text; }
+        else addAnswer(t.text, t.usage, t.charts, t.id, lastQuestion);
+      }
       scrollToEnd();
       loadChats();
     } catch (err) {
@@ -734,7 +1054,7 @@
       thinking.stop();
       thinking.el.remove();
       if (streamed) streamed.parentElement.remove();
-      addAnswer(result.answer, result.usage);
+      addAnswer(result.answer, result.usage, result.charts, result.answer_id, question);
       if (!conversationId) {
         chatTitle.textContent = result.title;
         setModel(result.model, true);

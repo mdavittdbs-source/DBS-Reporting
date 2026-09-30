@@ -6,6 +6,7 @@ only their own saved chats.
 
 import json
 import logging
+import re
 import threading
 import time
 from collections import defaultdict
@@ -13,13 +14,14 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import anthropic
-import httpx
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity
+from . import activity, exports
+from .charts import extract_charts
 from .agent import create_agent
 from .config import ConnectWiseSettings
 from .connectwise import ConnectWiseClient
@@ -86,6 +88,24 @@ def logo() -> FileResponse:
 def logo_dark() -> FileResponse:
     """Optional version of the logo for dark mode (branding/logo-dark.*)."""
     return _branding_file("logo-dark")
+
+
+# Bundled front-end libraries (Chart.js), served from here so charts work without a CDN.
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+@app.get("/api/answers/{answer_id}/export.xlsx")
+def export_xlsx(answer_id: int, user: dict = Depends(current_user)) -> Response:
+    """Download one of your answers as Excel: the answer, each table, and each chart with its data."""
+    answer = store.get_answer(user["id"], answer_id)
+    if answer is None:
+        raise HTTPException(404, "Answer not found.")
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", answer.get("title") or "report").strip("-")[:50] or "report"
+    return Response(
+        exports.answer_workbook(answer),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="David-{slug}-{answer_id}.xlsx"'},
+    )
 
 
 @app.get("/login")
@@ -193,6 +213,8 @@ class ChatResponse(BaseModel):
     conversation_id: str
     title: str
     model: str
+    answer_id: int | None = None
+    charts: list[dict] = []
     usage: dict | None = None  # token usage and estimated cost; admins only
 
 
@@ -231,11 +253,15 @@ def _run(user: dict, question: str, conversation_id: str | None, title: str, mod
                 if conversation_id is None:
                     conversation_id = store.create_conversation(user["id"], title, model)
                 usage = event.get("usage")
-                store.save_turn(conversation_id, question, event["answer"], event["history"], model, usage)
+                new_messages = event["history"][len(history):]
+                charts = extract_charts(new_messages)
+                answer_id = store.save_turn(conversation_id, question, event["answer"], event["history"],
+                                            model, usage, charts)
                 activity.log_answer(user, conversation_id, model, question, event["answer"],
-                                    event["history"][len(history):], usage, time.monotonic() - started)
+                                    new_messages, usage, time.monotonic() - started)
                 yield {"type": "done", "answer": event["answer"], "conversation_id": conversation_id,
-                       "title": title[:80], "model": model, "usage": usage if user["is_admin"] else None}
+                       "title": title[:80], "model": model, "answer_id": answer_id, "charts": charts,
+                       "usage": usage if user["is_admin"] else None}
         except Exception as exc:
             activity.log_error(user, conversation_id, model, question, _friendly_error(exc)[1])
             raise
@@ -260,12 +286,6 @@ def _friendly_error(exc: Exception) -> tuple[int, str]:
     if isinstance(exc, anthropic.APIConnectionError):
         log.exception("Claude API connection error")
         return 502, "Couldn't reach the AI service."
-    if isinstance(exc, httpx.ConnectError):
-        log.exception("Ollama connection error")
-        return 502, "Couldn't reach Ollama. Is it running on the server?"
-    if isinstance(exc, httpx.TimeoutException):
-        log.exception("Ollama timeout")
-        return 504, "The local AI model took too long. Try a narrower question."
     if isinstance(exc, RuntimeError):
         log.exception("Agent error")
         return 502, str(exc)
