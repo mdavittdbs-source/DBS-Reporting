@@ -43,6 +43,8 @@ class ConnectWiseSettings:
     codebase: str = "v4_6_release"
     # The company custom field that says which POS software a client uses
     software_field: str = "Software"
+    # The project phase whose scheduled day is a site's go-live
+    golive_phase: str = "Deployment"
 
     @classmethod
     def from_env(cls) -> "ConnectWiseSettings":
@@ -54,6 +56,7 @@ class ConnectWiseSettings:
             client_id=_required("CW_CLIENT_ID"),
             codebase=os.environ.get("CW_CODEBASE", "v4_6_release").strip() or "v4_6_release",
             software_field=os.environ.get("CW_SOFTWARE_FIELD", "Software").strip().rstrip(":") or "Software",
+            golive_phase=os.environ.get("CW_GOLIVE_PHASE", "Deployment").strip() or "Deployment",
         )
 
     @property
