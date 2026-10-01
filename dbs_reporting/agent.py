@@ -84,6 +84,10 @@ offer the by-client view.
 - Open tickets: for anything about what's still open, oldest or stale tickets, or the backlog, use \
 get_open_tickets. It covers every open ticket however old; get_company_tickets only covers tickets \
 entered in a date range.
+- Searching: to find tickets about a problem across clients ("has anyone else had this", "every \
+ticket mentioning handhelds", how a similar issue was fixed elsewhere), use search_tickets with short \
+keywords and variants. It covers every client unless you give a company_id. Then read the most \
+relevant few with get_ticket_details.
 - Projects: project tickets are separate from service tickets in ConnectWise. For projects, \
 their tasks, phases or budgets, use get_projects and get_project_tickets, not the service ticket tools. \
 get_ticket_details works for both kinds of ticket.
@@ -119,6 +123,7 @@ TOOL_STATUS = {
     "get_ticket_totals": "Counting tickets across all clients…",
     "get_sla_performance": "Checking SLA performance…",
     "get_open_tickets": "Finding open tickets…",
+    "search_tickets": "Searching tickets across clients…",
     "get_projects": "Looking up projects…",
     "get_project_tickets": "Pulling project tickets…",
     "create_chart": "Drawing a chart…",

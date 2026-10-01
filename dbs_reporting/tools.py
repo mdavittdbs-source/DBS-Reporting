@@ -500,6 +500,67 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
+    def search_tickets(text: str, days: int = 0, company_id: int = 0, include_project_tickets: bool = True,
+                       max_results: int = 40) -> str:
+        """Search ticket summaries across ALL clients (or one) for words, e.g. to find how a problem
+        was handled elsewhere, every ticket mentioning "handheld", or similar past issues.
+
+        Matches ticket summaries (titles), not notes; call get_ticket_details on the most relevant
+        few to read how they were fixed. Returns how many matched, counts by client, and the newest
+        matches (id, summary, client, site, board, status, dates).
+
+        Args:
+            text: Short keywords, not a sentence. Separate alternatives with commas; a ticket matches
+                if its summary contains every word of any one alternative. E.g.
+                "handheld, hand held, scanner sync" or "printer offline, printer not printing".
+                Include spelling variants and synonyms.
+            days: Only tickets entered in the last N days; 0 for any time.
+            company_id: Optional ConnectWise company id from find_company; 0 for all clients.
+            include_project_tickets: Also search project tickets.
+            max_results: How many matches to list (most 100).
+        """
+        phrases = [p.split()[:4] for p in text.split(",") if p.split()][:8]
+        if not phrases:
+            return json.dumps({"error": "Give one or more keywords to search for."})
+        try:
+            days = _clamp_days(days) if days else 0
+            tickets = cw.search_tickets(phrases, days or None, company_id or None)
+            rows = [_compact({
+                "id": t.get("id"),
+                "summary": t.get("summary"),
+                "company": _name(t, "company"),
+                "site": _name(t, "site"),
+                "board": _name(t, "board"),
+                "status": _name(t, "status"),
+                "type": _name(t, "type"),
+                "entered": _date_entered(t),
+                "closed": t.get("closedDate") if t.get("closedFlag") else None,
+            }) for t in tickets]
+            result = {"searched_for": [" ".join(p) for p in phrases], "match_count": len(rows)}
+            if include_project_tickets:
+                try:
+                    found = cw.search_project_tickets(phrases, company_id or None)
+                    if days:
+                        start = datetime.now(timezone.utc) - timedelta(days=days)
+                        found = [t for t in found if (d := parse_dt(_date_entered(t))) is None or d >= start]
+                    projects = [dict(summarize_project_ticket(t), company=_name(t, "company"), kind="project")
+                                for t in found]
+                    rows += [_compact(r) for r in projects]
+                    result["project_ticket_matches"] = len(projects)
+                    result["match_count"] = len(rows)
+                except Exception as exc:
+                    result["project_ticket_error"] = json.loads(_error(exc))["error"]
+            rows.sort(key=lambda r: r.get("entered") or "", reverse=True)
+            result["by_company"] = [[k, v] for k, v in
+                                    Counter(r.get("company") or "(none)" for r in rows).most_common(25)]
+            result["tickets"] = rows[:max(1, min(int(max_results), 100))]
+            if len(tickets) >= 500:
+                result["note"] = "Capped at the 500 newest service tickets; add a date range or narrower words."
+            return json.dumps(result)
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
     def get_projects(company_id: int = 0, include_closed: bool = False) -> str:
         """List ConnectWise projects (project work, not service tickets), for one client or all clients.
 
@@ -608,4 +669,4 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance, get_open_tickets, get_projects, get_project_tickets, create_chart]
+            get_sla_performance, get_open_tickets, search_tickets, get_projects, get_project_tickets, create_chart]

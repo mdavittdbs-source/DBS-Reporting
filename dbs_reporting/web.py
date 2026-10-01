@@ -38,7 +38,8 @@ store = Store()
 users_file = UsersFile(store)
 users_file.ensure_exists()
 users_file.refresh()
-agent = create_agent(ConnectWiseClient(ConnectWiseSettings.from_env()))
+cw_settings = ConnectWiseSettings.from_env()
+agent = create_agent(ConnectWiseClient(cw_settings))
 
 # One question at a time per conversation, so two tabs can't interleave a chat's history.
 _conversation_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
@@ -215,7 +216,8 @@ def logout(response: Response, dbs_session: str | None = Cookie(default=None)) -
 
 @app.get("/api/me")
 def me(user: dict = Depends(current_user)) -> dict:
-    return {"username": user["username"], "display_name": user["display_name"], "is_admin": bool(user["is_admin"])}
+    return {"username": user["username"], "display_name": user["display_name"], "is_admin": bool(user["is_admin"]),
+            "ticket_url": cw_settings.ticket_url}
 
 
 # --- Models and chats ----------------------------------------------------

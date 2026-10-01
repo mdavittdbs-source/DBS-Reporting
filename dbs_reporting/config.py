@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -55,3 +56,18 @@ class ConnectWiseSettings:
     @property
     def base_url(self) -> str:
         return f"https://{self.site}/{self.codebase}/apis/3.0"
+
+    @property
+    def ticket_url(self) -> str:
+        """Link that opens a ticket in ConnectWise, with {id} where the ticket number goes.
+
+        CW_TICKET_URL overrides it ("off" turns links off). Otherwise it's built from CW_SITE, minus the
+        "api-" that cloud API hostnames start with (api-na.myconnectwise.net -> na.myconnectwise.net)."""
+        custom = os.environ.get("CW_TICKET_URL", "").strip()
+        if custom.lower() == "off":
+            return ""
+        if custom:
+            return custom if "{id}" in custom else ""
+        host = self.site[4:] if self.site.lower().startswith("api-") else self.site
+        return (f"https://{host}/{self.codebase}/ConnectWise.aspx?locale=en_US&routeTo=ServiceFV"
+                f"&companyName={quote(self.company_id)}" "&recid={id}")
