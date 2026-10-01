@@ -568,7 +568,22 @@
     else if (log.scrollTop < autoTop - 4) following = false;
     autoTop = Math.min(autoTop, log.scrollTop);
   }, { passive: true });
-  const keepAtEnd = new ResizeObserver(() => { if (following) scrollToEnd(); });
+  // While following, ease down to new content a little each frame rather than jumping.
+  const calm = matchMedia("(prefers-reduced-motion: reduce)");
+  let glide = 0;
+  function glideToEnd() {
+    if (glide) return;
+    if (calm.matches) { scrollToEnd(); return; }
+    const step = () => {
+      const gap = log.scrollHeight - log.clientHeight - log.scrollTop;
+      if (!following || gap < 1) { glide = 0; return; }
+      log.scrollTo({ top: log.scrollTop + Math.max(1, gap * 0.18), behavior: "instant" });
+      autoTop = log.scrollTop;
+      glide = requestAnimationFrame(step);
+    };
+    glide = requestAnimationFrame(step);
+  }
+  const keepAtEnd = new ResizeObserver(() => { if (following) glideToEnd(); });
   keepAtEnd.observe(messages);
   keepAtEnd.observe(log);
 
@@ -1188,15 +1203,35 @@
     const thinking = addThinking();
     const askedAt = Date.now();
     let streamed = null;   // the answer element while text is arriving
-    let text = "";
+    let text = "";         // everything received so far
+    let shownLen = 0;      // how much of it is on screen
     let frame = 0;
+    let drained = null;
+    // Text arrives in bursts. Show it at a steady pace instead, a few words each frame, going faster
+    // the further behind it is so it never lags much.
     const render = () => {
       frame = 0;
-      renderMarkdown(streamed, text);
+      if (!streamed) return;
+      if (shownLen < text.length) {
+        const next = shownLen + Math.max(3, Math.ceil((text.length - shownLen) / 12));
+        const wordEnd = text.slice(next).search(/\s/);
+        shownLen = wordEnd < 0 ? text.length : next + wordEnd;
+        renderMarkdown(streamed, text.slice(0, shownLen));
+      }
+      if (shownLen < text.length) frame = requestAnimationFrame(render);
+      else if (drained) drained();
     };
+    // Waits for the last of the text to be shown (at most a second and a half).
+    const drain = () => new Promise((done) => {
+      if (!streamed || shownLen >= text.length) return done();
+      drained = done;
+      setTimeout(done, 1500);
+      if (!frame) frame = requestAnimationFrame(render);
+    });
     const dropStreamed = () => {
       if (frame) { cancelAnimationFrame(frame); frame = 0; }
       text = "";
+      shownLen = 0;
       if (streamed) { streamed.parentElement.remove(); streamed = null; }
       thinking.el.hidden = false;
     };
@@ -1236,6 +1271,7 @@
         }
       });
       if (!result) throw new Error("The connection was lost before the answer finished.");
+      if (shown()) await drain();
       if (frame) cancelAnimationFrame(frame);
       thinking.stop();
       if (!shown()) {
