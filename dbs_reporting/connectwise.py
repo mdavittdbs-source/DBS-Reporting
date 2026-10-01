@@ -28,6 +28,12 @@ TICKET_OPEN_FIELDS = (
     "priority/name,owner/identifier,owner/name,resources,_info/dateEntered,_info/lastUpdated"
 )
 
+# What a text search returns for each match.
+TICKET_SEARCH_FIELDS = (
+    "id,summary,closedFlag,closedDate,company/id,company/name,site/name,board/name,status/name,"
+    "type/name,subType/name,priority/name,_info/dateEntered"
+)
+
 
 def cw_date(dt: datetime) -> str:
     """Format a datetime for a ConnectWise `conditions` clause, e.g. [2026-09-01T00:00:00Z]."""
@@ -41,6 +47,16 @@ def since(days: int) -> datetime:
 def quote(value: str) -> str:
     """Quote a user-supplied string for use inside a conditions clause."""
     return '"' + value.replace("\\", "").replace('"', "") + '"'
+
+
+def summary_matches(phrases: list[list[str]]) -> str:
+    """A conditions clause matching a summary that contains every word of any one phrase:
+    [["handheld"], ["hand", "held"]] -> (summary like "%handheld%" or (summary like "%hand%" and ...))."""
+    parts = []
+    for words in phrases:
+        likes = [f"summary like {quote('%' + w + '%')}" for w in words]
+        parts.append(likes[0] if len(likes) == 1 else "(" + " and ".join(likes) + ")")
+    return "(" + " or ".join(parts) + ")"
 
 
 class ConnectWiseClient:
@@ -144,6 +160,16 @@ class ConnectWiseClient:
             conditions += f" and board/name={quote(board_name)}"
         return self._tickets(conditions, limit, TICKET_OPEN_FIELDS)
 
+    def search_tickets(self, phrases: list[list[str]], days: int | None = None, company_id: int | None = None,
+                       limit: int = 500) -> list[dict]:
+        """Service tickets for any client whose summary matches, newest first."""
+        conditions = summary_matches(phrases)
+        if days:
+            conditions += f" and dateEntered>={cw_date(since(days))}"
+        if company_id:
+            conditions += f" and company/id={int(company_id)}"
+        return self._tickets(conditions, limit, TICKET_SEARCH_FIELDS)
+
     def ticket(self, ticket_id: int) -> dict:
         return self.get(f"/service/tickets/{int(ticket_id)}")
 
@@ -184,6 +210,14 @@ class ConnectWiseClient:
             conditions.append("closedFlag=false")
         return list(self.get_all("/project/tickets", limit=limit, conditions=" and ".join(conditions) or None,
                                  orderBy="id desc"))
+
+    def search_project_tickets(self, phrases: list[list[str]], company_id: int | None = None,
+                               limit: int = 200) -> list[dict]:
+        """Project tickets for any client whose summary matches, newest first."""
+        conditions = summary_matches(phrases)
+        if company_id:
+            conditions += f" and company/id={int(company_id)}"
+        return list(self.get_all("/project/tickets", limit=limit, conditions=conditions, orderBy="id desc"))
 
     def project_ticket(self, ticket_id: int) -> dict:
         return self.get(f"/project/tickets/{int(ticket_id)}")
