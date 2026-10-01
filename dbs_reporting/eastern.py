@@ -1,4 +1,4 @@
-"""Eastern Time (New York) with a 12-hour clock, for everything David shows.
+"""Eastern Time (New York), month/day/year dates and a 12-hour clock, for everything David shows.
 
 ConnectWise sends times in UTC. The daylight-saving rule is worked out here rather than taken from
 a time-zone database, because Python on Windows doesn't come with one."""
@@ -33,10 +33,15 @@ def clock(dt: datetime) -> str:
     return f"{dt.hour % 12 or 12}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
 
 
+def day(d: date) -> str:
+    """09/30/2026"""
+    return f"{d:%m/%d/%Y}"
+
+
 def stamp(dt: datetime) -> str:
-    """2026-09-30 11:13 AM ET"""
+    """09/30/2026 11:13 AM ET"""
     local = to_eastern(dt)
-    return f"{local:%Y-%m-%d} {clock(local)} ET"
+    return f"{day(local)} {clock(local)} ET"
 
 
 def localize(text: str) -> str:
@@ -44,6 +49,6 @@ def localize(text: str) -> str:
     ConnectWise stores plain dates (project start and end dates), so those stay plain dates."""
     def swap(m: re.Match) -> str:
         if m.group(2, 3, 4) == ("00", "00", "00"):
-            return m.group(1)
+            return day(date.fromisoformat(m.group(1)))
         return stamp(datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}+00:00"))
     return _UTC_STAMP.sub(swap, text)

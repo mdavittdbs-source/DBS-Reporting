@@ -136,7 +136,7 @@ def test_system_prompt_is_frozen_and_date_goes_with_question(monkeypatch):
     assert first["system"] == [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
     # Prompt caching: instructions marked, plus automatic caching of the conversation.
     assert first["cache_control"] == {"type": "ephemeral"}
-    assert first["messages"][0]["content"].startswith(f"(Today: {now():%A} {now():%Y-%m-%d}, ")
+    assert first["messages"][0]["content"].startswith(f"(Today: {now():%A} {now():%m/%d/%Y}, ")
     assert first["messages"][0]["content"].endswith("hi")
     # The second request replays the first turn exactly as it was sent.
     assert second["messages"][:2] == first["messages"][:1] + [second["messages"][1]]

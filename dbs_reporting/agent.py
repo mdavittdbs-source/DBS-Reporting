@@ -63,7 +63,7 @@ def dated(question: str) -> str:
     """Put today's date with the question rather than in the system prompt, so the system prompt
     never changes between turns of a saved chat."""
     today = eastern.now()
-    return f"(Today: {today:%A} {today:%Y-%m-%d}, {eastern.clock(today)} ET)\n\n{question}"
+    return f"(Today: {today:%A} {eastern.day(today)}, {eastern.clock(today)} ET)\n\n{question}"
 
 SYSTEM_PROMPT = """You are the DBS reporting assistant. Managers at an IT managed service provider \
 ask you questions about their clients' service tickets and time in ConnectWise Manage.
@@ -96,8 +96,9 @@ type/subtype breakdown only when it adds something.
 - Pull ticket details for a few representative tickets when root causes or resolutions matter.
 - Data from earlier questions in a chat is removed once they're answered; your earlier answers \
 remain. If a follow-up needs details you no longer have, call the tool again rather than guessing.
-- Times: tool results give times in Eastern Time (ET) with AM/PM. Write times the same way, e.g. \
-"3:13 PM ET", never in UTC or 24-hour time. Days ("today", "yesterday") are Eastern days.
+- Dates and times: tool results give dates as month/day/year and times in Eastern Time (ET) with \
+AM/PM. Write them the same way, e.g. "10/01/2026 3:13 PM ET", never year-first, UTC or 24-hour \
+time. Days ("today", "yesterday") are Eastern days.
 - Every number you report must come from tool results. Don't estimate or invent data. If a tool \
 returns an error, tell the user plainly what failed.
 
