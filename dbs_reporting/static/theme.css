@@ -9,7 +9,7 @@
 
   /* Light: pale blue-white page, white panels */
   --bg: #f1f4f9;
-  --panel: rgba(255, 255, 255, .78);      /* sidebar: mostly solid, the light shows through softly */
+  --panel: rgba(255, 255, 255, .45);      /* sidebar: see-through, the light shows behind it */
   --core: #ffffff;                        /* cards */
   --core-hi: inset 0 1px 1px rgba(255, 255, 255, .9);
   --shell: rgba(11, 13, 18, .035);        /* the outer frame around cards */
@@ -19,8 +19,8 @@
   --hair: rgba(11, 13, 18, .07);
   --hover: rgba(24, 62, 124, .06);
   --text: #0b0d12;
-  --muted: rgba(11, 13, 18, .62);
-  --faint: rgba(11, 13, 18, .42);
+  --muted: rgba(11, 13, 18, .72);
+  --faint: rgba(11, 13, 18, .52);
   --pill: rgba(24, 62, 124, .07);
   --pill-ink: #183e7c;
   --cta: #0b0d12;
@@ -33,16 +33,52 @@
   --ring: 0 0 0 3px rgba(24, 62, 124, .25);
   --ambient: 0 30px 60px -30px rgba(15, 23, 42, .18);
   --grain: .025;
-  --orb-a: rgba(80, 135, 235, .42);
-  --orb-b: rgba(24, 62, 124, .20);
-  --orb-c: rgba(110, 165, 245, .34);
-  --orb-d: rgba(60, 100, 215, .16);
+  --orb-a: rgba(80, 135, 235, .24);
+  --orb-b: rgba(24, 62, 124, .10);
+  --orb-c: rgba(110, 165, 245, .18);
+  --orb-d: rgba(60, 100, 215, .08);
+}
+/* Dark colours: when chosen in the theme switch, or when "System" is chosen and the computer is in
+   dark mode. (The same list twice, because a media query can't share a rule with a plain selector.) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  /* Dark: blue-black page, glowing navy and blue light */
+  --bg: #04060c;
+  --panel: rgba(10, 12, 17, .38);
+  --core: #0d0f14;
+  --core-hi: inset 0 1px 1px rgba(255, 255, 255, .07);
+  --shell: rgba(255, 255, 255, .035);
+  --shell-ring: rgba(255, 255, 255, .08);
+  --glass: rgba(255, 255, 255, .05);
+  --glass-ring: rgba(255, 255, 255, .10);
+  --hair: rgba(255, 255, 255, .07);
+  --hover: rgba(255, 255, 255, .05);
+  --text: #ededef;
+  --muted: rgba(237, 237, 239, .74);
+  --faint: rgba(237, 237, 239, .50);
+  --pill: rgba(255, 255, 255, .06);
+  --pill-ink: rgba(237, 237, 239, .78);
+  --cta: #ededef;
+  --cta-ink: #05070d;
+  --cta-icon: rgba(5, 7, 13, .09);
+  --tag-bg: rgba(122, 167, 255, .13);
+  --tag-ink: #a3c1ff;
+  --danger: #f0a090;
+  --danger-soft: rgba(224, 128, 108, .14);
+  --ring: 0 0 0 3px rgba(122, 167, 255, .30);
+  --ambient: 0 40px 80px -40px rgba(0, 0, 0, .9);
+  --grain: .045;
+  --orb-a: rgba(30, 74, 168, .42);
+  --orb-b: rgba(58, 124, 245, .24);
+  --orb-c: rgba(26, 60, 150, .32);
+  --orb-d: rgba(80, 100, 230, .14);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     /* Dark: blue-black page, glowing navy and blue light */
     --bg: #04060c;
-    --panel: rgba(10, 12, 17, .78);
+    --panel: rgba(10, 12, 17, .38);
     --core: #0d0f14;
     --core-hi: inset 0 1px 1px rgba(255, 255, 255, .07);
     --shell: rgba(255, 255, 255, .035);
@@ -52,8 +88,8 @@
     --hair: rgba(255, 255, 255, .07);
     --hover: rgba(255, 255, 255, .05);
     --text: #ededef;
-    --muted: rgba(237, 237, 239, .64);
-    --faint: rgba(237, 237, 239, .40);
+    --muted: rgba(237, 237, 239, .74);
+    --faint: rgba(237, 237, 239, .50);
     --pill: rgba(255, 255, 255, .06);
     --pill-ink: rgba(237, 237, 239, .78);
     --cta: #ededef;
@@ -66,12 +102,13 @@
     --ring: 0 0 0 3px rgba(122, 167, 255, .30);
     --ambient: 0 40px 80px -40px rgba(0, 0, 0, .9);
     --grain: .045;
-    --orb-a: rgba(30, 74, 168, .78);
-    --orb-b: rgba(58, 124, 245, .50);
-    --orb-c: rgba(26, 60, 150, .62);
-    --orb-d: rgba(80, 100, 230, .30);
+    --orb-a: rgba(30, 74, 168, .42);
+    --orb-b: rgba(58, 124, 245, .24);
+    --orb-c: rgba(26, 60, 150, .32);
+    --orb-d: rgba(80, 100, 230, .14);
   }
 }
+:root[data-theme="light"] { color-scheme: light; }
 
 html { background: var(--bg); }
 body { background: var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }

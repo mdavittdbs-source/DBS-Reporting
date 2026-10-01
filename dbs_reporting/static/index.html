@@ -13,6 +13,7 @@
 <script src="/static/vendor/marked.min.js"></script>
 <script src="/static/vendor/purify.min.js"></script>
 <script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/theme.css">
 <style>
   :root { --z-popover: 20; --z-drawer: 30; --z-toast: 40; }
@@ -87,7 +88,16 @@
   .popover .row button { text-align: center; }
   .empty-list { color: var(--faint); font-size: 13px; padding: 10px 12px; line-height: 1.5; }
 
-  .me { border-top: 1px solid var(--hair); margin: 0 10px; padding: 14px 6px; display: flex; align-items: center; gap: 10px; }
+  .appearance { border-top: 1px solid var(--hair); margin: 0 10px; padding: 12px 6px 2px; display: flex; align-items: center;
+                justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--muted); }
+  .theme-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pill);
+                  box-shadow: inset 0 0 0 1px var(--hair); }
+  .theme-switch button { width: 32px; height: 26px; border: 0; border-radius: 999px; background: none; color: var(--faint);
+                         display: grid; place-items: center; transition: background .2s, color .2s; }
+  .theme-switch button:hover { color: var(--text); }
+  .theme-switch button[aria-checked="true"] { background: var(--core); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+  .theme-switch svg { width: 15px; height: 15px; }
+  .me { margin: 0 10px; padding: 12px 6px 14px; display: flex; align-items: center; gap: 10px; }
   .avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--pill); color: var(--text);
             box-shadow: inset 0 0 0 1px var(--hair); display: grid; place-items: center; font-size: 11.5px;
             font-weight: 600; flex-shrink: 0; }
@@ -98,21 +108,16 @@
   /* ---------- Main ---------- */
   main { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   /* The chat title floats as a small glass pill */
-  header { position: absolute; top: 16px; left: 0; right: 0; z-index: 5;
-           display: flex; align-items: center; gap: 10px; margin: 0 auto; width: max-content;
-           max-width: min(720px, calc(100% - 48px)); padding: 8px 18px; border-radius: 999px;
-           border: 1px solid var(--glass-ring); background: var(--panel); box-shadow: var(--ambient);
-           backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
-  .live { width: 7px; height: 7px; border-radius: 50%; background: #34d399; flex-shrink: 0;
-          box-shadow: 0 0 0 4px rgba(52, 211, 153, .15); }
-  #chat-title { min-width: 0; font-size: 13px; font-weight: 500; color: var(--muted);
+  /* The chat title: plain text at the top of the chat area */
+  header { display: flex; align-items: center; gap: 10px; padding: 20px 28px 4px; min-height: 0; }
+  #chat-title { min-width: 0; font-size: 14px; font-weight: 600; letter-spacing: -.01em; color: var(--text);
                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #toggle { display: none; background: none; border: 0; border-radius: 999px; padding: 4px; margin-left: -8px; line-height: 0; }
   #toggle svg { width: 18px; height: 18px; }
 
-  #log { flex: 1; overflow-y: auto; padding: 88px 24px 16px; scroll-behavior: smooth;
-         -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 30px, #000 88px, #000 calc(100% - 24px), transparent);
-                 mask-image: linear-gradient(to bottom, transparent 0, transparent 30px, #000 88px, #000 calc(100% - 24px), transparent); }
+  #log { flex: 1; overflow-y: auto; padding: 28px 24px 16px; scroll-behavior: smooth;
+         -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 24px), transparent);
+                 mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 24px), transparent); }
   .inner { max-width: 840px; margin: 0 auto; }
   #messages { display: flex; flex-direction: column; gap: 34px; }
 
@@ -277,11 +282,9 @@
                                   background: rgba(4, 6, 12, .5); }
     #toast { bottom: auto; top: 16px; }
     #toast.show { transform: translate(-50%, 0); }
-    header { top: 10px; max-width: calc(100% - 24px); padding: 6px 16px 6px 14px; }
+    header { padding: 12px 14px 2px; }
     #toggle { display: inline-block; margin-left: 0; }
-    #log { padding: 70px 16px 12px;
-           -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 22px, #000 70px, #000 calc(100% - 16px), transparent);
-                   mask-image: linear-gradient(to bottom, transparent 0, transparent 22px, #000 70px, #000 calc(100% - 16px), transparent); }
+    #log { padding: 20px 16px 12px; }
     #form { padding: 6px 10px 10px; }
     .composer-hint { display: none; }
     .msg.user { max-width: 90%; }
@@ -327,6 +330,20 @@
       <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
     </button>
     <ul id="chats"></ul>
+    <div class="appearance">
+      <span id="theme-label">Theme</span>
+      <div class="theme-switch" role="radiogroup" aria-labelledby="theme-label">
+        <button type="button" role="radio" data-choice="light" aria-label="Light" title="Light">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" role="radio" data-choice="system" aria-label="Match system" title="Match system">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M6 14h4M8 11.5V14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" role="radio" data-choice="dark" aria-label="Dark" title="Dark">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
     <div class="me">
       <span class="avatar" id="avatar" aria-hidden="true"></span>
       <span id="me"></span>
@@ -339,7 +356,6 @@
       <button id="toggle" type="button" aria-label="Show chats">
         <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>
-      <span class="live" title="Answers come from live ConnectWise data" aria-hidden="true"></span>
       <span id="chat-title">New chat</span>
     </header>
     <div id="log"><div class="inner"><div id="messages" aria-live="polite"></div></div></div>
@@ -380,6 +396,7 @@
   let conversationId = null;
   let modelInfo = { default: null, models: [] };
   let isAdmin = false;
+  let firstName = "";  // for the greeting on the start screen
   let busy = false;
   let view = 0;  // changes whenever another chat is shown, so a finishing answer can't land in the wrong one
 
@@ -537,7 +554,6 @@
              tooltip: "#161922",
              series: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"] },
   };
-  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const liveCharts = [];  // {spec, canvas, chart} so charts can redraw when the theme changes
 
@@ -674,13 +690,22 @@
     } };
   }
 
-  function themeName() { return darkQuery.matches ? "dark" : "light"; }
+  function themeName() { return davidTheme.effective(); }
 
   function drawChart(entry) {
     if (entry.chart) entry.chart.destroy();
     entry.chart = new Chart(entry.canvas, chartConfig(entry.spec, CHART_THEMES[themeName()], false));
   }
-  darkQuery.addEventListener("change", () => liveCharts.forEach((e) => e.canvas.isConnected && drawChart(e)));
+  davidTheme.onChange(() => liveCharts.forEach((e) => e.canvas.isConnected && drawChart(e)));
+
+  // Theme switch at the bottom of the sidebar: Light / Match system / Dark.
+  const themeButtons = document.querySelectorAll(".theme-switch button");
+  function showThemeChoice() {
+    const choice = davidTheme.get();
+    themeButtons.forEach((b) => b.setAttribute("aria-checked", String(b.dataset.choice === choice)));
+  }
+  themeButtons.forEach((b) => { b.onclick = () => { davidTheme.set(b.dataset.choice); showThemeChoice(); }; });
+  showThemeChoice();
 
   // A light-theme, fixed-size rendering for PNG downloads and PDF reports.
   function chartImage(spec) {
@@ -871,8 +896,10 @@
     const start = document.createElement("section");
     start.className = "start";
     start.innerHTML = '<span class="eyebrow">David · ConnectWise intelligence</span>' +
-      "<h2>Ask anything about your clients.</h2>" +
-      "<p>Tickets, time, SLAs and projects, answered from live ConnectWise data. Follow-up questions keep the context.</p>";
+      "<h2></h2>" +
+      "<p>Ask anything about your clients: tickets, time, SLAs and projects, answered from live ConnectWise data. " +
+      "Follow-up questions keep the context.</p>";
+    start.querySelector("h2").textContent = firstName ? `Hey, ${firstName}` : "Hey there";
     const list = document.createElement("div");
     list.className = "suggestions";
     EXAMPLES.forEach(([kind, text], i) => {
@@ -1246,6 +1273,7 @@
     const me = await api("/api/me");
     $("me").textContent = me.display_name;
     isAdmin = me.is_admin;
+    firstName = me.display_name.trim().split(/\s+/)[0] || "";
     $("avatar").textContent = me.display_name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
     modelInfo = await api("/api/models");
     for (const m of modelInfo.models) modelSelect.add(new Option(m.label, m.id));
