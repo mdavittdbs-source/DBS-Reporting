@@ -129,6 +129,10 @@ Every answer records the tokens it used (across all of its steps) and an estimat
   Anthropic's cache at about a tenth of the normal input price. The cached share shows up in the
   usage line and summary.
 
+- **Follow-ups stay cheap.** Once a question is answered, the raw ConnectWise data behind it (often
+  thousands of tokens of ticket lists) is dropped from the chat; David's answer stays. A follow-up
+  that needs the details again fetches them fresh. Small results such as company lookups are kept.
+
 Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic console
 (Settings → Usage / Cost) has exact billing.
 

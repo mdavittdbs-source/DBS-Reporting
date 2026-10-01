@@ -175,3 +175,46 @@ def test_unrequested_chart_is_refused(monkeypatch):
     agent = ReportingAgent(make_client([]), fake_claude([], list(turns)))
     _, history = agent.respond([], "chart tickets at Joe's Pizza")
     assert len(extract_charts(history)) == 1
+
+
+def test_compact_history_drops_only_large_results():
+    from dbs_reporting.agent import OMITTED_RESULT, compact_history
+
+    big = json.dumps({"tickets": [{"id": i, "summary": "Printer offline"} for i in range(500)]})
+    history = [
+        {"role": "user", "content": "q"},
+        {"role": "assistant", "content": [{"type": "tool_use", "id": "a", "name": "get_company_tickets", "input": {}},
+                                          {"type": "tool_use", "id": "b", "name": "find_company", "input": {}}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "a", "content": big},
+                                     {"type": "tool_result", "tool_use_id": "b", "content": '[{"id": 42}]'}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "Printers were the top issue."}]},
+    ]
+    original = json.loads(json.dumps(history))
+    compacted = compact_history(history)
+    results = compacted[2]["content"]
+    assert results[0]["content"] == OMITTED_RESULT and results[0]["tool_use_id"] == "a"
+    assert results[1]["content"] == '[{"id": 42}]'  # small results (company ids) are kept
+    assert compacted[1] == history[1] and compacted[3] == history[3]  # lookups and the answer stay
+    assert history == original  # the input isn't modified
+    assert compact_history(compacted) == compacted
+
+
+def test_follow_ups_dont_resend_earlier_data(monkeypatch):
+    import dbs_reporting.agent as agent_mod
+
+    monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+    monkeypatch.delenv("CLAUDE_MODELS", raising=False)
+    monkeypatch.setattr(agent_mod, "KEEP_RESULT_CHARS", 100)  # the test tickets are small
+    sent = []
+    turns = [([{"type": "tool_use", "id": "t1", "name": "get_company_tickets", "input": {"company_id": 42}}],
+              "tool_use"),
+             ([{"type": "text", "text": "3 tickets, mostly printers."}], "end_turn")]
+    agent = ReportingAgent(make_client([]), fake_claude(sent, turns))
+    _, history = agent.respond([], "issues at Joe's?")
+    # While answering, Claude saw the full data...
+    assert "Printer offline" in json.dumps(sent[1][1]["messages"])
+    # ...but the saved chat and the follow-up don't carry it.
+    assert "Printer offline" not in json.dumps(history)
+    agent.respond(history, "and last week?")
+    follow_up = json.dumps(sent[-1][1]["messages"])
+    assert "Printer offline" not in follow_up and "3 tickets, mostly printers." in follow_up

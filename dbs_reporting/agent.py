@@ -94,6 +94,8 @@ what actually went wrong, based on their summaries (e.g. "printer offline", "Out
 prompts", "POS terminal won't connect"), and give a count for each group. Mention the ticket \
 type/subtype breakdown only when it adds something.
 - Pull ticket details for a few representative tickets when root causes or resolutions matter.
+- Data from earlier questions in a chat is removed once they're answered; your earlier answers \
+remain. If a follow-up needs details you no longer have, call the tool again rather than guessing.
 - Every number you report must come from tool results. Don't estimate or invent data. If a tool \
 returns an error, tell the user plainly what failed.
 
@@ -121,6 +123,35 @@ TOOL_STATUS = {
     "get_project_tickets": "Pulling project tickets…",
     "create_chart": "Drawing a chart…",
 }
+
+
+# Once a question is answered, the raw ConnectWise data behind it (often hundreds of tickets) is
+# dropped from the chat's history; David's answer stays. Otherwise every follow-up re-sends all of
+# it. Small results (company lookups, chart confirmations, errors) are kept.
+KEEP_RESULT_CHARS = 2000
+OMITTED_RESULT = ("[ConnectWise data from an earlier question was removed to save tokens. "
+                  "Call the tool again if you need it.]")
+
+
+def _result_size(content) -> int:
+    return len(content) if isinstance(content, str) else len(json.dumps(content))
+
+
+def compact_history(messages: list) -> list:
+    """Replace large tool results with a short note. Returns new lists; the input is unchanged."""
+    compacted = []
+    for message in messages:
+        content = message.get("content") if isinstance(message, dict) else None
+        if message.get("role") == "user" and isinstance(content, list):
+            blocks = [
+                {**b, "content": OMITTED_RESULT}
+                if isinstance(b, dict) and b.get("type") == "tool_result"
+                and _result_size(b.get("content")) > KEEP_RESULT_CHARS else b
+                for b in content
+            ]
+            message = {**message, "content": blocks}
+        compacted.append(message)
+    return compacted
 
 
 def _to_json(block) -> dict:
@@ -167,7 +198,7 @@ class ReportingAgent:
         if model not in self.models:
             raise ValueError(f"Model {model!r} isn't enabled. Choose one of: {', '.join(self.models)}")
 
-        messages = list(history) + [{"role": "user", "content": dated(question)}]
+        messages = compact_history(history) + [{"role": "user", "content": dated(question)}]
         final = None
         json_retries = 0
         usage = usage_mod.empty()
@@ -231,7 +262,8 @@ class ReportingAgent:
         answer = "\n".join(b.text for b in final.content if b.type == "text").strip()
         if final.stop_reason == "max_tokens":
             answer += "\n\n_(Answer was cut off. Try a narrower question.)_"
-        yield {"type": "done", "answer": answer or "I couldn't produce an answer for that.", "history": messages,
+        yield {"type": "done", "answer": answer or "I couldn't produce an answer for that.",
+               "history": compact_history(messages),
                "usage": usage}
 
 
