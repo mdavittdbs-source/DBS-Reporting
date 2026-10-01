@@ -159,3 +159,19 @@ def test_cut_off_tool_call_keeps_the_chat_usable(monkeypatch):
     assert history[-1]["content"][0]["tool_use_id"] == "tu_1" and history[-1]["content"][0]["is_error"]
     agent.respond(json.loads(json.dumps(history)), "try again")
     assert len(sent) == 2
+
+
+def test_unrequested_chart_is_refused(monkeypatch):
+    from dbs_reporting.charts import extract_charts
+
+    monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+    monkeypatch.delenv("CLAUDE_MODELS", raising=False)
+    chart = {"title": "T", "chart_type": "bar", "labels": ["a", "b"], "series": [{"name": "n", "values": [1, 2]}]}
+    turns = [([{"type": "tool_use", "id": "c1", "name": "create_chart", "input": chart}], "tool_use"),
+             ([{"type": "text", "text": "Done."}], "end_turn")]
+    agent = ReportingAgent(make_client([]), fake_claude([], list(turns)))
+    _, history = agent.respond([], "tickets at Joe's Pizza?")
+    assert extract_charts(history) == []
+    agent = ReportingAgent(make_client([]), fake_claude([], list(turns)))
+    _, history = agent.respond([], "chart tickets at Joe's Pizza")
+    assert len(extract_charts(history)) == 1

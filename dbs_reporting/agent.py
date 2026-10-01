@@ -8,7 +8,7 @@ from datetime import date
 import anthropic
 
 from .connectwise import ConnectWiseClient
-from .tools import build_tools
+from .tools import build_tools, wants_chart
 from . import usage as usage_mod
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
@@ -100,8 +100,9 @@ returns an error, tell the user plainly what failed.
 How to answer:
 - Lead with the answer. Managers read this quickly.
 - Use a short ranked list or small table for breakdowns, and cite example ticket numbers (#12345).
-- When a chart would make a comparison or trend clearer (3+ items, or change over time), call \
-create_chart with numbers from your tool results. Keep the key numbers in your text too.
+- Only call create_chart when the user asks for a chart, graph, plot or visual. Never add a chart \
+they didn't ask for. When you do chart, use numbers from your tool results and keep the key numbers \
+in your text too.
 - State the date range and total ticket count you analyzed.
 - End with one or two practical observations when the data supports them, such as a recurring \
 issue that suggests a project or a user who needs training."""
@@ -132,7 +133,7 @@ def _to_json(block) -> dict:
 class ReportingAgent:
     def __init__(self, cw: ConnectWiseClient, client: anthropic.Anthropic | None = None):
         self._client = client or anthropic.Anthropic()
-        self._tools = build_tools(cw)
+        self._cw = cw
         self.default_model, self.models = configured_models()
         self._effort = os.environ.get("CLAUDE_EFFORT", "medium").strip() or "medium"
 
@@ -170,6 +171,7 @@ class ReportingAgent:
         final = None
         json_retries = 0
         usage = usage_mod.empty()
+        tools = build_tools(self._cw, charts_allowed=wants_chart(question))
         while True:
             runner = self._client.beta.messages.tool_runner(
                 model=model,
@@ -179,7 +181,7 @@ class ReportingAgent:
                 # conversation, so each step and follow-up re-reads earlier context at ~1/10 the price.
                 system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
                 cache_control={"type": "ephemeral"},
-                tools=self._tools,
+                tools=tools,
                 messages=messages,
                 max_iterations=20,
                 stream=True,

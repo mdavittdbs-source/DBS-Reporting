@@ -1,6 +1,7 @@
 """Tools Claude can call to read ConnectWise data. All tools are read-only."""
 
 import json
+import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from statistics import median
@@ -165,7 +166,18 @@ def _stats(values: list[float]) -> dict:
             "average_hours": round(sum(values) / len(values), 1)}
 
 
-def build_tools(cw: ConnectWiseClient) -> list:
+# Words that mean someone asked for a chart. Charts cost extra tokens, so David only draws one
+# when the question asks for it.
+CHART_REQUEST = re.compile(r"\b(chart|graph|plot|visual|visuali[sz]|diagram|pie|histogram)", re.IGNORECASE)
+
+
+def wants_chart(question: str) -> bool:
+    return bool(CHART_REQUEST.search(question))
+
+
+def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
+    """The tools for one question. With charts_allowed=False, create_chart refuses (its
+    definition stays the same, so the prompt cache still matches)."""
     @beta_tool(eager_input_streaming=True)
     def find_company(name: str) -> str:
         """Look up ConnectWise companies (clients) by name.
@@ -572,9 +584,9 @@ def build_tools(cw: ConnectWiseClient) -> list:
                      subtitle: str = "", x_label: str = "", y_label: str = "") -> str:
         """Add a chart to your answer. It's drawn below your text and can be exported.
 
-        Use it when a picture makes the numbers clearer: ranking 3+ clients/sites/boards, a trend
-        over time, or a breakdown within groups. Use numbers from your tool results only. Don't
-        chart a single number. At most two charts per answer.
+        Only use this when the user asks for a chart, graph, plot or visual. Never add one
+        unprompted. Use numbers from your tool results only. Don't chart a single number. At most
+        two charts per answer.
 
         Args:
             title: Short title, e.g. "Tickets by site, last 30 days".
@@ -585,6 +597,8 @@ def build_tools(cw: ConnectWiseClient) -> list:
             x_label: Optional axis label for the categories.
             y_label: Optional axis label for the values, e.g. "Tickets" or "Hours".
         """
+        if not charts_allowed:
+            return json.dumps({"error": "Chart not added: the user didn't ask for a chart. Answer in text."})
         chart, error = validate_chart({"title": title, "chart_type": chart_type, "labels": labels,
                                        "series": series, "subtitle": subtitle, "x_label": x_label,
                                        "y_label": y_label})
