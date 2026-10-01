@@ -418,6 +418,76 @@ def build_tools(cw: ConnectWiseClient) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
+    def get_open_tickets(company_id: int = 0, board_name: str = "", oldest: int = 50) -> str:
+        """Service tickets that are still open, however long ago they were entered, oldest first.
+
+        Use for "oldest open tickets", "what's still open at Jimmy's Grille", "stale tickets",
+        "open ticket backlog by board/technician". Unlike get_company_tickets, this isn't limited to
+        a date range. Returns the open count, age buckets, median age, counts by status, board,
+        priority, owner (and client, when looking at all clients), and the oldest tickets with
+        their age in days and days since last update.
+
+        Args:
+            company_id: Optional ConnectWise company id from find_company; 0 for all clients.
+            board_name: Optional exact service board name, e.g. "Help Desk".
+            oldest: How many of the oldest tickets to list (most 200).
+        """
+        try:
+            tickets = cw.open_tickets(company_id or None, board_name or None)
+            now = datetime.now(timezone.utc)
+
+            def days_since(value) -> int | None:
+                dt = parse_dt(value)
+                return (now - dt).days if dt else None
+
+            rows = []
+            for t in tickets:
+                owner = t.get("owner") or {}
+                rows.append(_compact({
+                    "id": t.get("id"),
+                    "summary": t.get("summary"),
+                    "company": _name(t, "company"),
+                    "site": _name(t, "site"),
+                    "board": _name(t, "board"),
+                    "status": _name(t, "status"),
+                    "priority": _name(t, "priority"),
+                    "type": _name(t, "type"),
+                    "owner": owner.get("name") or owner.get("identifier"),
+                    "resources": t.get("resources"),
+                    "entered": _date_entered(t),
+                    "age_days": days_since(_date_entered(t)),
+                    "days_since_update": days_since((t.get("_info") or {}).get("lastUpdated")),
+                }))
+            rows.sort(key=lambda r: -(r.get("age_days") if r.get("age_days") is not None else -1))
+            ages = [r["age_days"] for r in rows if r.get("age_days") is not None]
+
+            def top(field: str, n: int = 15) -> list[list]:
+                return [[k, v] for k, v in Counter(r.get(field) or "(none)" for r in rows).most_common(n)]
+
+            buckets = {"0-7 days": 0, "8-30 days": 0, "31-90 days": 0, "91-365 days": 0, "over 1 year": 0}
+            for a in ages:
+                key = ("0-7 days" if a <= 7 else "8-30 days" if a <= 30 else "31-90 days" if a <= 90
+                       else "91-365 days" if a <= 365 else "over 1 year")
+                buckets[key] += 1
+            result = {
+                "open_count": len(rows),
+                "median_age_days": round(median(ages)) if ages else None,
+                "age_buckets": buckets,
+                "by_status": top("status"),
+                "by_board": top("board"),
+                "by_priority": top("priority"),
+                "by_owner": top("owner"),
+                "oldest": rows[:max(1, min(int(oldest), 200))],
+            }
+            if not company_id:
+                result["by_company"] = top("company", 25)
+            if len(tickets) >= 5000:
+                result["note"] = "Capped at 5000 open tickets; filter by client or board for exact figures."
+            return json.dumps(result)
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
     def get_projects(company_id: int = 0, include_closed: bool = False) -> str:
         """List ConnectWise projects (project work, not service tickets), for one client or all clients.
 
@@ -524,4 +594,4 @@ def build_tools(cw: ConnectWiseClient) -> list:
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance, get_projects, get_project_tickets, create_chart]
+            get_sla_performance, get_open_tickets, get_projects, get_project_tickets, create_chart]

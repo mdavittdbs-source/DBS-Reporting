@@ -23,6 +23,7 @@ Manager (web chat) ──► FastAPI ──► Claude (claude-sonnet-5-5) ──
 | `get_company_time` | Hours logged in the last N days by technician, work type and ticket |
 | `get_ticket_totals` | Tickets across **all** clients in the last N days, ranked by client, site, board, type, priority, source or status, with open counts and top ticket types |
 | `get_sla_performance` | In-SLA vs. breached tickets and first-response/resolution times, by client, board, priority or SLA |
+| `get_open_tickets` | Every open ticket however old (for one client or all), oldest first, with age buckets and counts by status, board, priority and owner |
 | `get_projects` | Projects for one client or all: status, manager, dates, percent complete, budget vs actual hours |
 | `get_project_tickets` | Project tickets (tasks) for a project or client, by project, phase and status, with hours |
 | `create_chart` | Adds a chart under the answer (bar, horizontal bar, line or stacked bar) |

@@ -22,6 +22,12 @@ TICKET_SUMMARY_FIELDS = (
     "type/name,subType/name,priority/name,source/name"
 )
 
+# What open-ticket (aging) reports need.
+TICKET_OPEN_FIELDS = (
+    "id,summary,closedFlag,company/id,company/name,site/name,board/name,status/name,type/name,"
+    "priority/name,owner/identifier,owner/name,resources,_info/dateEntered,_info/lastUpdated"
+)
+
 
 def cw_date(dt: datetime) -> str:
     """Format a datetime for a ConnectWise `conditions` clause, e.g. [2026-09-01T00:00:00Z]."""
@@ -127,6 +133,16 @@ class ConnectWiseClient:
         if board_name:
             conditions += f" and board/name={quote(board_name)}"
         return self._tickets(conditions, limit, TICKET_SUMMARY_FIELDS)
+
+    def open_tickets(self, company_id: int | None = None, board_name: str | None = None,
+                     limit: int = 5000) -> list[dict]:
+        """Service tickets that are still open, however long ago they were entered."""
+        conditions = "closedFlag=false"
+        if company_id:
+            conditions += f" and company/id={int(company_id)}"
+        if board_name:
+            conditions += f" and board/name={quote(board_name)}"
+        return self._tickets(conditions, limit, TICKET_OPEN_FIELDS)
 
     def ticket(self, ticket_id: int) -> dict:
         return self.get(f"/service/tickets/{int(ticket_id)}")

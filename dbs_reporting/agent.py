@@ -81,6 +81,9 @@ several companies and it isn't obvious which one is meant, ask a short clarifyin
 tickets"), use get_ticket_totals. Don't look clients up one by one. "Sites" usually means the site \
 or location on the ticket (group_by="site"); if it could also mean clients, answer by site and \
 offer the by-client view.
+- Open tickets: for anything about what's still open, oldest or stale tickets, or the backlog, use \
+get_open_tickets. It covers every open ticket however old; get_company_tickets only covers tickets \
+entered in a date range.
 - Projects: project tickets are separate from service tickets in ConnectWise. For projects, \
 their tasks, phases or budgets, use get_projects and get_project_tickets, not the service ticket tools. \
 get_ticket_details works for both kinds of ticket.
@@ -112,6 +115,7 @@ TOOL_STATUS = {
     "get_company_time": "Adding up time entries…",
     "get_ticket_totals": "Counting tickets across all clients…",
     "get_sla_performance": "Checking SLA performance…",
+    "get_open_tickets": "Finding open tickets…",
     "get_projects": "Looking up projects…",
     "get_project_tickets": "Pulling project tickets…",
     "create_chart": "Drawing a chart…",
