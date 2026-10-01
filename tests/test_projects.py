@@ -5,6 +5,7 @@ import httpx
 from test_tools import SETTINGS, tools_by_name
 
 from dbs_reporting.connectwise import ConnectWiseClient
+from dbs_reporting.eastern import localize
 
 PROJECTS = [
     {"id": 7, "name": "Office move", "company": {"id": 42, "name": "Jimmy's Grille"}, "status": {"name": "In Progress"},
@@ -61,7 +62,7 @@ def test_project_tickets():
     assert result["ticket_count"] == 2 and result["open_count"] == 1
     assert result["by_phase"] == [["Build", 1], ["Plan", 1]]
     assert result["tickets"][0] == {"id": 501, "summary": "Run cabling", "project": "Office move", "project_id": 7,
-                                    "phase": "Build", "status": "Open", "entered": RECENT,
+                                    "phase": "Build", "status": "Open", "entered": localize(RECENT),
                                     "budget_hours": 8.0, "actual_hours": 10.0, "resources": "sam"}
     assert requests[0].url.params["conditions"] == "project/id=7"
     recent = json.loads(tools["get_project_tickets"].call({"company_id": 42, "days": 60}))

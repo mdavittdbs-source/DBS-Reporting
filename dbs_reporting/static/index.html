@@ -551,10 +551,26 @@
     toast("Answer copied");
   }
 
+  // The chat stays scrolled to the newest content as an answer arrives and when it finishes (tables,
+  // buttons and charts are added at the end), unless the person scrolls up to read; scrolling back
+  // to the bottom turns it back on.
+  const log = $("log");
+  let following = true;
+  let autoTop = 0;  // where we last scrolled to, so the person's own scrolling can be told apart
+
   function scrollToEnd() {
-    const log = $("log");
-    log.scrollTop = log.scrollHeight;
+    following = true;
+    log.scrollTo({ top: log.scrollHeight, behavior: "instant" });
+    autoTop = log.scrollTop;
   }
+  log.addEventListener("scroll", () => {
+    if (log.scrollHeight - log.scrollTop - log.clientHeight < 8) following = true;
+    else if (log.scrollTop < autoTop - 4) following = false;
+    autoTop = Math.min(autoTop, log.scrollTop);
+  }, { passive: true });
+  const keepAtEnd = new ResizeObserver(() => { if (following) scrollToEnd(); });
+  keepAtEnd.observe(messages);
+  keepAtEnd.observe(log);
 
   function addUser(text) {
     const div = document.createElement("div");
@@ -1143,11 +1159,6 @@
     }
   }
 
-  function nearBottom() {
-    const log = $("log");
-    return log.scrollHeight - log.scrollTop - log.clientHeight < 120;
-  }
-
   // Reads the server's one-JSON-event-per-line stream and calls onEvent for each.
   async function readEvents(response, onEvent) {
     const reader = response.body.getReader();
@@ -1181,9 +1192,7 @@
     let frame = 0;
     const render = () => {
       frame = 0;
-      const follow = nearBottom();
       renderMarkdown(streamed, text);
-      if (follow) scrollToEnd();
     };
     const dropStreamed = () => {
       if (frame) { cancelAnimationFrame(frame); frame = 0; }

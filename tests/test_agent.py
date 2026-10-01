@@ -121,9 +121,8 @@ def test_respond_stream_events(monkeypatch):
 
 
 def test_system_prompt_is_frozen_and_date_goes_with_question(monkeypatch):
-    from datetime import date
-
     from dbs_reporting.agent import SYSTEM_PROMPT
+    from dbs_reporting.eastern import now
 
     monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-5-5")
     monkeypatch.delenv("CLAUDE_MODELS", raising=False)
@@ -137,7 +136,7 @@ def test_system_prompt_is_frozen_and_date_goes_with_question(monkeypatch):
     assert first["system"] == [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
     # Prompt caching: instructions marked, plus automatic caching of the conversation.
     assert first["cache_control"] == {"type": "ephemeral"}
-    assert first["messages"][0]["content"].startswith(f"(Today's date: {date.today().isoformat()})")
+    assert first["messages"][0]["content"].startswith(f"(Today: {now():%A} {now():%Y-%m-%d}, ")
     assert first["messages"][0]["content"].endswith("hi")
     # The second request replays the first turn exactly as it was sent.
     assert second["messages"][:2] == first["messages"][:1] + [second["messages"][1]]
