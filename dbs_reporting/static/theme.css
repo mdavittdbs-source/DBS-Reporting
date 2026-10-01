@@ -145,9 +145,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); -web
 .ico svg { width: 15px; height: 15px; }
 :is(button, .cta):hover > .ico { transform: translate(2px, -1px) scale(1.05); }
 
-/* Framed card: an outer frame with a card set inside it */
-.shell { padding: 6px; border-radius: 28px; background: var(--shell); border: 1px solid var(--shell-ring); }
-.core { border-radius: 22px; background: var(--core); box-shadow: var(--core-hi); }
+/* Cards are single panes. (.shell is just the wrapper the page code puts around each card.) */
+.shell { border-radius: 22px; padding: 0; border: 0; background: none; }
+.core { border-radius: 22px; background: var(--core); box-shadow: var(--core-hi), var(--ambient); }
 
 @media (prefers-reduced-motion: reduce) {
   .aurora i { animation: none; }
