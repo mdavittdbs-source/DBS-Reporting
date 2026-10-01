@@ -41,6 +41,8 @@ class ConnectWiseSettings:
     private_key: str
     client_id: str
     codebase: str = "v4_6_release"
+    # The company custom field that says which POS software a client uses
+    software_field: str = "Software"
 
     @classmethod
     def from_env(cls) -> "ConnectWiseSettings":
@@ -51,6 +53,7 @@ class ConnectWiseSettings:
             private_key=_required("CW_PRIVATE_KEY"),
             client_id=_required("CW_CLIENT_ID"),
             codebase=os.environ.get("CW_CODEBASE", "v4_6_release").strip() or "v4_6_release",
+            software_field=os.environ.get("CW_SOFTWARE_FIELD", "Software").strip().rstrip(":") or "Software",
         )
 
     @property

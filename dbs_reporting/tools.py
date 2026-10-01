@@ -76,6 +76,15 @@ def ticket_breakdown(tickets: list[dict]) -> dict[str, Any]:
     }
 
 
+def _plain(text: str) -> str:
+    """Lowercase letters and digits only, so "Sky Tab" matches "SkyTab" and "Shift 4" matches "Shift4"."""
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def software_matches(value: str | None, wanted: str) -> bool:
+    return bool(value) and _plain(wanted) in _plain(value)
+
+
 def _hours(value) -> float | None:
     try:
         return round(float(value), 2) if value is not None else None
@@ -182,6 +191,34 @@ def wants_chart(question: str) -> bool:
 
 
 def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
+    def software_by_company() -> dict[int, str]:
+        """Company id -> the POS software in the company's "Software" custom field."""
+        caption = _plain(cw.software_field)
+        found, captions = {}, Counter()
+        for c in cw.company_custom_fields():
+            for f in c["customFields"]:
+                captions[f.get("caption") or ""] += 1
+                if _plain(f.get("caption") or "") != caption:
+                    continue
+                value = f.get("value")
+                value = ", ".join(map(str, value)) if isinstance(value, list) else str(value or "").strip()
+                if value:
+                    found[c["id"]] = value
+        # Spellings that differ only in spaces or case ("Sky Tab", "SkyTab") count as one: the commonest.
+        spellings = Counter(found.values())
+        best = {}
+        for v, _ in spellings.most_common():
+            best.setdefault(_plain(v), v)
+        found = {i: best[_plain(v)] for i, v in found.items()}
+        if not found:
+            seen = ", ".join(f'"{k}"' for k, _ in captions.most_common(15) if k) or "none"
+            raise ValueError(f'No client has a "{cw.software_field}" custom field filled in. Custom fields '
+                             f"found on clients: {seen}. (CW_SOFTWARE_FIELD sets which field to use.)")
+        return found
+
+    def ticket_software(lookup: dict[int, str]):
+        return lambda t: lookup.get((t.get("company") or {}).get("id")) or "(software not set)"
+
     """The tools for one question. With charts_allowed=False, create_chart refuses (its
     definition stays the same, so the prompt cache still matches)."""
     @beta_tool(eager_input_streaming=True)
@@ -296,7 +333,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
-    def get_ticket_totals(days: int = 30, group_by: str = "company", board_name: str = "", top: int = 25) -> str:
+    def get_ticket_totals(days: int = 30, group_by: str = "company", board_name: str = "", top: int = 25,
+                          software: str = "") -> str:
         """Count tickets across ALL clients in the last N days, ranked from most to fewest.
 
         Use this for questions that compare or rank clients, sites, boards and so on, e.g. "which
@@ -306,9 +344,10 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
 
         Args:
             days: How many days back to look, based on the date each ticket was entered.
-            group_by: What to rank: "company" (client), "site" (client + site/location on the ticket), "board", "type", "priority", "source" or "status".
+            group_by: What to rank: "company" (client), "site" (client + site/location on the ticket), "software" (the client's POS software), "board", "type", "priority", "source" or "status".
             board_name: Optional exact service board name to count only, e.g. "Help Desk".
             top: How many groups to return (the rest are summarised as a count).
+            software: Optional: only count clients whose POS software matches, e.g. "SkyTab".
         """
         keys = {
             "company": lambda t: _name(t, "company") or "(no company)",
@@ -318,12 +357,19 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             "priority": lambda t: _name(t, "priority") or "(none)",
             "source": lambda t: _name(t, "source") or "(none)",
             "status": lambda t: _name(t, "status") or "(none)",
+            "software": None,
         }
         if group_by not in keys:
             return _dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
         try:
             days = _clamp_days(days)
             tickets = cw.tickets_since(days, board_name or None, limit=TOTALS_LIMIT)
+            capped = len(tickets) >= TOTALS_LIMIT
+            if group_by == "software" or software:
+                of = ticket_software(software_by_company())
+                keys["software"] = of
+                if software:
+                    tickets = [t for t in tickets if software_matches(of(t), software)]
             key = keys[group_by]
             totals: Counter = Counter()
             open_counts: Counter = Counter()
@@ -355,7 +401,9 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             if len(totals) > top:
                 shown = sum(g["tickets"] for g in result["groups"])
                 result["other_groups"] = {"groups": len(totals) - top, "tickets": len(tickets) - shown}
-            if len(tickets) >= TOTALS_LIMIT:
+            if software:
+                result["software"] = software
+            if capped:
                 result["note"] = f"Capped at {TOTALS_LIMIT} tickets; narrow the date range for exact totals."
             return _dumps(result)
         except Exception as exc:
@@ -436,7 +484,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
-    def get_open_tickets(company_id: int = 0, board_name: str = "", oldest: int = 50) -> str:
+    def get_open_tickets(company_id: int = 0, board_name: str = "", oldest: int = 50, software: str = "") -> str:
         """Service tickets that are still open, however long ago they were entered, oldest first.
 
         Use for "oldest open tickets", "what's still open at Jimmy's Grille", "stale tickets",
@@ -449,9 +497,20 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             company_id: Optional ConnectWise company id from find_company; 0 for all clients.
             board_name: Optional exact service board name, e.g. "Help Desk".
             oldest: How many of the oldest tickets to list (most 200).
+            software: Optional: only clients whose POS software matches, e.g. "SkyTab".
         """
         try:
             tickets = cw.open_tickets(company_id or None, board_name or None)
+            capped = len(tickets) >= 5000
+            of = None
+            if software or not company_id:
+                try:
+                    of = ticket_software(software_by_company())
+                except Exception:
+                    if software:
+                        raise  # only the optional breakdown by software is skipped when it can't be read
+            if software:
+                tickets = [t for t in tickets if software_matches(of(t), software)]
             now = datetime.now(timezone.utc)
 
             def days_since(value) -> int | None:
@@ -499,7 +558,11 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             }
             if not company_id:
                 result["by_company"] = top("company", 25)
-            if len(tickets) >= 5000:
+                if of:
+                    result["by_software"] = [[k, v] for k, v in Counter(of(t) for t in tickets).most_common(15)]
+            if software:
+                result["software"] = software
+            if capped:
                 result["note"] = "Capped at 5000 open tickets; filter by client or board for exact figures."
             return _dumps(result)
         except Exception as exc:
@@ -507,7 +570,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
 
     @beta_tool(eager_input_streaming=True)
     def search_tickets(text: str, days: int = 0, company_id: int = 0, include_project_tickets: bool = True,
-                       max_results: int = 40) -> str:
+                       max_results: int = 40, software: str = "") -> str:
         """Search ticket summaries across ALL clients (or one) for words, e.g. to find how a problem
         was handled elsewhere, every ticket mentioning "handheld", or similar past issues.
 
@@ -524,6 +587,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             company_id: Optional ConnectWise company id from find_company; 0 for all clients.
             include_project_tickets: Also search project tickets.
             max_results: How many matches to list (most 100).
+            software: Optional: only clients whose POS software matches, e.g. "SkyTab".
         """
         phrases = [p.split()[:4] for p in text.split(",") if p.split()][:8]
         if not phrases:
@@ -531,6 +595,10 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
         try:
             days = _clamp_days(days) if days else 0
             tickets = cw.search_tickets(phrases, days or None, company_id or None)
+            capped = len(tickets) >= 500
+            of = ticket_software(software_by_company()) if software else None
+            if of:
+                tickets = [t for t in tickets if software_matches(of(t), software)]
             rows = [_compact({
                 "id": t.get("id"),
                 "summary": t.get("summary"),
@@ -549,6 +617,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                     if days:
                         start = datetime.now(timezone.utc) - timedelta(days=days)
                         found = [t for t in found if (d := parse_dt(_date_entered(t))) is None or d >= start]
+                    if of:
+                        found = [t for t in found if software_matches(of(t), software)]
                     projects = [dict(summarize_project_ticket(t), company=_name(t, "company"), kind="project")
                                 for t in found]
                     rows += [_compact(r) for r in projects]
@@ -560,8 +630,38 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             result["by_company"] = [[k, v] for k, v in
                                     Counter(r.get("company") or "(none)" for r in rows).most_common(25)]
             result["tickets"] = rows[:max(1, min(int(max_results), 100))]
-            if len(tickets) >= 500:
+            if software:
+                result["software"] = software
+            if capped:
                 result["note"] = "Capped at the 500 newest service tickets; add a date range or narrower words."
+            return _dumps(result)
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
+    def get_clients_by_software(software: str = "") -> str:
+        """Which POS software each client uses, from the "Software" field on the client's company
+        record in ConnectWise. This is the reliable source for a client's brand, rather than ticket text.
+
+        With no software given: how many clients use each software. With software (e.g. "SkyTab"):
+        the clients that use it, with their company ids. To count or search tickets by software, use
+        the software option on get_ticket_totals, get_open_tickets or search_tickets instead.
+
+        Args:
+            software: Optional software to list clients for, e.g. "SkyTab" or "Shift4 Dine".
+        """
+        try:
+            lookup = software_by_company()
+            names = {c["id"]: c["name"] for c in cw.company_custom_fields()}
+            result = {
+                "clients": len(names),
+                "with_software_set": len(lookup),
+                "by_software": [[k, v] for k, v in Counter(lookup.values()).most_common(30)],
+            }
+            if software:
+                matches = sorted(({"id": i, "name": names.get(i), "software": v} for i, v in lookup.items()
+                                  if software_matches(v, software)), key=lambda c: c["name"] or "")
+                result.update(software=software, match_count=len(matches), matches=matches[:500])
             return _dumps(result)
         except Exception as exc:
             return _error(exc)
@@ -675,4 +775,5 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance, get_open_tickets, search_tickets, get_projects, get_project_tickets, create_chart]
+            get_sla_performance, get_open_tickets, search_tickets, get_clients_by_software, get_projects,
+            get_project_tickets, create_chart]

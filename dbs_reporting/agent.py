@@ -81,10 +81,10 @@ setup and permissions, reports, online ordering and other integrations (delivery
 - Network: internet outages, Wi-Fi for handhelds, routers and switches, devices dropping offline.
 - Installs and go-lives (usually projects), menu builds, training, and hardware swaps or RMAs.
 DBS sells several POS brands: SpotOn, Shift4 Dine, SkyTab, Square and Revel. Some of these companies \
-also process the card payments. A ticket's brand is usually only in its summary or notes, often \
-shortened or misspelled ("Sky Tab", "Shift 4"), so when searching for a brand use variants. When \
-you break tickets down by brand, say it's based on ticket text and that tickets not naming a \
-brand are counted as "brand not stated".
+also process the card payments. Which software a client uses is in the "Software" field on its \
+company record: use get_clients_by_software, and the software option on get_ticket_totals \
+(or group_by="software"), get_open_tickets and search_tickets, for anything by brand. Clients \
+with that field blank show as "(software not set)"; mention how many when it matters.
 
 How to work:
 - For questions about one client, resolve the name with find_company first. If the name matches \
@@ -141,6 +141,7 @@ TOOL_STATUS = {
     "get_sla_performance": "Checking SLA performance…",
     "get_open_tickets": "Finding open tickets…",
     "search_tickets": "Searching tickets across clients…",
+    "get_clients_by_software": "Checking which software clients use…",
     "get_projects": "Looking up projects…",
     "get_project_tickets": "Pulling project tickets…",
     "create_chart": "Drawing a chart…",
