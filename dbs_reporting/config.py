@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -68,5 +69,5 @@ class ConnectWiseSettings:
         if custom:
             return custom if "{id}" in custom else ""
         host = self.site[4:] if self.site.lower().startswith("api-") else self.site
-        return (f"https://{host}/{self.codebase}/services/system_io/Service/fv_sr100_request.rss"
-                "?locale=en_US&recid={id}")
+        return (f"https://{host}/{self.codebase}/ConnectWise.aspx?locale=en_US&routeTo=ServiceFV"
+                f"&companyName={quote(self.company_id)}" "&recid={id}")

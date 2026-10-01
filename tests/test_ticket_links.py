@@ -10,8 +10,8 @@ def settings(site):
 def test_cloud_site_drops_api_prefix(monkeypatch):
     monkeypatch.delenv("CW_TICKET_URL", raising=False)
     url = settings("api-na.myconnectwise.net").ticket_url
-    assert url == ("https://na.myconnectwise.net/v4_6_release/services/system_io/Service/"
-                   "fv_sr100_request.rss?locale=en_US&recid={id}")
+    assert url == ("https://na.myconnectwise.net/v4_6_release/ConnectWise.aspx?locale=en_US&routeTo=ServiceFV"
+                   "&companyName=c&recid={id}")
 
 
 def test_self_hosted_site_kept(monkeypatch):
