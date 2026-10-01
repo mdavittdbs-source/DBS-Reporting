@@ -10,12 +10,18 @@ from typing import Any
 import httpx
 from anthropic import beta_tool
 
+from . import eastern
 from .charts import validate_chart
 from .connectwise import ConnectWiseClient
 
 MAX_DAYS = 730
 NOTE_CHARS = 1500
 TOTALS_LIMIT = 20000
+
+
+def _dumps(result) -> str:
+    """Tool results go to Claude as JSON, with ConnectWise's UTC times turned into Eastern Time."""
+    return eastern.localize(json.dumps(result))
 
 
 def _name(record: dict, key: str) -> str | None:
@@ -127,11 +133,11 @@ def summarize_project_ticket(t: dict) -> dict:
 
 def _error(exc: Exception) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
-        return json.dumps({
+        return _dumps({
             "error": f"ConnectWise returned HTTP {exc.response.status_code}",
             "detail": exc.response.text[:500],
         })
-    return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+    return _dumps({"error": f"{type(exc).__name__}: {exc}"})
 
 
 def _clamp_days(days: int) -> int:
@@ -190,7 +196,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             name: Full or partial company name to search for.
         """
         try:
-            return json.dumps(cw.find_companies(name))
+            return _dumps(cw.find_companies(name))
         except Exception as exc:
             return _error(exc)
 
@@ -214,7 +220,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             result = ticket_breakdown(tickets)
             if len(tickets) >= 1000:
                 result["note"] = "Result capped at 1000 tickets; narrow the date range for a complete picture."
-            return json.dumps(result)
+            return _dumps(result)
         except Exception as exc:
             return _error(exc)
 
@@ -248,7 +254,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 }
                 for n in notes
             ]
-            return json.dumps(ticket)
+            return _dumps(ticket)
         except Exception as exc:
             return _error(exc)
 
@@ -279,7 +285,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             def rounded(counter: Counter, n: int = 15) -> list[list]:
                 return [[k, round(v, 2)] for k, v in counter.most_common(n)]
 
-            return json.dumps({
+            return _dumps({
                 "entry_count": len(entries),
                 "total_hours": round(sum(by_member.values()), 2),
                 "by_member": rounded(by_member),
@@ -314,7 +320,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             "status": lambda t: _name(t, "status") or "(none)",
         }
         if group_by not in keys:
-            return json.dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
+            return _dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
         try:
             days = _clamp_days(days)
             tickets = cw.tickets_since(days, board_name or None, limit=TOTALS_LIMIT)
@@ -351,7 +357,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 result["other_groups"] = {"groups": len(totals) - top, "tickets": len(tickets) - shown}
             if len(tickets) >= TOTALS_LIMIT:
                 result["note"] = f"Capped at {TOTALS_LIMIT} tickets; narrow the date range for exact totals."
-            return json.dumps(result)
+            return _dumps(result)
         except Exception as exc:
             return _error(exc)
 
@@ -379,7 +385,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             "overall": lambda t: "All tickets",
         }
         if group_by not in keys:
-            return json.dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
+            return _dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
         try:
             days = _clamp_days(days)
             tickets = cw.tickets_for_sla(days, company_id or None, board_name or None, limit=TOTALS_LIMIT)
@@ -425,7 +431,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 result["other_groups"] = len(ranked) - top
             if len(tickets) >= TOTALS_LIMIT:
                 result["limit_note"] = f"Capped at {TOTALS_LIMIT} tickets; narrow the date range."
-            return json.dumps(result)
+            return _dumps(result)
         except Exception as exc:
             return _error(exc)
 
@@ -495,7 +501,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 result["by_company"] = top("company", 25)
             if len(tickets) >= 5000:
                 result["note"] = "Capped at 5000 open tickets; filter by client or board for exact figures."
-            return json.dumps(result)
+            return _dumps(result)
         except Exception as exc:
             return _error(exc)
 
@@ -521,7 +527,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
         """
         phrases = [p.split()[:4] for p in text.split(",") if p.split()][:8]
         if not phrases:
-            return json.dumps({"error": "Give one or more keywords to search for."})
+            return _dumps({"error": "Give one or more keywords to search for."})
         try:
             days = _clamp_days(days) if days else 0
             tickets = cw.search_tickets(phrases, days or None, company_id or None)
@@ -556,7 +562,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             result["tickets"] = rows[:max(1, min(int(max_results), 100))]
             if len(tickets) >= 500:
                 result["note"] = "Capped at the 500 newest service tickets; add a date range or narrower words."
-            return json.dumps(result)
+            return _dumps(result)
         except Exception as exc:
             return _error(exc)
 
@@ -581,7 +587,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
 
             budget = sum(p.get("budget_hours") or 0 for p in projects)
             actual = sum(p.get("actual_hours") or 0 for p in projects)
-            return json.dumps({
+            return _dumps({
                 "project_count": len(projects),
                 "open_count": sum(1 for p in projects if not p.get("closed")),
                 "over_budget_count": sum(1 for p in projects if p.get("over_budget_hours")),
@@ -612,7 +618,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             include_closed: Also include closed project tickets.
         """
         if not project_id and not company_id:
-            return json.dumps({"error": "Give a project_id (from get_projects) or a company_id (from find_company)."})
+            return _dumps({"error": "Give a project_id (from get_projects) or a company_id (from find_company)."})
         try:
             tickets = cw.project_tickets(project_id or None, company_id or None, include_closed)
             capped = len(tickets) >= 1000
@@ -636,7 +642,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             }
             if capped:
                 result["note"] = "Capped at the 1000 newest project tickets."
-            return json.dumps(result)
+            return _dumps(result)
         except Exception as exc:
             return _error(exc)
 
@@ -659,13 +665,13 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             y_label: Optional axis label for the values, e.g. "Tickets" or "Hours".
         """
         if not charts_allowed:
-            return json.dumps({"error": "Chart not added: the user didn't ask for a chart. Answer in text."})
+            return _dumps({"error": "Chart not added: the user didn't ask for a chart. Answer in text."})
         chart, error = validate_chart({"title": title, "chart_type": chart_type, "labels": labels,
                                        "series": series, "subtitle": subtitle, "x_label": x_label,
                                        "y_label": y_label})
         if error:
-            return json.dumps({"error": f"Chart not added: {error}"})
-        return json.dumps({"chart_added": True, "note": "The chart appears below your answer; refer to it "
+            return _dumps({"error": f"Chart not added: {error}"})
+        return _dumps({"chart_added": True, "note": "The chart appears below your answer; refer to it "
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,

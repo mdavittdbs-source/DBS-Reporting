@@ -3,12 +3,12 @@
 import json
 import os
 from collections.abc import Iterator
-from datetime import date
 
 import anthropic
 
 from .connectwise import ConnectWiseClient
 from .tools import build_tools, wants_chart
+from . import eastern
 from . import usage as usage_mod
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
@@ -24,10 +24,8 @@ KNOWN_MODELS = {
     "claude-sonnet-5": {"label": "Claude Sonnet 5", "effort": True},
 }
 
-
 def _model_list(value: str) -> list[str]:
     return [m.strip() for m in value.split(",") if m.strip()]
-
 
 def configured_models() -> tuple[str, list[str]]:
     """Read CLAUDE_MODEL (default) and CLAUDE_MODELS (choices offered in the web chat)."""
@@ -37,10 +35,8 @@ def configured_models() -> tuple[str, list[str]]:
         choices.insert(0, default)
     return default, choices
 
-
 def model_label(model: str) -> str:
     return KNOWN_MODELS.get(model, {}).get("label", model)
-
 
 def request_options(model: str, effort: str) -> dict:
     """Model-specific request parameters."""
@@ -63,16 +59,16 @@ def request_options(model: str, effort: str) -> dict:
         options["betas"] = betas
     return options
 
-
 def dated(question: str) -> str:
     """Put today's date with the question rather than in the system prompt, so the system prompt
     never changes between turns of a saved chat."""
-    return f"(Today's date: {date.today().isoformat()})\n\n{question}"
+    today = eastern.now()
+    return f"(Today: {today:%A} {today:%Y-%m-%d}, {eastern.clock(today)} ET)\n\n{question}"
 
 SYSTEM_PROMPT = """You are the DBS reporting assistant. Managers at an IT managed service provider \
 ask you questions about their clients' service tickets and time in ConnectWise Manage.
 
-Each question starts with today's date.
+Each question starts with today's date and the time in Eastern Time.
 
 How to work:
 - For questions about one client, resolve the name with find_company first. If the name matches \
@@ -100,6 +96,8 @@ type/subtype breakdown only when it adds something.
 - Pull ticket details for a few representative tickets when root causes or resolutions matter.
 - Data from earlier questions in a chat is removed once they're answered; your earlier answers \
 remain. If a follow-up needs details you no longer have, call the tool again rather than guessing.
+- Times: tool results give times in Eastern Time (ET) with AM/PM. Write times the same way, e.g. \
+"3:13 PM ET", never in UTC or 24-hour time. Days ("today", "yesterday") are Eastern days.
 - Every number you report must come from tool results. Don't estimate or invent data. If a tool \
 returns an error, tell the user plainly what failed.
 
@@ -112,7 +110,6 @@ in your text too.
 - State the date range and total ticket count you analyzed.
 - End with one or two practical observations when the data supports them, such as a recurring \
 issue that suggests a project or a user who needs training."""
-
 
 # Shown in the chat while a tool runs.
 TOOL_STATUS = {
@@ -129,7 +126,6 @@ TOOL_STATUS = {
     "create_chart": "Drawing a chart…",
 }
 
-
 # Once a question is answered, the raw ConnectWise data behind it (often hundreds of tickets) is
 # dropped from the chat's history; David's answer stays. Otherwise every follow-up re-sends all of
 # it. Small results (company lookups, chart confirmations, errors) are kept.
@@ -137,10 +133,8 @@ KEEP_RESULT_CHARS = 2000
 OMITTED_RESULT = ("[ConnectWise data from an earlier question was removed to save tokens. "
                   "Call the tool again if you need it.]")
 
-
 def _result_size(content) -> int:
     return len(content) if isinstance(content, str) else len(json.dumps(content))
-
 
 def compact_history(messages: list) -> list:
     """Replace large tool results with a short note. Returns new lists; the input is unchanged."""
@@ -158,13 +152,11 @@ def compact_history(messages: list) -> list:
         compacted.append(message)
     return compacted
 
-
 def _to_json(block) -> dict:
     """SDK content blocks -> plain dicts, so a conversation can be saved and replayed later."""
     if hasattr(block, "model_dump"):
         return block.model_dump(mode="json", exclude_none=True)
     return block
-
 
 class ReportingAgent:
     def __init__(self, cw: ConnectWiseClient, client: anthropic.Anthropic | None = None):
@@ -270,7 +262,6 @@ class ReportingAgent:
         yield {"type": "done", "answer": answer or "I couldn't produce an answer for that.",
                "history": compact_history(messages),
                "usage": usage}
-
 
 def create_agent(cw: ConnectWiseClient) -> ReportingAgent:
     return ReportingAgent(cw)

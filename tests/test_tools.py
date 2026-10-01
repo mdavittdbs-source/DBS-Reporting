@@ -69,7 +69,7 @@ def test_ticket_breakdown():
     assert result["ticket_count"] == 3
     assert result["open_count"] == 1
     assert result["by_type"][0] == ["Hardware", 2]
-    assert result["tickets"][0]["entered"] == "2026-09-20T10:00:00Z"
+    assert result["tickets"][0]["entered"] == "2026-09-20 6:00 AM ET"  # Eastern, 12-hour
     conditions = requests[0].url.params["conditions"]
     assert conditions.startswith("company/id=42 and dateEntered>=[")
 
@@ -183,6 +183,6 @@ def test_ticket_list_leaves_out_blank_fields():
     tools = tools_by_name(make_client([]))
     result = json.loads(tools["get_company_tickets"].call({"company_id": 42}))
     open_ticket = result["tickets"][0]
-    assert open_ticket == {"id": 3, "summary": "Printer offline", "entered": "2026-09-20T10:00:00Z",
+    assert open_ticket == {"id": 3, "summary": "Printer offline", "entered": "2026-09-20 6:00 AM ET",
                            "board": "Help Desk", "type": "Hardware"}
-    assert result["tickets"][1]["closed"] == "2026-09-11T10:00:00Z"
+    assert result["tickets"][1]["closed"] == "2026-09-11 6:00 AM ET"
