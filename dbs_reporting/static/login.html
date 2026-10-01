@@ -10,6 +10,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Fetch the chat page's libraries while people type, so the switch to the chat is quick. -->
+<link rel="prefetch" href="/static/vendor/chart.umd.min.js">
+<link rel="prefetch" href="/static/vendor/marked.min.js">
+<link rel="prefetch" href="/static/vendor/purify.min.js">
+<link rel="prefetch" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" crossorigin>
 <style>
   :root {
     --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -80,7 +85,6 @@
   /* Browsers that support it (Chrome, Edge) also cross-fade between the pages. */
   @view-transition { navigation: auto; }
   @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
-  .brand-mark { view-transition-name: brand; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -155,11 +159,11 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "Sign in failed. Try again.");
-      // Hand off to the chat page, which plays its entrance (see index.html).
+      // Hand off to the chat page, which plays its entrance (see index.html). The card's exit
+      // plays while the chat page loads, so there's no pause in between.
       try { sessionStorage.setItem("justSignedIn", "1"); } catch {}
-      const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       document.querySelector("main").classList.add("leaving");
-      setTimeout(() => { location.href = "/"; }, calm ? 0 : 240);
+      location.href = "/";
     } catch (err) {
       error.textContent = err.message;
       fields[1].value = "";
