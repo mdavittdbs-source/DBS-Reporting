@@ -1,6 +1,8 @@
 """Thin read-only client for the ConnectWise Manage REST API."""
 
 import base64
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
@@ -9,6 +11,7 @@ import httpx
 from .config import ConnectWiseSettings
 
 PAGE_SIZE = 1000  # ConnectWise maximum
+COMPANY_FIELDS_TTL = 3600  # seconds to reuse the list of companies' custom fields
 
 # What SLA reporting needs from each ticket.
 TICKET_SLA_FIELDS = (
@@ -77,6 +80,9 @@ class ConnectWiseClient:
         # Field lists this ConnectWise server has rejected, so later queries skip straight to
         # full records instead of failing first every time.
         self._rejected_fields: set[str] = set()
+        self.software_field = settings.software_field
+        self._company_fields: tuple[float, list[dict]] | None = None
+        self._company_fields_lock = threading.Lock()
 
     def close(self) -> None:
         self._http.close()
@@ -126,6 +132,29 @@ class ConnectWiseClient:
             pageSize=max_results,
             fields="id,identifier,name,status/name,type/name",
         )
+
+    def company_custom_fields(self) -> list[dict]:
+        """Every active company's id, name and custom fields (such as "Software"). Kept for an hour,
+        since it's one big list that rarely changes."""
+        with self._company_fields_lock:
+            if self._company_fields and time.monotonic() - self._company_fields[0] < COMPANY_FIELDS_TTL:
+                return self._company_fields[1]
+            params = {"limit": 20000, "conditions": "deletedFlag=false", "orderBy": "name asc"}
+            fields = "id,name,customFields"
+            if fields in self._rejected_fields:
+                records = list(self.get_all("/company/companies", **params))
+            else:
+                try:
+                    records = list(self.get_all("/company/companies", fields=fields, **params))
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 400:
+                        raise
+                    records = list(self.get_all("/company/companies", **params))
+                    self._rejected_fields.add(fields)
+            companies = [{"id": c.get("id"), "name": c.get("name"), "customFields": c.get("customFields") or []}
+                         for c in records]
+            self._company_fields = (time.monotonic(), companies)
+            return companies
 
     # --- Service tickets -------------------------------------------------
 
