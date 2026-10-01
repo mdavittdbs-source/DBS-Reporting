@@ -263,9 +263,14 @@ def test_stream_errors(web, monkeypatch):
         raise RuntimeError("ConnectWise fell over")
 
     monkeypatch.setattr(module.agent, "respond_stream", broken)
+    logged = []
+    monkeypatch.setattr(module.log, "exception", lambda msg, *a, **k: logged.append(msg))
     events = read_events(alice.post("/api/chat/stream", json={"question": "hi"}))
     assert events[-1] == {"type": "error", "message": "ConnectWise fell over"}
     assert alice.get("/api/conversations").json() == []  # nothing half-saved
+    assert logged == ["Agent error"]  # logged once, not again when shown to the user
+    alice.post("/api/chat", json={"question": "hi"})
+    assert logged == ["Agent error", "Agent error"]
 
 
 def test_api_errors_show_the_apis_message(web, monkeypatch):

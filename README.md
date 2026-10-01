@@ -34,7 +34,8 @@ Code layout:
 - `dbs_reporting/tools.py`: the tools Claude can call
 - `dbs_reporting/agent.py`: system prompt, the Claude tool loop and conversation memory
 - `dbs_reporting/charts.py` + `exports.py`: chart checks and the Excel export
-- `dbs_reporting/web.py` + `static/index.html`: the web chat
+- `dbs_reporting/web.py` + `static/index.html`: the web chat (`static/theme.css` holds the colours,
+  moving background and shared styles used by both the sign-in and chat pages)
 - `dbs_reporting/cli.py`: a terminal version for testing
 
 ## Setup

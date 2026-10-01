@@ -339,22 +339,27 @@ def _api_error_message(exc: anthropic.APIStatusError) -> str:
     return message[:400] or "no details were given."
 
 
-def _friendly_error(exc: Exception) -> tuple[int, str]:
-    """HTTP status and a message people can act on, for errors while answering."""
+def _friendly_error(exc: Exception, log_it: bool = True) -> tuple[int, str]:
+    """HTTP status and a message people can act on, for errors while answering. Errors are
+    logged where they happen (in _run), so callers passing the same error on use log_it=False."""
     if isinstance(exc, ValueError):
         return 400, str(exc)
     if isinstance(exc, anthropic.RateLimitError):
         return 429, "The AI service is busy. Please try again in a minute."
     if isinstance(exc, anthropic.APIStatusError):
-        log.exception("Claude API error")
+        if log_it:
+            log.exception("Claude API error")
         return 502, f"AI service error ({exc.status_code}): {_api_error_message(exc)}"
     if isinstance(exc, anthropic.APIConnectionError):
-        log.exception("Claude API connection error")
+        if log_it:
+            log.exception("Claude API connection error")
         return 502, "Couldn't reach the AI service."
     if isinstance(exc, RuntimeError):
-        log.exception("Agent error")
+        if log_it:
+            log.exception("Agent error")
         return 502, str(exc)
-    log.exception("Unexpected error while answering")
+    if log_it:
+        log.exception("Unexpected error while answering")
     return 500, "Something went wrong on the server. Please try again."
 
 
@@ -376,7 +381,7 @@ async def chat(request: ChatRequest, user: dict = Depends(current_user)) -> Chat
     except HTTPException:
         raise
     except Exception as exc:
-        status, message = _friendly_error(exc)
+        status, message = _friendly_error(exc, log_it=False)
         raise HTTPException(status, message)
 
 
@@ -393,7 +398,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(current_user)) 
             for event in _run(user, request.question.strip(), conversation_id, title, model):
                 yield json.dumps(event) + "\n"
         except Exception as exc:
-            _, message = _friendly_error(exc)
+            _, message = _friendly_error(exc, log_it=False)
             yield json.dumps({"type": "error", "message": message}) + "\n"
 
     return StreamingResponse(
