@@ -173,14 +173,21 @@
   .answer li::marker { color: var(--faint); }
   .answer code { font-family: var(--mono); font-size: .88em; background: var(--pill); padding: 2px 6px; border-radius: 6px; }
   .answer a { color: var(--tag-ink); }
-  .answer .bezel { display: inline-block; max-width: 100%; overflow-x: auto; margin: 10px 0 14px; vertical-align: top; }
-  .answer .bezel > .core { padding: 4px; border-radius: 22px; }
-  .answer table { border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; width: max-content; }
+  /* Tables sit on one pane that scrolls sideways itself when a table is too wide, so the pane always
+     covers the whole table. Text wraps, but no column gets narrower than a few words. */
+  .answer .bezel { display: inline-block; max-width: 100%; margin: 10px 0 14px; vertical-align: top; }
+  .answer .bezel > .core { padding: 4px; border-radius: 22px; max-width: 100%; overflow-x: auto; }
+  .answer table { border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
   .answer th { text-align: left; font-size: 10px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase;
                color: var(--faint); border-bottom: 1px solid var(--hair); padding: 12px 18px; }
   .answer td { border-bottom: 1px solid var(--hair); padding: 11px 18px; vertical-align: top; }
   .answer tr:last-child td { border-bottom: 0; }
-  .answer td:not(:first-child), .answer th:not(:first-child) { text-align: right; }
+  .answer th, .answer td { min-width: 6.5em; }
+  .answer :is(th, td):first-child { min-width: 9em; }
+  .answer :is(th, td).num { text-align: right; white-space: nowrap; min-width: 0; }
+  .answer :is(th, td):not(.num) { text-align: left; }
+  .answer :is(th, td).short { white-space: nowrap; min-width: 0; }
+  .answer :is(th, td).long { min-width: 16em; }
   .ref { font-family: var(--mono); font-size: .82em; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
          background: var(--tag-bg); color: var(--tag-ink); }
 
@@ -441,6 +448,30 @@
       core.appendChild(table);
     }
     tagTicketNumbers(el);
+    alignNumberColumns(el);
+  }
+
+  // Right-align columns that hold numbers (counts, hours, %, $, ticket numbers); text stays left.
+  // Columns of short values (names, dates, ticket numbers) stay on one line; columns of sentences
+  // keep a readable width.
+  function alignNumberColumns(root) {
+    const numeric = /^[-+]?[$£€]?[\d,.]+%?$|^#\d+$|^[-–—]$/;
+    for (const table of root.querySelectorAll("table")) {
+      const rows = [...table.rows];
+      const body = rows.filter((r) => r.parentElement.tagName !== "THEAD");
+      const columns = Math.max(0, ...rows.map((r) => r.cells.length));
+      for (let c = 0; c < columns; c++) {
+        const values = body.map((r) => r.cells[c]?.textContent.trim()).filter(Boolean);
+        if (values.length && values.every((v) => v.length <= 24)) {
+          for (const r of rows) r.cells[c]?.classList.add("short");
+        } else if (values.some((v) => v.length > 60)) {
+          for (const r of rows) r.cells[c]?.classList.add("long");  // sentences: keep lines readable
+        }
+        if (c === 0) continue;
+        if (!values.length || !values.every((v) => numeric.test(v.replace(/\s/g, "")))) continue;
+        for (const r of rows) r.cells[c]?.classList.add("num");
+      }
+    }
   }
 
   function tagTicketNumbers(root) {
