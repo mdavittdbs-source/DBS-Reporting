@@ -296,6 +296,18 @@
     .actions button { opacity: 1; }
     #model { max-width: 118px; padding-right: 22px; }
   }
+  /* Entrance right after signing in: the sidebar slides in, then the chat settles into place. */
+  @keyframes slide-in { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+  @keyframes settle { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  body.entering header { animation: settle .45s var(--ease) .08s both; }
+  body.entering .start { animation: settle .5s var(--ease) .16s both; }
+  body.entering #form { animation: settle .5s var(--ease) .24s both; }
+  @media (min-width: 761px) {  /* on phones the sidebar is a hidden drawer, so it stays put */
+    body.entering aside { animation: slide-in .45s var(--ease) both; }
+  }
+  @view-transition { navigation: auto; }
+  @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+  .brand-mark { view-transition-name: brand; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
@@ -353,6 +365,14 @@
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
+  // Play the entrance once, when arriving straight from the sign-in page.
+  try {
+    if (sessionStorage.getItem("justSignedIn")) {
+      sessionStorage.removeItem("justSignedIn");
+      document.body.classList.add("entering");
+      setTimeout(() => document.body.classList.remove("entering"), 1200);
+    }
+  } catch {}
   const $ = (id) => document.getElementById(id);
   const messages = $("messages"), chatList = $("chats"), q = $("q"), send = $("send");
   const modelSelect = $("model"), chatTitle = $("chat-title");

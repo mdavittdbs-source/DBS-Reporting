@@ -72,6 +72,15 @@
   #error:empty { display: none; }
   .foot { margin: 18px 0 0; font-size: 13px; color: var(--faint); text-align: center; text-wrap: balance; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  /* After signing in, the card lifts away before the chat loads. */
+  main.leaving form { animation: leave .26s var(--ease) forwards; }
+  main.leaving .foot { animation: fade-out .18s var(--ease) forwards; }
+  @keyframes leave { to { opacity: 0; transform: translateY(-10px) scale(.97); } }
+  @keyframes fade-out { to { opacity: 0; } }
+  /* Browsers that support it (Chrome, Edge) also cross-fade between the pages. */
+  @view-transition { navigation: auto; }
+  @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+  .brand-mark { view-transition-name: brand; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -146,7 +155,11 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "Sign in failed. Try again.");
-      location.href = "/";
+      // Hand off to the chat page, which plays its entrance (see index.html).
+      try { sessionStorage.setItem("justSignedIn", "1"); } catch {}
+      const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      document.querySelector("main").classList.add("leaving");
+      setTimeout(() => { location.href = "/"; }, calm ? 0 : 240);
     } catch (err) {
       error.textContent = err.message;
       fields[1].value = "";
