@@ -19,10 +19,12 @@ Manager (web chat) ──► FastAPI ──► Claude (claude-sonnet-5-5) ──
 |---|---|
 | `find_company` | Turns a name like "Joe's Pizza" into a ConnectWise company id |
 | `get_company_tickets` | Tickets entered in the last N days, with breakdowns by type/subtype/item/board/priority/source/contact and a compact list of every ticket |
-| `get_ticket_details` | One ticket plus its notes (description, internal analysis, resolution) |
+| `get_ticket_details` | One service or project ticket plus its notes (description, internal analysis, resolution) |
 | `get_company_time` | Hours logged in the last N days by technician, work type and ticket |
 | `get_ticket_totals` | Tickets across **all** clients in the last N days, ranked by client, site, board, type, priority, source or status, with open counts and top ticket types |
 | `get_sla_performance` | In-SLA vs. breached tickets and first-response/resolution times, by client, board, priority or SLA |
+| `get_projects` | Projects for one client or all: status, manager, dates, percent complete, budget vs actual hours |
+| `get_project_tickets` | Project tickets (tasks) for a project or client, by project, phase and status, with hours |
 | `create_chart` | Adds a chart under the answer (bar, horizontal bar, line or stacked bar) |
 
 Code layout:
@@ -38,7 +40,7 @@ Code layout:
 
 1. **ConnectWise API keys.** In ConnectWise Manage, go to *System > Members > API Members*
    and create an API member with a **read-only** security role that can see Companies,
-   Service Tickets and Time Entries. Generate a public/private key pair for it. Get a
+   Service Tickets, Projects (including project tickets) and Time Entries. Generate a public/private key pair for it. Get a
    `clientId` from <https://developer.connectwise.com/ClientID>.
 2. **Anthropic API key** from <https://console.anthropic.com>.
 3. Configure and install:

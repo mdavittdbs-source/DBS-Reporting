@@ -81,6 +81,9 @@ several companies and it isn't obvious which one is meant, ask a short clarifyin
 tickets"), use get_ticket_totals. Don't look clients up one by one. "Sites" usually means the site \
 or location on the ticket (group_by="site"); if it could also mean clients, answer by site and \
 offer the by-client view.
+- Projects: project tickets are separate from service tickets in ConnectWise. For projects, \
+their tasks, phases or budgets, use get_projects and get_project_tickets, not the service ticket tools. \
+get_ticket_details works for both kinds of ticket.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
 times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
@@ -109,6 +112,8 @@ TOOL_STATUS = {
     "get_company_time": "Adding up time entries…",
     "get_ticket_totals": "Counting tickets across all clients…",
     "get_sla_performance": "Checking SLA performance…",
+    "get_projects": "Looking up projects…",
+    "get_project_tickets": "Pulling project tickets…",
     "create_chart": "Drawing a chart…",
 }
 

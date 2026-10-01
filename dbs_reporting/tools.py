@@ -2,7 +2,7 @@
 
 import json
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from statistics import median
 from typing import Any
 
@@ -53,7 +53,7 @@ def ticket_breakdown(tickets: list[dict]) -> dict[str, Any]:
 
     # Blank fields are left out of the ticket list: up to 1000 rows go to Claude on every step
     # of the answer and every follow-up, so empty values would cost tokens for nothing.
-    compact = [{k: v for k, v in r.items() if v is not None and v != ""} for r in rows]
+    compact = [_compact(r) for r in rows]
 
     return {
         "ticket_count": len(rows),
@@ -67,6 +67,61 @@ def ticket_breakdown(tickets: list[dict]) -> dict[str, Any]:
         "by_contact": top("contact", 10),
         "tickets": compact,
     }
+
+
+def _hours(value) -> float | None:
+    try:
+        return round(float(value), 2) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _compact(row: dict) -> dict:
+    """Drop blank fields; long lists go to Claude on every step, so empty values cost tokens."""
+    return {k: v for k, v in row.items() if v is not None and v != ""}
+
+
+def summarize_project(p: dict) -> dict:
+    budget, actual = _hours(p.get("budgetHours")), _hours(p.get("actualHours"))
+    manager = p.get("manager") or {}
+    return _compact({
+        "id": p.get("id"),
+        "name": p.get("name"),
+        "company": _name(p, "company"),
+        "status": _name(p, "status"),
+        "closed": bool(p.get("closedFlag")),
+        "manager": manager.get("name") or manager.get("identifier"),
+        "type": _name(p, "type"),
+        "board": _name(p, "board"),
+        "estimated_start": p.get("estimatedStart"),
+        "estimated_end": p.get("estimatedEnd"),
+        "actual_start": p.get("actualStart"),
+        "actual_end": p.get("actualEnd"),
+        "percent_complete": p.get("percentComplete"),
+        "budget_hours": budget,
+        "actual_hours": actual,
+        "scheduled_hours": _hours(p.get("scheduledHours")),
+        "over_budget_hours": round(actual - budget, 2) if budget and actual is not None and actual > budget else None,
+    })
+
+
+def summarize_project_ticket(t: dict) -> dict:
+    project = t.get("project") or {}
+    return _compact({
+        "id": t.get("id"),
+        "summary": t.get("summary"),
+        "project": project.get("name"),
+        "project_id": project.get("id"),
+        "phase": _name(t, "phase"),
+        "status": _name(t, "status"),
+        "entered": _date_entered(t),
+        "closed": t.get("closedDate") if t.get("closedFlag") else None,
+        "budget_hours": _hours(t.get("budgetHours")),
+        "actual_hours": _hours(t.get("actualHours")),
+        "resources": t.get("resources"),
+        "priority": _name(t, "priority"),
+        "type": _name(t, "type"),
+    })
 
 
 def _error(exc: Exception) -> str:
@@ -153,15 +208,23 @@ def build_tools(cw: ConnectWiseClient) -> list:
 
     @beta_tool(eager_input_streaming=True)
     def get_ticket_details(ticket_id: int) -> str:
-        """Get one ticket's full details and its notes.
+        """Get one ticket's full details and its notes. Works for service and project tickets.
 
         Notes include the description, internal analysis and resolution. Use this to understand the root cause or resolution of specific tickets.
 
         Args:
-            ticket_id: ConnectWise service ticket number.
+            ticket_id: ConnectWise ticket number (service or project ticket).
         """
         try:
-            ticket = summarize_ticket(cw.ticket(ticket_id))
+            try:
+                ticket = summarize_ticket(cw.ticket(ticket_id))
+                notes = cw.ticket_notes(ticket_id)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 404:
+                    raise
+                # Not a service ticket: project tickets are kept separately.
+                ticket = {"kind": "project ticket", **summarize_project_ticket(cw.project_ticket(ticket_id))}
+                notes = cw.project_ticket_notes(ticket_id)
             ticket["notes"] = [
                 {
                     "created": n.get("dateCreated"),
@@ -171,7 +234,7 @@ def build_tools(cw: ConnectWiseClient) -> list:
                     else "description",
                     "text": (n.get("text") or "")[:NOTE_CHARS],
                 }
-                for n in cw.ticket_notes(ticket_id)
+                for n in notes
             ]
             return json.dumps(ticket)
         except Exception as exc:
@@ -198,7 +261,7 @@ def build_tools(cw: ConnectWiseClient) -> list:
                 member = e.get("member") or {}
                 by_member[member.get("name") or member.get("identifier") or "(unknown)"] += hours
                 by_work_type[_name(e, "workType") or "(none)"] += hours
-                if e.get("chargeToType") == "ServiceTicket":
+                if e.get("chargeToType") in ("ServiceTicket", "ProjectTicket"):
                     by_ticket[e.get("chargeToId")] += hours
 
             def rounded(counter: Counter, n: int = 15) -> list[list]:
@@ -355,6 +418,86 @@ def build_tools(cw: ConnectWiseClient) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
+    def get_projects(company_id: int = 0, include_closed: bool = False) -> str:
+        """List ConnectWise projects (project work, not service tickets), for one client or all clients.
+
+        For each project: name, client, status, manager, type, estimated/actual dates, percent
+        complete, and budget vs actual hours (with hours over budget). Also counts by status,
+        manager and client. Use for "what projects do we have open", "which projects are over
+        budget", "projects for Jimmy's Grille". Then use get_project_tickets for a project's tasks.
+
+        Args:
+            company_id: Optional ConnectWise company id from find_company; 0 for all clients.
+            include_closed: Also include closed projects.
+        """
+        try:
+            projects = [summarize_project(p) for p in cw.projects(company_id or None, include_closed)]
+
+            def top(field: str) -> list[list]:
+                return [[k, v] for k, v in Counter(p.get(field) or "(none)" for p in projects).most_common(15)]
+
+            budget = sum(p.get("budget_hours") or 0 for p in projects)
+            actual = sum(p.get("actual_hours") or 0 for p in projects)
+            return json.dumps({
+                "project_count": len(projects),
+                "open_count": sum(1 for p in projects if not p.get("closed")),
+                "over_budget_count": sum(1 for p in projects if p.get("over_budget_hours")),
+                "budget_hours": round(budget, 2),
+                "actual_hours": round(actual, 2),
+                "by_status": top("status"),
+                "by_manager": top("manager"),
+                "by_company": top("company"),
+                "projects": projects,
+            })
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
+    def get_project_tickets(project_id: int = 0, company_id: int = 0, days: int = 0,
+                            include_closed: bool = True) -> str:
+        """Get project tickets (the tasks within ConnectWise projects) for one project or one client.
+
+        Project tickets are separate from service tickets; use this for questions about project
+        work, phases or tasks. Returns counts by project, phase and status, open count, budget vs
+        actual hours, and a compact list of every ticket (id, summary, project, phase, status,
+        dates, hours, resources; blank fields are left out).
+
+        Args:
+            project_id: ConnectWise project id from get_projects. Give this or company_id.
+            company_id: ConnectWise company id from find_company, for all of that client's projects.
+            days: Optional: only tickets entered in the last N days; 0 for all.
+            include_closed: Also include closed project tickets.
+        """
+        if not project_id and not company_id:
+            return json.dumps({"error": "Give a project_id (from get_projects) or a company_id (from find_company)."})
+        try:
+            tickets = cw.project_tickets(project_id or None, company_id or None, include_closed)
+            capped = len(tickets) >= 1000
+            if days:
+                start = datetime.now(timezone.utc) - timedelta(days=_clamp_days(days))
+                tickets = [t for t in tickets if (d := parse_dt(_date_entered(t))) is None or d >= start]
+            rows = [summarize_project_ticket(t) for t in tickets]
+
+            def top(field: str) -> list[list]:
+                return [[k, v] for k, v in Counter(r.get(field) or "(none)" for r in rows).most_common(15)]
+
+            result = {
+                "ticket_count": len(rows),
+                "open_count": sum(1 for r in rows if not r.get("closed")),
+                "budget_hours": round(sum(r.get("budget_hours") or 0 for r in rows), 2),
+                "actual_hours": round(sum(r.get("actual_hours") or 0 for r in rows), 2),
+                "by_project": top("project"),
+                "by_phase": top("phase"),
+                "by_status": top("status"),
+                "tickets": rows,
+            }
+            if capped:
+                result["note"] = "Capped at the 1000 newest project tickets."
+            return json.dumps(result)
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
     def create_chart(title: str, chart_type: str, labels: list[str], series: list[dict],
                      subtitle: str = "", x_label: str = "", y_label: str = "") -> str:
         """Add a chart to your answer. It's drawn below your text and can be exported.
@@ -381,4 +524,4 @@ def build_tools(cw: ConnectWiseClient) -> list:
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance, create_chart]
+            get_sla_performance, get_projects, get_project_tickets, create_chart]
