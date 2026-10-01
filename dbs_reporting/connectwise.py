@@ -58,6 +58,9 @@ PROJECT_TICKET_FIELDS = (
 # What time summaries need. Full time entries include their notes, which can be long.
 TIME_FIELDS = "actualHours,member/name,member/identifier,workType/name,chargeToType,chargeToId"
 
+# When people are scheduled on tickets (go-live days are scheduled on the deployment ticket).
+SCHEDULE_FIELDS = "id,objectId,type/identifier,type/name,member/identifier,member/name,dateStart,dateEnd,doneFlag"
+
 # What a text search returns for each match.
 TICKET_SEARCH_FIELDS = (
     "id,summary,closedFlag,closedDate,company/id,company/name,site/name,board/name,status/name,"
@@ -108,6 +111,7 @@ class ConnectWiseClient:
         # full records instead of failing first every time.
         self._rejected_fields: set[str] = set()
         self.software_field = settings.software_field
+        self.golive_phase = settings.golive_phase
         self._company_fields: tuple[float, list[dict]] | None = None
         self._company_fields_lock = threading.Lock()
 
@@ -286,6 +290,40 @@ class ConnectWiseClient:
         if company_id:
             conditions += f" and company/id={int(company_id)}"
         return self._fetch("/project/tickets", conditions, limit, PROJECT_TICKET_FIELDS)
+
+    def deployment_tickets(self, closed_since: datetime | None = None, company_id: int | None = None,
+                           limit: int = 5000) -> list[dict]:
+        """Project tickets whose phase is the go-live phase ("Deployment" unless CW_GOLIVE_PHASE says otherwise):
+        open ones, plus ones closed since `closed_since`. If this server won't filter on the phase
+        name, project tickets are fetched and filtered here instead."""
+        conditions = []
+        if closed_since:
+            conditions.append(f"(closedFlag=false or closedDate>={cw_date(closed_since)})")
+        else:
+            conditions.append("closedFlag=false")
+        if company_id:
+            conditions.append(f"company/id={int(company_id)}")
+        phase = f"phase/name like {quote('%' + self.golive_phase + '%')}"
+        try:
+            return self._fetch("/project/tickets", " and ".join([phase] + conditions), limit, PROJECT_TICKET_FIELDS)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 400:
+                raise
+        wanted = self.golive_phase.lower()
+        return [t for t in self._fetch("/project/tickets", " and ".join(conditions), 20000, PROJECT_TICKET_FIELDS)
+                if wanted in ((t.get("phase") or {}).get("name") or "").lower()][:limit]
+
+    def schedule_entries(self, ticket_ids: list[int]) -> list[dict]:
+        """Everyone scheduled on these tickets, in batches of 100 ids, a few batches at a time."""
+        ids = sorted({int(i) for i in ticket_ids})
+        batches = [ids[i:i + 100] for i in range(0, len(ids), 100)]
+
+        def fetch(batch: list[int]) -> list[dict]:
+            return self._fetch("/schedule/entries", f"objectId in ({','.join(map(str, batch))})", 2000,
+                               SCHEDULE_FIELDS)
+
+        with ThreadPoolExecutor(PARALLEL_PAGES) as pool:
+            return [e for found in pool.map(fetch, batches) for e in found]
 
     def project_ticket(self, ticket_id: int) -> dict:
         return self.get(f"/project/tickets/{int(ticket_id)}")

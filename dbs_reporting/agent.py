@@ -106,6 +106,11 @@ get_ticket_details works for both kinds of ticket.
 - After hours: for when tickets come in (evenings, weekends, after-hours volume, who takes those \
 calls, whether it's growing), use get_after_hours. "Calls" can mean phone tickets only: use \
 source="Phone" when the question is clearly about phone calls, and say which you counted.
+- Installs and go-lives: installs are ConnectWise projects. When a project ticket's phase is \
+Deployment and someone is scheduled on that ticket, the day they're scheduled is the site's go-live \
+day, and that person is the installer. Use \
+get_go_lives for upcoming or past go-lives, installs by installer, unscheduled deployments, and support \
+tickets after go-live (followup_days). Use get_projects for install budgets and hours.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
 times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
@@ -144,6 +149,7 @@ TOOL_STATUS = {
     "get_sla_performance": "Checking SLA performance…",
     "get_open_tickets": "Finding open tickets…",
     "get_after_hours": "Checking when tickets came in…",
+    "get_go_lives": "Looking up go-lives…",
     "search_tickets": "Searching tickets across clients…",
     "get_clients_by_software": "Checking which software clients use…",
     "get_projects": "Looking up projects…",

@@ -881,6 +881,148 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
+    def get_go_lives(days_ahead: int = 30, days_back: int = 0, company_id: int = 0, software: str = "",
+                     followup_days: int = 0) -> str:
+        """POS installs going live: upcoming and/or recent go-lives, from ConnectWise projects.
+
+        Each project ticket has a phase. When a ticket's phase is Deployment and someone is scheduled
+        on that ticket, the day they're scheduled is the site's go-live day, and they're the installer. Returns each go-live (date, client,
+        project, deployment ticket, installers, status, software), counts by week, installer and
+        software, and open deployment tickets nobody is scheduled on yet. With followup_days, also
+        counts the support tickets each site opened in the days after going live, overall and by
+        installer and software, a sign of how well installs went.
+
+        Args:
+            days_ahead: Days from today to look ahead for upcoming go-lives (0 for none).
+            days_back: Days before today to include past go-lives (0 for none), e.g. 30 for last month's.
+            company_id: Optional ConnectWise company id from find_company; 0 for all clients.
+            software: Optional: only clients whose POS software matches, e.g. "SkyTab".
+            followup_days: For go-lives already past: count support tickets opened within this many days after go-live (e.g. 30). 0 to skip.
+        """
+        try:
+            days_ahead = max(0, min(int(days_ahead), 365))
+            days_back = max(0, min(int(days_back), MAX_DAYS))
+            followup_days = max(0, min(int(followup_days), 180))
+            today = eastern.now().date()
+            first_day, last_day = today - timedelta(days=days_back), today + timedelta(days=days_ahead)
+            closed_since = datetime.now(timezone.utc) - timedelta(days=days_back + 2) if days_back else None
+            tickets = cw.deployment_tickets(closed_since, company_id or None)
+            lookup = None
+            try:
+                lookup = software_by_company()
+            except Exception:
+                if software:
+                    raise  # only needed for the filter; otherwise just leave software out
+            of = ticket_software(lookup) if lookup else None
+            if software:
+                tickets = [t for t in tickets if software_matches(of(t), software)]
+
+            def for_tickets(e: dict) -> bool:  # leave out CRM activities that happen to share an id
+                kind = e.get("type") or {}
+                return (kind.get("identifier") or "").upper() != "C" and "activit" not in (kind.get("name") or "").lower()
+
+            scheduled: dict[int, list[tuple[datetime, str]]] = {}
+            for e in cw.schedule_entries([t["id"] for t in tickets if t.get("id")]) if tickets else []:
+                start = parse_dt(e.get("dateStart"))
+                if start and for_tickets(e):
+                    member = e.get("member") or {}
+                    scheduled.setdefault(e.get("objectId"), []).append(
+                        (eastern.to_eastern(start), member.get("name") or member.get("identifier") or "(unknown)"))
+
+            go_lives, unscheduled = [], []
+            for t in tickets:
+                slots = sorted(scheduled.get(t.get("id"), []))
+                project = t.get("project") or {}
+                base = {"company": _name(t, "company"), "project": project.get("name"), "project_id": project.get("id"),
+                        "ticket_id": t.get("id"), "ticket": t.get("summary"), "status": _name(t, "status")}
+                if of:
+                    base["software"] = of(t)
+                if not slots:
+                    if not t.get("closedFlag"):
+                        unscheduled.append(_compact(base))
+                    continue
+                in_window = [s for s in slots if first_day <= s[0].date() <= last_day]
+                if not in_window:
+                    continue
+                when = in_window[0][0]
+                days = sorted({s[0].date() for s in slots})
+                go_lives.append(_compact({
+                    **base,
+                    "date": eastern.day(when.date()), "weekday": f"{when:%a}", "time": eastern.clock(when) + " ET",
+                    "installers": sorted({m for d, m in slots if d.date() == when.date()}),
+                    "other_scheduled_days": [eastern.day(d) for d in days if d != when.date()] or None,
+                    "past": when.date() < today or None,
+                    "_when": when, "_company_id": (t.get("company") or {}).get("id"),
+                }))
+            go_lives.sort(key=lambda g: g["_when"])
+
+            result: dict[str, Any] = {
+                "from": eastern.day(first_day), "to": eastern.day(last_day), "phase": cw.golive_phase,
+                "go_live_count": len(go_lives),
+                "upcoming": sum(1 for g in go_lives if not g.get("past")),
+                "past": sum(1 for g in go_lives if g.get("past")),
+            }
+            weeks = Counter(eastern.day(g["_when"].date() - timedelta(days=g["_when"].weekday())) for g in go_lives)
+            result["by_week_starting"] = [[w, n] for w, n in sorted(weeks.items(), key=lambda kv: kv[0][6:] + kv[0][:5])]
+            result["by_installer"] = [[k, v] for k, v in
+                                      Counter(m for g in go_lives for m in g["installers"]).most_common(20)]
+            if of:
+                result["by_software"] = [[k, v] for k, v in Counter(g.get("software") for g in go_lives).most_common(15)]
+
+            if followup_days:
+                past = [g for g in go_lives if g.get("past")]
+                if past:
+                    start = min(g["_when"] for g in past).astimezone(timezone.utc)
+                    span = (datetime.now(timezone.utc) - start).days + 1
+                    support = cw.tickets_with_times(_clamp_days(span), company_id or None, limit=TOTALS_LIMIT)
+                    by_company: dict[int, list[tuple[datetime, dict]]] = {}
+                    for s_ in support:
+                        entered = parse_dt(_date_entered(s_))
+                        if entered:
+                            by_company.setdefault((s_.get("company") or {}).get("id"), []).append((entered, s_))
+                    for g in past:
+                        begin = g["_when"].astimezone(timezone.utc)
+                        end = begin + timedelta(days=followup_days)
+                        after = sorted((e, s_) for e, s_ in by_company.get(g["_company_id"], [])
+                                       if begin <= e < end and s_.get("id") != g["ticket_id"])
+                        g["tickets_after"] = len(after)
+                        g["examples_after"] = [f"#{s_.get('id')} {s_.get('summary') or ''}".strip()
+                                               for _, s_ in after[:3]] or None
+                        if end > datetime.now(timezone.utc):
+                            g["followup_days_so_far"] = (datetime.now(timezone.utc) - begin).days
+
+                    def average(groups: dict[str, list[int]]) -> list[list]:
+                        rows = [[k, len(v), round(sum(v) / len(v), 1)] for k, v in groups.items() if v]
+                        return sorted(rows, key=lambda r: (-r[2], r[0]))
+
+                    installers: dict[str, list[int]] = {}
+                    brands: dict[str, list[int]] = {}
+                    for g in past:
+                        for m in g["installers"]:
+                            installers.setdefault(m, []).append(g["tickets_after"])
+                        if of:
+                            brands.setdefault(g.get("software"), []).append(g["tickets_after"])
+                    result["followup"] = {
+                        "days_after_go_live": followup_days,
+                        "average_tickets_after": round(sum(g["tickets_after"] for g in past) / len(past), 1),
+                        "by_installer": average(installers),  # [installer, go-lives, average tickets after]
+                    }
+                    if of:
+                        result["followup"]["by_software"] = average(brands)
+
+            result["go_lives"] = [{k: v for k, v in g.items() if not k.startswith("_")} for g in go_lives[:150]]
+            if len(go_lives) > 150:
+                result["note"] = f"Listing the first 150 of {len(go_lives)} go-lives; counts include all of them."
+            if days_ahead and unscheduled:
+                result["deployment_not_scheduled"] = unscheduled[:50]
+                result["deployment_not_scheduled_count"] = len(unscheduled)
+            if software:
+                result["software"] = software
+            return _dumps(result)
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
     def create_chart(title: str, chart_type: str, labels: list[str], series: list[dict],
                      subtitle: str = "", x_label: str = "", y_label: str = "") -> str:
         """Add a chart to your answer. It's drawn below your text and can be exported.
@@ -909,5 +1051,5 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance, get_after_hours, get_open_tickets, search_tickets, get_clients_by_software, get_projects,
+            get_sla_performance, get_after_hours, get_open_tickets, get_go_lives, search_tickets, get_clients_by_software, get_projects,
             get_project_tickets, create_chart]
