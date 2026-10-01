@@ -7,6 +7,7 @@ only their own saved chats.
 import base64
 import json
 import logging
+import queue
 import re
 import threading
 import time
@@ -394,14 +395,25 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(current_user)) 
     if not request.question.strip():
         raise HTTPException(400, "Question is empty")
     conversation_id, title, model = await run_in_threadpool(_resolve, user, request)
+    events: queue.Queue = queue.Queue()
 
-    def lines() -> Iterator[str]:
+    def work() -> None:
+        # The answer is written on its own thread, so it's still finished and saved if the page is
+        # closed or reloaded partway through (it shows up when the chat is opened again).
         try:
             for event in _run(user, request.question.strip(), conversation_id, title, model):
-                yield json.dumps(event) + "\n"
+                events.put(event)
         except Exception as exc:
             _, message = _friendly_error(exc, log_it=False)
-            yield json.dumps({"type": "error", "message": message}) + "\n"
+            events.put({"type": "error", "message": message})
+        finally:
+            events.put(None)
+
+    threading.Thread(target=work, name="answer", daemon=True).start()
+
+    def lines() -> Iterator[str]:
+        while (event := events.get()) is not None:
+            yield json.dumps(event) + "\n"
 
     return StreamingResponse(
         lines(), media_type="application/x-ndjson",

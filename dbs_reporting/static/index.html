@@ -110,8 +110,9 @@
   /* The chat title floats as a small glass pill */
   /* The chat title: plain text at the top of the chat area */
   header { display: flex; align-items: center; gap: 10px; padding: 20px 28px 4px; min-height: 0; }
-  #chat-title { min-width: 0; font-size: 14px; font-weight: 600; letter-spacing: -.01em; color: var(--text);
-                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Empty on a new chat; it keeps its line height so nothing shifts when a title appears. */
+  #chat-title { min-width: 0; min-height: 1.45em; font-size: 14px; font-weight: 600; letter-spacing: -.01em;
+                color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #toggle { display: none; background: none; border: 0; border-radius: 999px; padding: 4px; margin-left: -8px; line-height: 0; }
   #toggle svg { width: 18px; height: 18px; }
 
@@ -121,28 +122,41 @@
   .inner { max-width: 840px; margin: 0 auto; }
   #messages { display: flex; flex-direction: column; gap: 34px; }
 
-  /* Start screen: headline and an uneven grid of example questions */
-  .start { padding: min(4vh, 32px) 0 24px; }
-  .start > .eyebrow { margin-bottom: 18px; }
-  .start h2 { font-size: clamp(36px, 4.4vw, 56px); font-weight: 600; letter-spacing: -.05em; line-height: 1.02;
-              margin: 0 0 16px; text-wrap: balance; color: var(--text);
+  /* Start screen: headline and an uneven grid of example questions. Sizes and spacing follow the
+     window's height, so it fits without scrolling on short screens (laptops, Windows displays
+     scaled to 125-150%) and sits in the middle of tall ones. It only scrolls if it can't fit. */
+  #log:has(.start) .inner { min-height: 100%; display: flex; flex-direction: column; }
+  #log:has(.start) #messages { flex: 1; justify-content: center; }
+  .start { padding: clamp(0px, 2vh, 24px) 0 clamp(8px, 2vh, 24px); }
+  .start > .eyebrow { margin-bottom: clamp(10px, 2.2vh, 18px); }
+  .start h2 { font-size: clamp(30px, min(4.4vw, 6.2vh), 56px); font-weight: 600; letter-spacing: -.05em; line-height: 1.02;
+              margin: 0 0 clamp(8px, 1.6vh, 16px); text-wrap: balance; color: var(--text);
               background: linear-gradient(180deg, var(--text) 30%, var(--muted)); -webkit-background-clip: text;
               background-clip: text; -webkit-text-fill-color: transparent; }
-  .start p { margin: 0 0 28px; font-size: 16px; color: var(--muted); max-width: 44ch; text-wrap: pretty; }
-  .suggestions { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; }
+  .start p { margin: 0 0 clamp(14px, 3vh, 28px); font-size: clamp(14px, 1.9vh, 16px); color: var(--muted);
+             max-width: 44ch; text-wrap: pretty; }
+  .suggestions { display: grid; grid-template-columns: 1.5fr 1fr; gap: clamp(10px, 1.6vh, 14px); }
   .suggestions button.shell { display: block; text-align: left; color: inherit;
     transition: transform .7s var(--spring); animation: rise-in .9s var(--spring) both; animation-delay: calc(var(--i) * 110ms); }
   .suggestions button.shell:hover { transform: translateY(-2px); }
   .suggestions button.shell:active { transform: scale(.99); }
   .suggestions button.shell:first-child { grid-row: span 2; }
-  .suggestions .core { position: relative; overflow: hidden; height: 100%; padding: 20px;
-                       display: flex; flex-direction: column; gap: 14px; }
-  .suggestions .shell:first-child .core { min-height: 252px; justify-content: space-between; }
+  .suggestions .core { position: relative; overflow: hidden; height: 100%; padding: clamp(14px, 2.3vh, 20px);
+                       display: flex; flex-direction: column; gap: clamp(8px, 1.6vh, 14px); }
+  .suggestions .shell:first-child .core { min-height: clamp(160px, 30vh, 300px); justify-content: space-between; }
   .suggestions .shell:first-child .core::before { content: ""; position: absolute; width: 340px; height: 340px;
     right: -110px; top: -140px; border-radius: 50%; pointer-events: none;
     background: radial-gradient(closest-side, var(--orb-a), transparent); }
+  /* Shorter windows: the three examples side by side in one row, which takes about half the height. */
+  @media (min-width: 761px) and (max-height: 780px) {
+    .suggestions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .suggestions button.shell:first-child { grid-row: auto; }
+    .suggestions .shell:first-child .core { min-height: 0; }
+    .suggestions .shell:first-child .q { font-size: 17px; letter-spacing: -.02em; line-height: 1.35; max-width: none; }
+    .start p { max-width: 62ch; }
+  }
   .suggestions .q { position: relative; font-size: 15px; font-weight: 500; line-height: 1.45; letter-spacing: -.01em; }
-  .suggestions .shell:first-child .q { font-size: 25px; font-weight: 600; letter-spacing: -.035em; line-height: 1.12; max-width: 17ch; }
+  .suggestions .shell:first-child .q { font-size: clamp(20px, 3vh, 26px); font-weight: 600; letter-spacing: -.035em; line-height: 1.12; max-width: 17ch; }
   .cta { position: relative; display: inline-flex; align-items: center; gap: 12px; align-self: flex-start;
          border-radius: 999px; padding: 5px 5px 5px 16px; font-size: 13px; font-weight: 500;
          background: var(--cta); color: var(--cta-ink); }
@@ -153,7 +167,7 @@
   /* Messages */
   .msg { animation: rise .35s var(--spring); }
   .msg.user { align-self: flex-end; max-width: 82%; background: var(--glass); border: 1px solid var(--glass-ring);
-              padding: 11px 18px; border-radius: 22px 22px 8px 22px; white-space: pre-wrap; }
+              padding: 11px 18px; border-radius: 22px 22px 8px 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.bot { align-self: stretch; min-width: 0; }
   .byline { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
   .byline .mark { width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; overflow: hidden;
@@ -161,7 +175,8 @@
   .byline .mark .brand-mark { width: 20px; height: 20px; border-radius: 6px; }
   .byline .mark .brand-mark svg { width: 12px; height: 12px; }
   .byline .mark img { height: 20px; max-width: 20px; }
-  .answer { overflow-x: auto; line-height: 1.7; font-size: 15.5px; }
+  .answer { line-height: 1.7; font-size: 15.5px; overflow-wrap: anywhere; }
+  .answer table { overflow-wrap: normal; }
   .answer > :first-child { margin-top: 0; }
   .answer > :last-child { margin-bottom: 0; }
   .answer > p:first-child { font-size: 22px; font-weight: 600; letter-spacing: -.03em; line-height: 1.32; }
@@ -172,6 +187,9 @@
   .answer li { margin: .3em 0; }
   .answer li::marker { color: var(--faint); }
   .answer code { font-family: var(--mono); font-size: .88em; background: var(--pill); padding: 2px 6px; border-radius: 6px; }
+  .answer pre { overflow-x: auto; background: var(--pill); box-shadow: inset 0 0 0 1px var(--hair); border-radius: 14px;
+                padding: 12px 16px; line-height: 1.55; overflow-wrap: normal; }
+  .answer pre code { background: none; padding: 0; font-size: .86em; }
   .answer a { color: var(--tag-ink); }
   /* Tables sit on one pane that scrolls sideways itself when a table is too wide, so the pane always
      covers the whole table. Text wraps, but no column gets narrower than a few words. */
@@ -277,7 +295,7 @@
   .backdrop { display: none; }
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  @keyframes rise-in { from { opacity: 0; transform: translateY(40px); filter: blur(10px); } to { opacity: 1; transform: none; filter: none; } }
+  @keyframes rise-in { from { opacity: 0; transform: translateY(14px); filter: blur(10px); } to { opacity: 1; transform: none; filter: none; } }
   @keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
   @keyframes blink { to { visibility: hidden; } }
   @keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
@@ -366,7 +384,7 @@
       <button id="toggle" type="button" aria-label="Show chats">
         <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>
-      <span id="chat-title">New chat</span>
+      <span id="chat-title"></span>
     </header>
     <div id="log"><div class="inner"><div id="messages" aria-live="polite"></div></div></div>
     <form id="form">
@@ -583,7 +601,8 @@
     };
     glide = requestAnimationFrame(step);
   }
-  const keepAtEnd = new ResizeObserver(() => { if (following) glideToEnd(); });
+  // (Not on the start screen: that's read from the top.)
+  const keepAtEnd = new ResizeObserver(() => { if (following && !messages.querySelector(".start")) glideToEnd(); });
   keepAtEnd.observe(messages);
   keepAtEnd.observe(log);
 
@@ -1008,11 +1027,15 @@
     chatList.querySelectorAll("button.menu[aria-expanded]").forEach((b) => b.setAttribute("aria-expanded", "false"));
   }
 
+  let chatsRequest = 0;
   async function loadChats() {
+    const mine = ++chatsRequest;  // if loads overlap, only the newest one draws the list
     let chats;
     try {
       chats = await api("/api/conversations");
+      if (mine !== chatsRequest) return;
     } catch (err) {
+      if (mine !== chatsRequest) return;
       chatList.innerHTML = '<li class="empty-list">Couldn\'t load your chats. Refresh to try again.</li>';
       return;
     }
@@ -1142,12 +1165,13 @@
     for (const entry of liveCharts) entry.chart?.destroy();
     liveCharts.length = 0;
     messages.innerHTML = "";
+    log.scrollTop = 0;
   }
 
   function newChat() {
     conversationId = null;
     clearMessages();
-    chatTitle.textContent = "New chat";
+    chatTitle.textContent = "";  // a new chat has no title until its first answer
     setModel(modelInfo.default, false);
     showStart();
     closeDrawer();
