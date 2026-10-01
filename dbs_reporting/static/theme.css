@@ -1,0 +1,118 @@
+/* Shared look for the sign-in and chat pages: colours, the drifting background light, film grain,
+   and the small pieces both pages use (pill tags, pill buttons with a nested icon, framed cards). */
+
+:root {
+  --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --spring: cubic-bezier(.32, .72, 0, 1);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+
+  /* Light: pale blue-white page, white panels */
+  --bg: #f1f4f9;
+  --panel: rgba(255, 255, 255, .78);      /* sidebar: mostly solid, the light shows through softly */
+  --core: #ffffff;                        /* cards */
+  --core-hi: inset 0 1px 1px rgba(255, 255, 255, .9);
+  --shell: rgba(11, 13, 18, .035);        /* the outer frame around cards */
+  --shell-ring: rgba(11, 13, 18, .06);
+  --glass: rgba(255, 255, 255, .62);
+  --glass-ring: rgba(11, 13, 18, .07);
+  --hair: rgba(11, 13, 18, .07);
+  --hover: rgba(24, 62, 124, .06);
+  --text: #0b0d12;
+  --muted: rgba(11, 13, 18, .62);
+  --faint: rgba(11, 13, 18, .42);
+  --pill: rgba(24, 62, 124, .07);
+  --pill-ink: #183e7c;
+  --cta: #0b0d12;
+  --cta-ink: #ffffff;
+  --cta-icon: rgba(255, 255, 255, .16);
+  --tag-bg: rgba(24, 62, 124, .08);
+  --tag-ink: #183e7c;
+  --danger: #a8402c;
+  --danger-soft: #f8e6e1;
+  --ring: 0 0 0 3px rgba(24, 62, 124, .25);
+  --ambient: 0 30px 60px -30px rgba(15, 23, 42, .18);
+  --grain: .025;
+  --orb-a: rgba(80, 135, 235, .42);
+  --orb-b: rgba(24, 62, 124, .20);
+  --orb-c: rgba(110, 165, 245, .34);
+  --orb-d: rgba(60, 100, 215, .16);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark: blue-black page, glowing navy and blue light */
+    --bg: #04060c;
+    --panel: rgba(10, 12, 17, .78);
+    --core: #0d0f14;
+    --core-hi: inset 0 1px 1px rgba(255, 255, 255, .07);
+    --shell: rgba(255, 255, 255, .035);
+    --shell-ring: rgba(255, 255, 255, .08);
+    --glass: rgba(255, 255, 255, .05);
+    --glass-ring: rgba(255, 255, 255, .10);
+    --hair: rgba(255, 255, 255, .07);
+    --hover: rgba(255, 255, 255, .05);
+    --text: #ededef;
+    --muted: rgba(237, 237, 239, .64);
+    --faint: rgba(237, 237, 239, .40);
+    --pill: rgba(255, 255, 255, .06);
+    --pill-ink: rgba(237, 237, 239, .78);
+    --cta: #ededef;
+    --cta-ink: #05070d;
+    --cta-icon: rgba(5, 7, 13, .09);
+    --tag-bg: rgba(122, 167, 255, .13);
+    --tag-ink: #a3c1ff;
+    --danger: #f0a090;
+    --danger-soft: rgba(224, 128, 108, .14);
+    --ring: 0 0 0 3px rgba(122, 167, 255, .30);
+    --ambient: 0 40px 80px -40px rgba(0, 0, 0, .9);
+    --grain: .045;
+    --orb-a: rgba(30, 74, 168, .78);
+    --orb-b: rgba(58, 124, 245, .50);
+    --orb-c: rgba(26, 60, 150, .62);
+    --orb-d: rgba(80, 100, 230, .30);
+  }
+}
+
+html { background: var(--bg); }
+body { background: var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+
+/* Slowly drifting light behind everything. Transform-only animation on a fixed layer, so it's cheap. */
+.aurora { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.aurora i { position: absolute; display: block; border-radius: 50%; will-change: transform;
+            animation: var(--drift) var(--dur) cubic-bezier(.45, .05, .55, .95) infinite alternate; }
+.aurora i:nth-child(1) { --drift: drift-a; --dur: 26s; width: 64vw; height: 64vw; left: -14vw; top: -34vw;
+                         background: radial-gradient(closest-side, var(--orb-a), transparent); }
+.aurora i:nth-child(2) { --drift: drift-b; --dur: 34s; width: 54vw; height: 54vw; right: -14vw; top: -30vw;
+                         background: radial-gradient(closest-side, var(--orb-b), transparent); }
+.aurora i:nth-child(3) { --drift: drift-c; --dur: 38s; width: 50vw; height: 50vw; left: -10vw; bottom: -32vw;
+                         background: radial-gradient(closest-side, var(--orb-c), transparent); }
+.aurora i:nth-child(4) { --drift: drift-d; --dur: 44s; width: 46vw; height: 46vw; right: -12vw; bottom: -30vw;
+                         background: radial-gradient(closest-side, var(--orb-d), transparent); }
+@keyframes drift-a { 50% { transform: translate3d(14vw, 6vw, 0) scale(1.15); } 100% { transform: translate3d(28vw, -2vw, 0) scale(.95); } }
+@keyframes drift-b { 50% { transform: translate3d(-18vw, 10vw, 0) scale(.9); } 100% { transform: translate3d(-6vw, 18vw, 0) scale(1.12); } }
+@keyframes drift-c { 50% { transform: translate3d(16vw, -8vw, 0) scale(1.1); } 100% { transform: translate3d(30vw, 2vw, 0) scale(.92); } }
+@keyframes drift-d { 50% { transform: translate3d(-22vw, -8vw, 0) scale(1.2); } 100% { transform: translate3d(-34vw, 4vw, 0) scale(1); } }
+
+/* Film grain over the page, fixed so it never repaints on scroll. */
+.grain { position: fixed; inset: 0; pointer-events: none; z-index: 60; opacity: var(--grain);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+/* Small spaced-out label in a pill */
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; border-radius: 999px;
+           padding: 5px 12px; font-size: 10px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase;
+           color: var(--pill-ink); background: var(--pill); box-shadow: inset 0 0 0 1px var(--hair); }
+
+/* A round icon nested inside a pill button; it nudges on hover */
+.ico { width: 30px; height: 30px; border-radius: 999px; background: var(--cta-icon); display: inline-grid;
+       place-items: center; flex-shrink: 0; transition: transform .5s var(--spring); }
+.ico svg { width: 15px; height: 15px; }
+:is(button, .cta):hover > .ico { transform: translate(2px, -1px) scale(1.05); }
+
+/* Framed card: an outer frame with a card set inside it */
+.shell { padding: 6px; border-radius: 28px; background: var(--shell); border: 1px solid var(--shell-ring); }
+.core { border-radius: 22px; background: var(--core); box-shadow: var(--core-hi); }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora i { animation: none; }
+  .ico { transition: none; }
+}
