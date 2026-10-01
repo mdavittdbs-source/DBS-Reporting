@@ -410,6 +410,125 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
+    def get_after_hours(days: int = 30, group_by: str = "company", company_id: int = 0, board_name: str = "",
+                        software: str = "", source: str = "", top: int = 25) -> str:
+        """When tickets come in: during office hours, weekday evenings, or weekends (Eastern Time).
+
+        Office hours are Mon and Wed-Fri 8:30 AM-5:00 PM, Tue 9:00 AM-5:00 PM. "Evening" is any
+        weekday time outside those hours (early mornings included); "weekend" is all of Saturday and
+        Sunday. Use for after-hours or weekend call volume, which clients or techs it falls on, the
+        busiest after-hours times, and whether it's growing. Returns counts by period, by weekday,
+        by hour (evening and weekend), by week (for trends), by source, a ranked breakdown, and
+        recent after-hours tickets. Holidays aren't treated as after hours.
+
+        Args:
+            days: How many days back to look, based on when each ticket was entered.
+            group_by: Breakdown to rank by after-hours tickets: "company", "site", "software", "board", "type", "priority", "source", "owner" (assigned tech) or "entered_by" (who logged it, usually who took the call).
+            company_id: Optional ConnectWise company id from find_company; 0 for all clients.
+            board_name: Optional exact service board name, e.g. "Help Desk".
+            software: Optional: only clients whose POS software matches, e.g. "SkyTab".
+            source: Optional ticket source to count only, e.g. "Phone" for calls.
+            top: How many groups to return.
+        """
+        def owner(t: dict) -> str:
+            o = t.get("owner") or {}
+            return o.get("name") or o.get("identifier") or "(unassigned)"
+
+        keys = {
+            "company": lambda t: _name(t, "company") or "(no company)",
+            "site": lambda t: f"{_name(t, 'company') or '(no company)'} – {_name(t, 'site') or '(no site)'}",
+            "software": None,
+            "board": lambda t: _name(t, "board") or "(none)",
+            "type": lambda t: _name(t, "type") or "(none)",
+            "priority": lambda t: _name(t, "priority") or "(none)",
+            "source": lambda t: _name(t, "source") or "(none)",
+            "owner": owner,
+            "entered_by": lambda t: (t.get("_info") or {}).get("enteredBy") or "(unknown)",
+        }
+        if group_by not in keys:
+            return _dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
+        try:
+            days = _clamp_days(days)
+            tickets = cw.tickets_with_times(days, company_id or None, board_name or None, limit=TOTALS_LIMIT)
+            capped = len(tickets) >= TOTALS_LIMIT
+            if group_by == "software" or software:
+                keys["software"] = of = ticket_software(software_by_company())
+                if software:
+                    tickets = [t for t in tickets if software_matches(of(t), software)]
+            if source:
+                tickets = [t for t in tickets if _plain(_name(t, "source") or "") == _plain(source)]
+            periods = ("business hours", "evening", "weekend")
+            weekdays = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+            by_period: Counter = Counter()
+            by_weekday = {d: Counter() for d in weekdays}
+            by_hour = {"evening": Counter(), "weekend": Counter()}
+            by_week: dict[str, Counter] = {}
+            groups: dict[str, Counter] = {}
+            source_after: Counter = Counter()
+            after = []
+            key = keys[group_by]
+            for t in tickets:
+                dt = parse_dt(_date_entered(t))
+                if not dt:
+                    continue
+                local = eastern.to_eastern(dt)
+                p = eastern.period(dt)
+                by_period[p] += 1
+                by_weekday[weekdays[local.weekday()]][p] += 1
+                week = eastern.day((local - timedelta(days=local.weekday())).date())
+                by_week.setdefault(week, Counter())[p] += 1
+                groups.setdefault(key(t), Counter())[p] += 1
+                if p != "business hours":
+                    by_hour[p][local.hour] += 1
+                    source_after[_name(t, "source") or "(none)"] += 1
+                    after.append((dt, t, p))
+            counted = sum(by_period.values())
+            after_count = by_period["evening"] + by_period["weekend"]
+
+            def split(c: Counter) -> dict:
+                row = {p: c[p] for p in periods}
+                total = sum(row.values())
+                row["after_hours"] = row["evening"] + row["weekend"]
+                row["after_hours_pct"] = round(100 * row["after_hours"] / total, 1) if total else 0
+                return row
+
+            def hour_label(h: int) -> str:
+                return f"{h % 12 or 12} {'AM' if h < 12 else 'PM'}"
+
+            ranked = sorted(groups.items(), key=lambda kv: (-(kv[1]["evening"] + kv[1]["weekend"]), kv[0]))
+            top = max(1, min(int(top), 100))
+            after.sort(key=lambda x: x[0], reverse=True)
+            result = {
+                "days": days,
+                "office_hours": eastern.HOURS_TEXT,
+                "ticket_count": counted,
+                "by_period": split(by_period),
+                "by_weekday": {d: {p: c[p] for p in periods} for d, c in by_weekday.items()},
+                "evening_by_hour": [[hour_label(h), n] for h, n in sorted(by_hour["evening"].items())],
+                "weekend_by_hour": [[hour_label(h), n] for h, n in sorted(by_hour["weekend"].items())],
+                "by_week_starting": [dict(week=w, **{p: c[p] for p in periods})
+                                     for w, c in sorted(by_week.items(), key=lambda kv: kv[0][6:] + kv[0][:5])],
+                "after_hours_by_source": [[k, v] for k, v in source_after.most_common(10)],
+                "group_by": group_by,
+                "groups": [dict(name=k, **split(c)) for k, c in ranked[:top]],
+                "recent_after_hours": [_compact({
+                    "id": t.get("id"), "summary": t.get("summary"), "company": _name(t, "company"),
+                    "entered": _date_entered(t), "period": p,
+                    "entered_by": (t.get("_info") or {}).get("enteredBy")}) for _, t, p in after[:15]],
+            }
+            if len(groups) > top:
+                result["other_groups"] = len(groups) - top
+            if not after_count:
+                result["note"] = "No tickets came in outside office hours in this period."
+            if software:
+                result["software"] = software
+            if capped:
+                result["limit_note"] = f"Capped at {TOTALS_LIMIT} tickets; narrow the date range for exact totals."
+            return _dumps(result)
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
     def get_sla_performance(days: int = 30, group_by: str = "company", company_id: int = 0,
                             board_name: str = "", top: int = 25) -> str:
         """SLA performance for tickets entered in the last N days, for all clients or one.
@@ -775,5 +894,5 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance, get_open_tickets, search_tickets, get_clients_by_software, get_projects,
+            get_sla_performance, get_after_hours, get_open_tickets, search_tickets, get_clients_by_software, get_projects,
             get_project_tickets, create_chart]
