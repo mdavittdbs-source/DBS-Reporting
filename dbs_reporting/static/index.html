@@ -190,6 +190,9 @@
   .answer :is(th, td).long { min-width: 16em; }
   .ref { font-family: var(--mono); font-size: .82em; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
          background: var(--tag-bg); color: var(--tag-ink); }
+  a.ref { text-decoration: none; transition: box-shadow .2s var(--ease); }
+  a.ref:hover { box-shadow: inset 0 0 0 1px currentColor; }
+  a.ref:focus-visible { outline: none; box-shadow: var(--ring); }
 
   .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
   .actions button { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 999px;
@@ -404,6 +407,7 @@
   let modelInfo = { default: null, models: [] };
   let isAdmin = false;
   let firstName = "";  // for the greeting on the start screen
+  let ticketUrl = "";  // opens a ticket in ConnectWise; {id} is replaced with the number
   let busy = false;
   let view = 0;  // changes whenever another chat is shown, so a finishing answer can't land in the wrong one
 
@@ -490,9 +494,17 @@
       let at = 0;
       for (const m of matches) {
         frag.append(text.slice(at, m.index));
-        const tag = document.createElement("span");
+        // Ticket numbers open the ticket in ConnectWise. "Project #123" is a project, not a ticket: no link.
+        const isProject = /project\s*$/i.test(text.slice(0, m.index));
+        const tag = document.createElement(ticketUrl && !isProject ? "a" : "span");
         tag.className = "ref";
         tag.textContent = m[0];
+        if (tag.tagName === "A") {
+          tag.href = ticketUrl.replace("{id}", m[0].slice(1));
+          tag.target = "_blank";
+          tag.rel = "noopener";
+          tag.title = "Open in ConnectWise";
+        }
         frag.append(tag);
         at = m.index + m[0].length;
       }
@@ -1305,6 +1317,7 @@
     $("me").textContent = me.display_name;
     isAdmin = me.is_admin;
     firstName = me.display_name.trim().split(/\s+/)[0] || "";
+    ticketUrl = me.ticket_url || "";
     $("avatar").textContent = me.display_name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
     modelInfo = await api("/api/models");
     for (const m of modelInfo.models) modelSelect.add(new Option(m.label, m.id));
