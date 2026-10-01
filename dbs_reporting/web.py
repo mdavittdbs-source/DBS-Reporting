@@ -123,7 +123,7 @@ def _page(name: str) -> HTMLResponse:
         return HTMLResponse(cached[1], headers={"Cache-Control": "no-cache"})
     html = page.read_text(encoding="utf-8")
     if light:
-        source = (f'<source srcset="{_logo_src(dark, "/logo-dark")}" media="(prefers-color-scheme: dark)">'
+        source = (f'<source data-dark srcset="{_logo_src(dark, "/logo-dark")}" media="(prefers-color-scheme: dark)">'
                   if dark else "")
         mark = (f'<span class="brand-mark has-logo" aria-hidden="true"><picture>{source}'
                 f'<img src="{_logo_src(light, "/logo")}" alt=""></picture></span>')

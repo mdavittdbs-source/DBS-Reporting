@@ -216,7 +216,7 @@ def test_logo_is_built_into_the_pages(web, tmp_path, monkeypatch):
     alice = login(module, "alice", "password-a")
     chat = alice.get("/").text
     dark = "data:image/png;base64," + base64.b64encode(b"\x89PNG dark").decode()
-    assert f'<source srcset="{dark}" media="(prefers-color-scheme: dark)">' in chat and light in chat
+    assert f'<source data-dark srcset="{dark}" media="(prefers-color-scheme: dark)">' in chat and light in chat
     assert '<link rel="icon" href="/logo-dark" media="(prefers-color-scheme: dark)">' in chat
 
     # Large logos are linked rather than embedded in every page.
