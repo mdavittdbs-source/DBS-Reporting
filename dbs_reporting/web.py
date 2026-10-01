@@ -4,6 +4,7 @@ Each person signs in with their own login (listed in users.txt, see userfile.py)
 only their own saved chats.
 """
 
+import base64
 import json
 import logging
 import re
@@ -16,7 +17,7 @@ from pathlib import Path
 import anthropic
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -73,19 +74,65 @@ def index(dbs_session: str | None = Cookie(default=None)):
     users_file.refresh()
     if not dbs_session or store.session_user(dbs_session) is None:
         return RedirectResponse("/login")
-    return FileResponse(STATIC / "index.html")
+    return _page("index.html")
 
 
 BRANDING = Path(__file__).resolve().parent.parent / "branding"
 LOGO_TYPES = ("svg", "png", "webp", "jpg", "jpeg")
 
 
-def _branding_file(stem: str) -> FileResponse:
+LOGO_MIME = {"svg": "image/svg+xml", "png": "image/png", "webp": "image/webp", "jpg": "image/jpeg",
+             "jpeg": "image/jpeg"}
+INLINE_LOGO_BYTES = 150_000  # bigger logos are linked instead of embedded in every page
+
+
+def _logo_path(stem: str) -> Path | None:
     for ext in LOGO_TYPES:
         path = BRANDING / f"{stem}.{ext}"
         if path.is_file():
-            return FileResponse(path, headers={"Cache-Control": "no-cache"})
-    raise HTTPException(404, f"No {stem} in the branding folder.")
+            return path
+    return None
+
+
+def _branding_file(stem: str) -> FileResponse:
+    path = _logo_path(stem)
+    if path is None:
+        raise HTTPException(404, f"No {stem} in the branding folder.")
+    return FileResponse(path, headers={"Cache-Control": "no-cache"})
+
+
+def _logo_src(path: Path, url: str) -> str:
+    """The logo embedded in the page (data URI), so it's drawn with the page instead of after it."""
+    data = path.read_bytes()
+    if len(data) > INLINE_LOGO_BYTES:
+        return url
+    mime = LOGO_MIME[path.suffix.lower().lstrip(".")]
+    return f"data:{mime};base64,{base64.b64encode(data).decode()}"
+
+
+_pages: dict[str, tuple[tuple, str]] = {}
+
+
+def _page(name: str) -> HTMLResponse:
+    """Serve a page with the branding logo already in place. Without this, the built-in icon
+    showed for a moment before a script swapped the logo in. Rebuilt when any file changes."""
+    page, light, dark = STATIC / name, _logo_path("logo"), _logo_path("logo-dark")
+    key = tuple((p, p.stat().st_mtime) for p in (page, light, dark) if p)
+    cached = _pages.get(name)
+    if cached and cached[0] == key:
+        return HTMLResponse(cached[1], headers={"Cache-Control": "no-cache"})
+    html = page.read_text(encoding="utf-8")
+    if light:
+        source = (f'<source srcset="{_logo_src(dark, "/logo-dark")}" media="(prefers-color-scheme: dark)">'
+                  if dark else "")
+        mark = (f'<span class="brand-mark has-logo" aria-hidden="true"><picture>{source}'
+                f'<img src="{_logo_src(light, "/logo")}" alt=""></picture></span>')
+        icon = '<link rel="icon" href="/logo">' + (
+            '<link rel="icon" href="/logo-dark" media="(prefers-color-scheme: dark)">' if dark else "")
+        html = re.sub(r"<!--brand-mark-->.*?<!--/brand-mark-->", lambda _: mark, html, count=1, flags=re.S)
+        html = re.sub(r"<!--icon-->.*?<!--/icon-->", lambda _: icon, html, count=1, flags=re.S)
+    _pages[name] = (key, html)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/logo")
@@ -121,8 +168,8 @@ def export_xlsx(answer_id: int, user: dict = Depends(current_user)) -> Response:
 
 
 @app.get("/login")
-def login_page() -> FileResponse:
-    return FileResponse(STATIC / "login.html")
+def login_page() -> HTMLResponse:
+    return _page("login.html")
 
 
 # --- Sign in / out -------------------------------------------------------

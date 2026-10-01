@@ -6,7 +6,7 @@
 <meta name="description" content="Sign in to the DBS Autonomous Virtual Information Desk.">
 <meta name="color-scheme" content="light dark">
 <title>Sign in · David</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23183e7c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<!--icon--><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23183e7c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"><!--/icon-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
@@ -91,9 +91,9 @@
 <body>
 <main>
   <div class="brand">
-    <span class="brand-mark" aria-hidden="true">
+    <!--brand-mark--><span class="brand-mark" aria-hidden="true">
       <svg viewBox="0 0 16 16" fill="none"><path d="M3.5 12V5m4.5 7V8m4.5 4V3.5" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
-    </span>
+    </span><!--/brand-mark-->
     <span>DBS Autonomous Virtual Information Desk</span>
   </div>
   <form id="form" novalidate>
@@ -107,29 +107,6 @@
   <p class="foot">Need an account or a password reset? Ask Mikey Davitt.</p>
 </main>
 <script>
-  // Custom logo from the branding folder. Dark-mode viewers get logo-dark if it exists,
-  // otherwise the normal logo. Swaps live when the system theme changes.
-  const darkMode = window.matchMedia("(prefers-color-scheme: dark)");
-  function loadLogo() {
-    const sources = darkMode.matches ? ["/logo-dark", "/logo"] : ["/logo"];
-    const tryNext = () => {
-      const src = sources.shift();
-      if (!src) return;
-      const img = new Image();
-      img.alt = "";
-      img.onload = () => {
-        const mark = document.querySelector(".brand-mark");
-        mark.replaceChildren(img);
-        mark.classList.add("has-logo");
-        document.querySelector('link[rel="icon"]').href = src;
-      };
-      img.onerror = tryNext;
-      img.src = src;
-    };
-    tryNext();
-  }
-  darkMode.addEventListener("change", loadLogo);
-  loadLogo();
 
   const form = document.getElementById("form");
   const error = document.getElementById("error");
