@@ -52,3 +52,18 @@ def localize(text: str) -> str:
             return day(date.fromisoformat(m.group(1)))
         return stamp(datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}+00:00"))
     return _UTC_STAMP.sub(swap, text)
+
+
+# DBS's office hours, Eastern Time: weekday (Monday = 0) -> (opens, closes) in minutes after midnight.
+BUSINESS_HOURS = {0: (510, 1020), 1: (540, 1020), 2: (510, 1020), 3: (510, 1020), 4: (510, 1020)}
+HOURS_TEXT = "Mon and Wed-Fri 8:30 AM-5:00 PM, Tue 9:00 AM-5:00 PM, Eastern"
+
+
+def period(dt: datetime) -> str:
+    """ "business hours", "evening" (a weekday outside office hours, early morning included) or "weekend"."""
+    local = to_eastern(dt)
+    hours = BUSINESS_HOURS.get(local.weekday())
+    if not hours:
+        return "weekend"
+    minute = local.hour * 60 + local.minute
+    return "business hours" if hours[0] <= minute < hours[1] else "evening"

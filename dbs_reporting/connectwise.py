@@ -31,6 +31,12 @@ TICKET_OPEN_FIELDS = (
     "priority/name,owner/identifier,owner/name,resources,_info/dateEntered,_info/lastUpdated"
 )
 
+# When each ticket came in and who took it, for after-hours reports.
+TICKET_TIMING_FIELDS = (
+    "id,summary,closedFlag,company/id,company/name,site/name,board/name,type/name,priority/name,"
+    "source/name,owner/identifier,owner/name,_info/dateEntered,_info/enteredBy"
+)
+
 # What a text search returns for each match.
 TICKET_SEARCH_FIELDS = (
     "id,summary,closedFlag,closedDate,company/id,company/name,site/name,board/name,status/name,"
@@ -178,6 +184,16 @@ class ConnectWiseClient:
         if board_name:
             conditions += f" and board/name={quote(board_name)}"
         return self._tickets(conditions, limit, TICKET_SUMMARY_FIELDS)
+
+    def tickets_with_times(self, days: int, company_id: int | None = None, board_name: str | None = None,
+                           limit: int = 20000) -> list[dict]:
+        """Tickets entered in the last `days` days, with when they came in and who entered them."""
+        conditions = f"dateEntered>={cw_date(since(days))}"
+        if company_id:
+            conditions += f" and company/id={int(company_id)}"
+        if board_name:
+            conditions += f" and board/name={quote(board_name)}"
+        return self._tickets(conditions, limit, TICKET_TIMING_FIELDS)
 
     def open_tickets(self, company_id: int | None = None, board_name: str | None = None,
                      limit: int = 5000) -> list[dict]:

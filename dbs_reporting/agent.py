@@ -103,6 +103,9 @@ relevant few with get_ticket_details.
 - Projects: project tickets are separate from service tickets in ConnectWise. For projects, \
 their tasks, phases or budgets, use get_projects and get_project_tickets, not the service ticket tools. \
 get_ticket_details works for both kinds of ticket.
+- After hours: for when tickets come in (evenings, weekends, after-hours volume, who takes those \
+calls, whether it's growing), use get_after_hours. "Calls" can mean phone tickets only: use \
+source="Phone" when the question is clearly about phone calls, and say which you counted.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
 times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
@@ -140,6 +143,7 @@ TOOL_STATUS = {
     "get_ticket_totals": "Counting tickets across all clients…",
     "get_sla_performance": "Checking SLA performance…",
     "get_open_tickets": "Finding open tickets…",
+    "get_after_hours": "Checking when tickets came in…",
     "search_tickets": "Searching tickets across clients…",
     "get_clients_by_software": "Checking which software clients use…",
     "get_projects": "Looking up projects…",
