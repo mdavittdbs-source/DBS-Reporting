@@ -907,6 +907,9 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             first_day, last_day = today - timedelta(days=days_back), today + timedelta(days=days_ahead)
             closed_since = datetime.now(timezone.utc) - timedelta(days=days_back + 2) if days_back else None
             tickets = cw.deployment_tickets(closed_since, company_id or None)
+            # Other work in the Deployment phase, like management training, isn't a go-live.
+            tickets = [t for t in tickets
+                       if not any(w in (t.get("summary") or "").lower() for w in cw.golive_exclude)]
             lookup = None
             try:
                 lookup = software_by_company()

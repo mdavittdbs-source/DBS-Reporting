@@ -108,7 +108,8 @@ calls, whether it's growing), use get_after_hours. "Calls" can mean phone ticket
 source="Phone" when the question is clearly about phone calls, and say which you counted.
 - Installs and go-lives: installs are ConnectWise projects. When a project ticket's phase is \
 Deployment and someone is scheduled on that ticket, the day they're scheduled is the site's go-live \
-day, and that person is the installer. Use \
+day, and that person is the installer. Training tickets in that phase (e.g. management training) \
+aren't go-lives and are left out. Use \
 get_go_lives for upcoming or past go-lives, installs by installer, unscheduled deployments, and support \
 tickets after go-live (followup_days). Use get_projects for install budgets and hours.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \

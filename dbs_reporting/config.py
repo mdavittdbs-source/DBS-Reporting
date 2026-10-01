@@ -45,6 +45,8 @@ class ConnectWiseSettings:
     software_field: str = "Software"
     # The project phase whose scheduled day is a site's go-live
     golive_phase: str = "Deployment"
+    # Deployment-phase tickets that aren't go-lives (comma-separated words in the ticket summary)
+    golive_exclude: str = "training"
 
     @classmethod
     def from_env(cls) -> "ConnectWiseSettings":
@@ -57,6 +59,7 @@ class ConnectWiseSettings:
             codebase=os.environ.get("CW_CODEBASE", "v4_6_release").strip() or "v4_6_release",
             software_field=os.environ.get("CW_SOFTWARE_FIELD", "Software").strip().rstrip(":") or "Software",
             golive_phase=os.environ.get("CW_GOLIVE_PHASE", "Deployment").strip() or "Deployment",
+            golive_exclude=os.environ.get("CW_GOLIVE_EXCLUDE", "training").strip(),
         )
 
     @property
