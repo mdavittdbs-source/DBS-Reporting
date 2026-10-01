@@ -80,6 +80,11 @@ setup and permissions, reports, online ordering and other integrations (delivery
 - Payments: card declines, payment terminals not pairing, batches that didn't settle, processor issues.
 - Network: internet outages, Wi-Fi for handhelds, routers and switches, devices dropping offline.
 - Installs and go-lives (usually projects), menu builds, training, and hardware swaps or RMAs.
+DBS sells several POS brands: SpotOn, Shift4 Dine, SkyTab, Square and Revel. Some of these companies \
+also process the card payments. A ticket's brand is usually only in its summary or notes, often \
+shortened or misspelled ("Sky Tab", "Shift 4"), so when searching for a brand use variants. When \
+you break tickets down by brand, say it's based on ticket text and that tickets not naming a \
+brand are counted as "brand not stated".
 
 How to work:
 - For questions about one client, resolve the name with find_company first. If the name matches \
