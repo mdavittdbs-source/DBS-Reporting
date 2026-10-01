@@ -3,6 +3,7 @@
 import base64
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
@@ -11,6 +12,7 @@ import httpx
 from .config import ConnectWiseSettings
 
 PAGE_SIZE = 1000  # ConnectWise maximum
+PARALLEL_PAGES = 4  # pages fetched at once after the first, for big results
 COMPANY_FIELDS_TTL = 3600  # seconds to reuse the list of companies' custom fields
 
 # What SLA reporting needs from each ticket.
@@ -36,6 +38,25 @@ TICKET_TIMING_FIELDS = (
     "id,summary,closedFlag,company/id,company/name,site/name,board/name,type/name,priority/name,"
     "source/name,owner/identifier,owner/name,_info/dateEntered,_info/enteredBy"
 )
+
+# What a single client's ticket list needs (see tools.summarize_ticket).
+TICKET_LIST_FIELDS = (
+    "id,summary,closedFlag,closedDate,board/name,status/name,type/name,subType/name,item/name,"
+    "priority/name,source/name,contactName,actualHours,_info/dateEntered"
+)
+
+# What project and project ticket summaries need (see tools.summarize_project*).
+PROJECT_FIELDS = (
+    "id,name,closedFlag,company/name,status/name,manager/name,manager/identifier,type/name,board/name,"
+    "estimatedStart,estimatedEnd,actualStart,actualEnd,percentComplete,budgetHours,actualHours,scheduledHours"
+)
+PROJECT_TICKET_FIELDS = (
+    "id,summary,closedFlag,closedDate,company/id,company/name,project/id,project/name,phase/name,"
+    "status/name,budgetHours,actualHours,resources,priority/name,type/name,_info/dateEntered"
+)
+
+# What time summaries need. Full time entries include their notes, which can be long.
+TIME_FIELDS = "actualHours,member/name,member/identifier,workType/name,chargeToType,chargeToId"
 
 # What a text search returns for each match.
 TICKET_SEARCH_FIELDS = (
@@ -99,33 +120,49 @@ class ConnectWiseClient:
         return response.json()
 
     def get_all(self, path: str, limit: int = 5000, **params: Any) -> Iterator[dict]:
-        """Yield records across pages, stopping after `limit` records."""
+        """Yield records across pages, stopping after `limit` records. When the first page is
+        full, the next few pages are fetched at the same time, which is much faster for big
+        results (ConnectWise takes a while per page)."""
         page_size = max(1, min(PAGE_SIZE, limit))
-        page = 1
-        returned = 0
-        while returned < limit:
-            batch = self.get(path, page=page, pageSize=page_size, **params)
-            for record in batch[:limit - returned]:
-                yield record
-            returned += len(batch)
-            if len(batch) < page_size:
-                return
-            page += 1
 
-    def _tickets(self, conditions: str, limit: int, fields: str) -> list[dict]:
-        """Tickets matching `conditions`, asking for just `fields`. Some servers reject nested
+        def fetch(page: int) -> list:
+            return self.get(path, page=page, pageSize=page_size, **params)
+
+        batch = fetch(1)
+        yield from batch[:limit]
+        returned = len(batch)
+        if len(batch) < page_size or returned >= limit:
+            return
+        page = 2
+        with ThreadPoolExecutor(PARALLEL_PAGES) as pool:
+            while True:
+                count = min(PARALLEL_PAGES, -(-(limit - returned) // page_size))
+                for batch in pool.map(fetch, range(page, page + count)):
+                    yield from batch[:limit - returned]
+                    returned += len(batch)
+                    if len(batch) < page_size or returned >= limit:
+                        return
+                page += count
+
+    def _fetch(self, path: str, conditions: str | None, limit: int, fields: str,
+               order_by: str = "id desc") -> list[dict]:
+        """Records matching `conditions`, asking for just `fields`. Some servers reject nested
         field lists (HTTP 400); then full records are fetched instead, and remembered."""
-        params = {"limit": limit, "conditions": conditions, "orderBy": "id desc"}
-        if fields not in self._rejected_fields:
+        params = {"limit": limit, "conditions": conditions, "orderBy": order_by}
+        key = f"{path} {fields}"
+        if key not in self._rejected_fields:
             try:
-                return list(self.get_all("/service/tickets", fields=fields, **params))
+                return list(self.get_all(path, fields=fields, **params))
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code != 400:
                     raise
-            records = list(self.get_all("/service/tickets", **params))
-            self._rejected_fields.add(fields)  # only once full records worked, so it was the fields
+            records = list(self.get_all(path, **params))
+            self._rejected_fields.add(key)  # only once full records worked, so it was the fields
             return records
-        return list(self.get_all("/service/tickets", **params))
+        return list(self.get_all(path, **params))
+
+    def _tickets(self, conditions: str, limit: int, fields: str) -> list[dict]:
+        return self._fetch("/service/tickets", conditions, limit, fields)
 
     # --- Companies -------------------------------------------------------
 
@@ -145,18 +182,8 @@ class ConnectWiseClient:
         with self._company_fields_lock:
             if self._company_fields and time.monotonic() - self._company_fields[0] < COMPANY_FIELDS_TTL:
                 return self._company_fields[1]
-            params = {"limit": 20000, "conditions": "deletedFlag=false", "orderBy": "name asc"}
-            fields = "id,name,customFields"
-            if fields in self._rejected_fields:
-                records = list(self.get_all("/company/companies", **params))
-            else:
-                try:
-                    records = list(self.get_all("/company/companies", fields=fields, **params))
-                except httpx.HTTPStatusError as exc:
-                    if exc.response.status_code != 400:
-                        raise
-                    records = list(self.get_all("/company/companies", **params))
-                    self._rejected_fields.add(fields)
+            records = self._fetch("/company/companies", "deletedFlag=false", 20000, "id,name,customFields",
+                                  order_by="name asc")
             companies = [{"id": c.get("id"), "name": c.get("name"), "customFields": c.get("customFields") or []}
                          for c in records]
             self._company_fields = (time.monotonic(), companies)
@@ -174,9 +201,7 @@ class ConnectWiseClient:
         conditions = f"company/id={int(company_id)} and dateEntered>={cw_date(since(days))}"
         if board_name:
             conditions += f" and board/name={quote(board_name)}"
-        return list(
-            self.get_all("/service/tickets", limit=limit, conditions=conditions, orderBy="id desc")
-        )
+        return self._tickets(conditions, limit, TICKET_LIST_FIELDS)
 
     def tickets_since(self, days: int, board_name: str | None = None, limit: int = 20000) -> list[dict]:
         """Every client's tickets entered in the last `days` days (up to `limit`)."""
@@ -240,8 +265,7 @@ class ConnectWiseClient:
             conditions.append(f"company/id={int(company_id)}")
         if not include_closed:
             conditions.append("closedFlag=false")
-        return list(self.get_all("/project/projects", limit=limit, conditions=" and ".join(conditions) or None,
-                                 orderBy="id desc"))
+        return self._fetch("/project/projects", " and ".join(conditions) or None, limit, PROJECT_FIELDS)
 
     def project_tickets(self, project_id: int | None = None, company_id: int | None = None,
                         include_closed: bool = True, limit: int = 1000) -> list[dict]:
@@ -253,8 +277,7 @@ class ConnectWiseClient:
             conditions.append(f"company/id={int(company_id)}")
         if not include_closed:
             conditions.append("closedFlag=false")
-        return list(self.get_all("/project/tickets", limit=limit, conditions=" and ".join(conditions) or None,
-                                 orderBy="id desc"))
+        return self._fetch("/project/tickets", " and ".join(conditions) or None, limit, PROJECT_TICKET_FIELDS)
 
     def search_project_tickets(self, phrases: list[list[str]], company_id: int | None = None,
                                limit: int = 200) -> list[dict]:
@@ -262,7 +285,7 @@ class ConnectWiseClient:
         conditions = summary_matches(phrases)
         if company_id:
             conditions += f" and company/id={int(company_id)}"
-        return list(self.get_all("/project/tickets", limit=limit, conditions=conditions, orderBy="id desc"))
+        return self._fetch("/project/tickets", conditions, limit, PROJECT_TICKET_FIELDS)
 
     def project_ticket(self, ticket_id: int) -> dict:
         return self.get(f"/project/tickets/{int(ticket_id)}")
@@ -274,4 +297,4 @@ class ConnectWiseClient:
 
     def time_entries_for_company(self, company_id: int, days: int, limit: int = 5000) -> list[dict]:
         conditions = f"company/id={int(company_id)} and timeStart>={cw_date(since(days))}"
-        return list(self.get_all("/time/entries", limit=limit, conditions=conditions))
+        return self._fetch("/time/entries", conditions, limit, TIME_FIELDS)

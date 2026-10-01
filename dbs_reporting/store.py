@@ -82,6 +82,8 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         with self._db() as db:
+            # Write-ahead logging: reading chats doesn't wait while an answer is being saved.
+            db.execute("PRAGMA journal_mode=WAL")
             db.executescript(SCHEMA)
             columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
             if "active" not in columns:  # databases created before users.txt support
@@ -297,6 +299,12 @@ class Store:
         chat's current model, so the next question defaults to it. Returns the answer's id."""
         now = _now()
         with self._db() as db:
+            updated = db.execute(
+                "UPDATE conversations SET history = ?, updated_at = ?, model = COALESCE(?, model) WHERE id = ?",
+                (json.dumps(history), now, model, conversation_id),
+            ).rowcount
+            if not updated:
+                raise ValueError("This chat was deleted while David was answering, so the answer wasn't saved.")
             db.execute(
                 "INSERT INTO turns (conversation_id, role, text, created_at) VALUES (?, 'user', ?, ?)",
                 (conversation_id, question, now),
@@ -307,10 +315,6 @@ class Store:
                 (conversation_id, answer, model, json.dumps(usage) if usage else None,
                  json.dumps(charts) if charts else None, now),
             ).lastrowid
-            db.execute(
-                "UPDATE conversations SET history = ?, updated_at = ?, model = COALESCE(?, model) WHERE id = ?",
-                (json.dumps(history), now, model, conversation_id),
-            )
         return answer_id
 
     def answered_turns(self, days: int) -> list[dict]:

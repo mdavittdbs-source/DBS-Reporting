@@ -433,3 +433,19 @@ def test_old_failed_logins_are_forgotten(web):
     module._failed_logins.update({f"typo{i}": [old] for i in range(600)})
     TestClient(module.app).post("/api/login", json={"username": "alice", "password": "wrong"})
     assert set(module._failed_logins) == {"alice"}
+
+
+def test_chat_deleted_while_answering_explains(web, monkeypatch):
+    module, _ = web
+    alice = login(module, "alice", "password-a")
+    chat_id = alice.post("/api/chat", json={"question": "first"}).json()["conversation_id"]
+    user_id = module.store.authenticate("alice", "password-a")["id"]
+
+    def delete_midway(history, question, model=None):
+        module.store.delete_conversation(user_id, chat_id)  # deleted in another tab while answering
+        yield {"type": "done", "answer": "late", "usage": None, "history": history}
+
+    monkeypatch.setattr(module.agent, "respond_stream", delete_midway)
+    events = read_events(alice.post("/api/chat/stream", json={"question": "more", "conversation_id": chat_id}))
+    assert events[-1]["type"] == "error" and "deleted while David was answering" in events[-1]["message"]
+

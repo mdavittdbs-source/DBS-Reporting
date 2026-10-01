@@ -170,6 +170,26 @@ def test_paging_stops_at_the_limit_without_an_extra_request():
     assert len(requests) == 1 and requests[0].url.params["pageSize"] == "3"
 
 
+def test_big_results_fetch_pages_in_parallel_and_keep_order():
+    requests = []
+    total = 6500  # 7 pages; the last is partly full
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(int(request.url.params["page"]))
+        page, size = int(request.url.params["page"]), int(request.url.params["pageSize"])
+        ids = range((page - 1) * size, min(page * size, total))
+        return httpx.Response(200, json=[{"id": i} for i in ids])
+
+    cw = ConnectWiseClient(SETTINGS, transport=httpx.MockTransport(handler))
+    ids = [r["id"] for r in cw.get_all("/service/tickets", limit=20000)]
+    assert ids == list(range(total))
+    # Page 1, then 2-5 together, then 6-9; pages past the end that hadn't started are cancelled.
+    assert sorted(requests)[:7] == list(range(1, 8)) and max(requests) <= 9
+    requests.clear()
+    assert len(list(cw.get_all("/service/tickets", limit=2500))) == 2500
+    assert sorted(requests) == [1, 2, 3]  # never more pages than the limit needs
+
+
 def test_rejected_field_list_is_remembered():
     requests = []
     tools = tools_by_name(totals_client(requests, reject_fields=True))
@@ -186,3 +206,15 @@ def test_ticket_list_leaves_out_blank_fields():
     assert open_ticket == {"id": 3, "summary": "Printer offline", "entered": "09/20/2026 6:00 AM ET",
                            "board": "Help Desk", "type": "Hardware"}
     assert result["tickets"][1]["closed"] == "09/11/2026 6:00 AM ET"
+
+
+def test_long_note_history_keeps_first_latest_and_resolution():
+    from dbs_reporting.tools import _key_notes
+
+    notes = [{"id": i, "text": f"note {i}", "resolutionFlag": i == 40} for i in range(100)]
+    kept, left_out = _key_notes(notes)
+    texts = [n["text"] for n in kept]
+    assert texts[:5] == [f"note {i}" for i in range(5)] and texts[-15:] == [f"note {i}" for i in range(85, 100)]
+    assert "note 40" in texts and kept[5]["kind"] == "resolution"
+    assert left_out == 100 - 21
+    assert _key_notes(notes[:25])[1] == 0

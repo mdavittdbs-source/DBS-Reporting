@@ -16,6 +16,7 @@ from .connectwise import ConnectWiseClient
 
 MAX_DAYS = 730
 NOTE_CHARS = 1500
+MAX_NOTES, FIRST_NOTES, LAST_NOTES = 25, 5, 15  # a ticket's notes sent to Claude (see _key_notes)
 TOTALS_LIMIT = 20000
 
 
@@ -149,6 +150,26 @@ def _error(exc: Exception) -> str:
     return _dumps({"error": f"{type(exc).__name__}: {exc}"})
 
 
+def _note(n: dict) -> dict:
+    return {
+        "created": n.get("dateCreated"),
+        "by": n.get("createdBy"),
+        "kind": "resolution" if n.get("resolutionFlag") else "internal" if n.get("internalAnalysisFlag")
+        else "description",
+        "text": (n.get("text") or "")[:NOTE_CHARS],
+    }
+
+
+def _key_notes(notes: list[dict]) -> tuple[list[dict], int]:
+    """A long-running ticket can have hundreds of notes. Keep the first few (the problem), the
+    latest (where it stands) and every resolution note; returns (notes, how many were left out)."""
+    if len(notes) <= MAX_NOTES:
+        return [_note(n) for n in notes], 0
+    keep = set(range(FIRST_NOTES)) | set(range(len(notes) - LAST_NOTES, len(notes)))
+    keep |= {i for i, n in enumerate(notes) if n.get("resolutionFlag")}
+    return [_note(notes[i]) for i in sorted(keep)], len(notes) - len(keep)
+
+
 def _clamp_days(days: int) -> int:
     return max(1, min(int(days), MAX_DAYS))
 
@@ -191,6 +212,9 @@ def wants_chart(question: str) -> bool:
 
 
 def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
+    """The tools for one question. With charts_allowed=False, create_chart refuses (its
+    definition stays the same, so the prompt cache still matches)."""
+
     def software_by_company() -> dict[int, str]:
         """Company id -> the POS software in the company's "Software" custom field."""
         caption = _plain(cw.software_field)
@@ -219,8 +243,6 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
     def ticket_software(lookup: dict[int, str]):
         return lambda t: lookup.get((t.get("company") or {}).get("id")) or "(software not set)"
 
-    """The tools for one question. With charts_allowed=False, create_chart refuses (its
-    definition stays the same, so the prompt cache still matches)."""
     @beta_tool(eager_input_streaming=True)
     def find_company(name: str) -> str:
         """Look up ConnectWise companies (clients) by name.
@@ -280,17 +302,10 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 # Not a service ticket: project tickets are kept separately.
                 ticket = {"kind": "project ticket", **summarize_project_ticket(cw.project_ticket(ticket_id))}
                 notes = cw.project_ticket_notes(ticket_id)
-            ticket["notes"] = [
-                {
-                    "created": n.get("dateCreated"),
-                    "by": n.get("createdBy"),
-                    "kind": "resolution" if n.get("resolutionFlag")
-                    else "internal" if n.get("internalAnalysisFlag")
-                    else "description",
-                    "text": (n.get("text") or "")[:NOTE_CHARS],
-                }
-                for n in notes
-            ]
+            ticket["notes"], left_out = _key_notes(notes)
+            if left_out:
+                ticket["notes_left_out"] = (f"{left_out} notes from the middle of this ticket were left out "
+                                            f"to save tokens; the first, latest and resolution notes are included.")
             return _dumps(ticket)
         except Exception as exc:
             return _error(exc)
