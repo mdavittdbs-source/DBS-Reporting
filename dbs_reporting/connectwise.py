@@ -112,6 +112,7 @@ class ConnectWiseClient:
         self._rejected_fields: set[str] = set()
         self.software_field = settings.software_field
         self.golive_phase = settings.golive_phase
+        self.golive_exclude = [w.strip().lower() for w in settings.golive_exclude.split(",") if w.strip()]
         self._company_fields: tuple[float, list[dict]] | None = None
         self._company_fields_lock = threading.Lock()
 

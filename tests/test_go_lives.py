@@ -29,10 +29,13 @@ TICKETS = [
      "project": {"id": 71, "name": "Dock Bar install"}, "phase": {"name": "Deployment"}},
     {"id": 503, "summary": "Go live", "closedFlag": False, "company": {"id": 3, "name": "Taco Town"},
      "project": {"id": 72, "name": "Taco Town install"}, "phase": {"name": "Deployment"}},
+    {"id": 505, "summary": "Management Training", "closedFlag": False, "company": {"id": 1, "name": "Big Owl's"},
+     "project": {"id": 70, "name": "Big Owl's SkyTab install"}, "phase": {"name": "Deployment"}},
     {"id": 504, "summary": "Go live", "closedFlag": False, "company": {"id": 4, "name": "Burger Barn"},
      "project": {"id": 73, "name": "Burger Barn install"}, "phase": {"name": "Deployment"}},
 ]
 ENTRIES = [
+    {"objectId": 505, "type": {"identifier": "S"}, "member": {"name": "Kim"}, "dateStart": stamp(NOW + timedelta(days=1))},
     {"objectId": 501, "type": {"identifier": "S"}, "member": {"name": "Sam"}, "dateStart": stamp(SOON)},
     {"objectId": 501, "type": {"identifier": "S"}, "member": {"name": "Ana"}, "dateStart": stamp(SOON)},
     {"objectId": 502, "type": {"identifier": "S"}, "member": {"name": "Sam"}, "dateStart": stamp(PAST)},
@@ -83,7 +86,7 @@ def test_upcoming_go_lives():
     g = result["go_lives"][0]
     assert g["company"] == "Big Owl's" and g["date"] == day(SOON) and g["installers"] == ["Ana", "Sam"]
     assert g["software"] == "SkyTab" and g["time"].endswith(" ET")
-    assert result["by_installer"] == [["Ana", 1], ["Sam", 1]]
+    assert result["by_installer"] == [["Ana", 1], ["Sam", 1]]  # Kim's management training isn't a go-live
     # Burger Barn's only "schedule" is a CRM activity, so its deployment isn't scheduled yet.
     assert [u["company"] for u in result["deployment_not_scheduled"]] == ["Burger Barn"]
     project_query = next(r for r in requests if r.url.path.endswith("/project/tickets"))
