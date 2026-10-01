@@ -22,6 +22,12 @@ TICKET_SUMMARY_FIELDS = (
     "type/name,subType/name,priority/name,source/name"
 )
 
+# What open-ticket (aging) reports need.
+TICKET_OPEN_FIELDS = (
+    "id,summary,closedFlag,company/id,company/name,site/name,board/name,status/name,type/name,"
+    "priority/name,owner/identifier,owner/name,resources,_info/dateEntered,_info/lastUpdated"
+)
+
 
 def cw_date(dt: datetime) -> str:
     """Format a datetime for a ConnectWise `conditions` clause, e.g. [2026-09-01T00:00:00Z]."""
@@ -128,6 +134,16 @@ class ConnectWiseClient:
             conditions += f" and board/name={quote(board_name)}"
         return self._tickets(conditions, limit, TICKET_SUMMARY_FIELDS)
 
+    def open_tickets(self, company_id: int | None = None, board_name: str | None = None,
+                     limit: int = 5000) -> list[dict]:
+        """Service tickets that are still open, however long ago they were entered."""
+        conditions = "closedFlag=false"
+        if company_id:
+            conditions += f" and company/id={int(company_id)}"
+        if board_name:
+            conditions += f" and board/name={quote(board_name)}"
+        return self._tickets(conditions, limit, TICKET_OPEN_FIELDS)
+
     def ticket(self, ticket_id: int) -> dict:
         return self.get(f"/service/tickets/{int(ticket_id)}")
 
@@ -143,6 +159,37 @@ class ConnectWiseClient:
         if board_name:
             conditions += f" and board/name={quote(board_name)}"
         return self._tickets(conditions, limit, TICKET_SLA_FIELDS)
+
+    # --- Projects --------------------------------------------------------
+    # Project tickets live under /project, separate from service tickets.
+
+    def projects(self, company_id: int | None = None, include_closed: bool = False, limit: int = 500) -> list[dict]:
+        conditions = []
+        if company_id:
+            conditions.append(f"company/id={int(company_id)}")
+        if not include_closed:
+            conditions.append("closedFlag=false")
+        return list(self.get_all("/project/projects", limit=limit, conditions=" and ".join(conditions) or None,
+                                 orderBy="id desc"))
+
+    def project_tickets(self, project_id: int | None = None, company_id: int | None = None,
+                        include_closed: bool = True, limit: int = 1000) -> list[dict]:
+        """Project tickets for one project or one client's projects, newest first."""
+        conditions = []
+        if project_id:
+            conditions.append(f"project/id={int(project_id)}")
+        if company_id:
+            conditions.append(f"company/id={int(company_id)}")
+        if not include_closed:
+            conditions.append("closedFlag=false")
+        return list(self.get_all("/project/tickets", limit=limit, conditions=" and ".join(conditions) or None,
+                                 orderBy="id desc"))
+
+    def project_ticket(self, ticket_id: int) -> dict:
+        return self.get(f"/project/tickets/{int(ticket_id)}")
+
+    def project_ticket_notes(self, ticket_id: int) -> list[dict]:
+        return list(self.get_all(f"/project/tickets/{int(ticket_id)}/notes", limit=200, orderBy="id asc"))
 
     # --- Time entries ----------------------------------------------------
 

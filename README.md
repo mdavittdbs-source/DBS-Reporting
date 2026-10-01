@@ -19,10 +19,13 @@ Manager (web chat) ──► FastAPI ──► Claude (claude-sonnet-5-5) ──
 |---|---|
 | `find_company` | Turns a name like "Joe's Pizza" into a ConnectWise company id |
 | `get_company_tickets` | Tickets entered in the last N days, with breakdowns by type/subtype/item/board/priority/source/contact and a compact list of every ticket |
-| `get_ticket_details` | One ticket plus its notes (description, internal analysis, resolution) |
+| `get_ticket_details` | One service or project ticket plus its notes (description, internal analysis, resolution) |
 | `get_company_time` | Hours logged in the last N days by technician, work type and ticket |
 | `get_ticket_totals` | Tickets across **all** clients in the last N days, ranked by client, site, board, type, priority, source or status, with open counts and top ticket types |
 | `get_sla_performance` | In-SLA vs. breached tickets and first-response/resolution times, by client, board, priority or SLA |
+| `get_open_tickets` | Every open ticket however old (for one client or all), oldest first, with age buckets and counts by status, board, priority and owner |
+| `get_projects` | Projects for one client or all: status, manager, dates, percent complete, budget vs actual hours |
+| `get_project_tickets` | Project tickets (tasks) for a project or client, by project, phase and status, with hours |
 | `create_chart` | Adds a chart under the answer (bar, horizontal bar, line or stacked bar) |
 
 Code layout:
@@ -38,7 +41,7 @@ Code layout:
 
 1. **ConnectWise API keys.** In ConnectWise Manage, go to *System > Members > API Members*
    and create an API member with a **read-only** security role that can see Companies,
-   Service Tickets and Time Entries. Generate a public/private key pair for it. Get a
+   Service Tickets, Projects (including project tickets) and Time Entries. Generate a public/private key pair for it. Get a
    `clientId` from <https://developer.connectwise.com/ClientID>.
 2. **Anthropic API key** from <https://console.anthropic.com>.
 3. Configure and install:
@@ -99,9 +102,10 @@ pytest
 
 ## Charts and exports
 
-Ask for a report or a chart ("chart tickets by site for the last 30 days", "graph weekly tickets at
-Jimmy's Grille") and David draws bar, horizontal bar, line or stacked bar charts under its answer,
-using the numbers it pulled from ConnectWise. Answers that include a chart or a table get two
+Ask for a chart ("chart tickets by site for the last 30 days", "graph weekly tickets at Jimmy's
+Grille") and David draws bar, horizontal bar, line or stacked bar charts under its answer, using the
+numbers it pulled from ConnectWise. Charts cost extra tokens, so David only draws one when the question
+says chart, graph, plot, visual(ize), diagram, pie or histogram; otherwise the chart tool refuses. Answers that include a chart or a table get two
 download buttons. Both contain only the charts and tables, not the rest of the chat:
 
 - **Excel** downloads an `.xlsx` with every table as its own sheet, and every chart as a sheet with
@@ -124,6 +128,10 @@ Every answer records the tokens it used (across all of its steps) and an estimat
 - **Prompt caching** is on: the instructions and each chat's earlier context are re-read from
   Anthropic's cache at about a tenth of the normal input price. The cached share shows up in the
   usage line and summary.
+
+- **Follow-ups stay cheap.** Once a question is answered, the raw ConnectWise data behind it (often
+  thousands of tokens of ticket lists) is dropped from the chat; David's answer stays. A follow-up
+  that needs the details again fetches them fresh. Small results such as company lookups are kept.
 
 Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic console
 (Settings → Usage / Cost) has exact billing.

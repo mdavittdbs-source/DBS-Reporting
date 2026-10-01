@@ -6,10 +6,15 @@
 <meta name="description" content="Sign in to the DBS Autonomous Virtual Information Desk.">
 <meta name="color-scheme" content="light dark">
 <title>Sign in · David</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23183e7c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<!--icon--><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23183e7c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"><!--/icon-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Fetch the chat page's libraries while people type, so the switch to the chat is quick. -->
+<link rel="prefetch" href="/static/vendor/chart.umd.min.js">
+<link rel="prefetch" href="/static/vendor/marked.min.js">
+<link rel="prefetch" href="/static/vendor/purify.min.js">
+<link rel="prefetch" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" crossorigin>
 <style>
   :root {
     --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -72,15 +77,23 @@
   #error:empty { display: none; }
   .foot { margin: 18px 0 0; font-size: 13px; color: var(--faint); text-align: center; text-wrap: balance; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  /* After signing in, the card lifts away before the chat loads. */
+  main.leaving form { animation: leave .26s var(--ease) forwards; }
+  main.leaving .foot { animation: fade-out .18s var(--ease) forwards; }
+  @keyframes leave { to { opacity: 0; transform: translateY(-10px) scale(.97); } }
+  @keyframes fade-out { to { opacity: 0; } }
+  /* Browsers that support it (Chrome, Edge) also cross-fade between the pages. */
+  @view-transition { navigation: auto; }
+  @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 <main>
   <div class="brand">
-    <span class="brand-mark" aria-hidden="true">
+    <!--brand-mark--><span class="brand-mark" aria-hidden="true">
       <svg viewBox="0 0 16 16" fill="none"><path d="M3.5 12V5m4.5 7V8m4.5 4V3.5" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
-    </span>
+    </span><!--/brand-mark-->
     <span>DBS Autonomous Virtual Information Desk</span>
   </div>
   <form id="form" novalidate>
@@ -94,29 +107,6 @@
   <p class="foot">Need an account or a password reset? Ask Mikey Davitt.</p>
 </main>
 <script>
-  // Custom logo from the branding folder. Dark-mode viewers get logo-dark if it exists,
-  // otherwise the normal logo. Swaps live when the system theme changes.
-  const darkMode = window.matchMedia("(prefers-color-scheme: dark)");
-  function loadLogo() {
-    const sources = darkMode.matches ? ["/logo-dark", "/logo"] : ["/logo"];
-    const tryNext = () => {
-      const src = sources.shift();
-      if (!src) return;
-      const img = new Image();
-      img.alt = "";
-      img.onload = () => {
-        const mark = document.querySelector(".brand-mark");
-        mark.replaceChildren(img);
-        mark.classList.add("has-logo");
-        document.querySelector('link[rel="icon"]').href = src;
-      };
-      img.onerror = tryNext;
-      img.src = src;
-    };
-    tryNext();
-  }
-  darkMode.addEventListener("change", loadLogo);
-  loadLogo();
 
   const form = document.getElementById("form");
   const error = document.getElementById("error");
@@ -146,6 +136,10 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "Sign in failed. Try again.");
+      // Hand off to the chat page, which plays its entrance (see index.html). The card's exit
+      // plays while the chat page loads, so there's no pause in between.
+      try { sessionStorage.setItem("justSignedIn", "1"); } catch {}
+      document.querySelector("main").classList.add("leaving");
       location.href = "/";
     } catch (err) {
       error.textContent = err.message;

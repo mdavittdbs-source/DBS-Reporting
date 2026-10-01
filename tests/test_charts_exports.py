@@ -97,3 +97,24 @@ def test_has_report():
     assert has_report({"text": ANSWER, "charts": []})
     assert has_report({"text": "no table here", "charts": [CHART]})
     assert not has_report({"text": "Just a sentence.\n\n- and a list", "charts": []})
+
+
+def test_charts_only_when_asked():
+    from test_tools import make_client
+
+    from dbs_reporting.tools import build_tools, wants_chart
+
+    for q in ("Chart tickets by site", "can you graph that?", "plot weekly hours", "show it visually",
+              "visualize the backlog", "make a pie of ticket types"):
+        assert wants_chart(q), q
+    for q in ("most common issues at Jimmy's Grille", "tickets at Burger Barn", "SLA breaches by board",
+              "oldest open tickets", "report of sites with the most tickets"):
+        assert not wants_chart(q), q
+
+    allowed = {t.name: t for t in build_tools(make_client([]), charts_allowed=True)}
+    refused = {t.name: t for t in build_tools(make_client([]), charts_allowed=False)}
+    args = {k: CHART[k] for k in ("title", "chart_type", "labels", "series")}
+    assert json.loads(allowed["create_chart"].call(args))["chart_added"] is True
+    assert "didn't ask for a chart" in json.loads(refused["create_chart"].call(args))["error"]
+    # Same tool definitions either way, so the prompt cache isn't broken between questions.
+    assert [t.to_dict() for t in allowed.values()] == [t.to_dict() for t in refused.values()]

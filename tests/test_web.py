@@ -195,6 +195,35 @@ def test_dark_logo(web, tmp_path, monkeypatch):
     assert client.get("/logo").headers["content-type"].startswith("image/svg")
 
 
+def test_logo_is_built_into_the_pages(web, tmp_path, monkeypatch):
+    import base64
+
+    module, _ = web
+    branding = tmp_path / "branding"
+    branding.mkdir()
+    monkeypatch.setattr(module, "BRANDING", branding)
+    client = TestClient(module.app)
+    # No logo: the built-in icon stays.
+    assert "<!--brand-mark-->" in client.get("/login").text and "<picture>" not in client.get("/login").text
+
+    (branding / "logo.svg").write_text("<svg>light</svg>")
+    page = client.get("/login").text
+    light = "data:image/svg+xml;base64," + base64.b64encode(b"<svg>light</svg>").decode()
+    assert f'<span class="brand-mark has-logo" aria-hidden="true"><picture><img src="{light}"' in page  # no swap later
+    assert "<!--brand-mark-->" not in page and 'media="(prefers-color-scheme: dark)"' not in page
+
+    (branding / "logo-dark.png").write_bytes(b"\x89PNG dark")
+    alice = login(module, "alice", "password-a")
+    chat = alice.get("/").text
+    dark = "data:image/png;base64," + base64.b64encode(b"\x89PNG dark").decode()
+    assert f'<source srcset="{dark}" media="(prefers-color-scheme: dark)">' in chat and light in chat
+    assert '<link rel="icon" href="/logo-dark" media="(prefers-color-scheme: dark)">' in chat
+
+    # Large logos are linked rather than embedded in every page.
+    (branding / "logo.svg").write_text("<svg>" + "x" * 200_000 + "</svg>")
+    assert '<img src="/logo"' in client.get("/login").text
+
+
 def read_events(response) -> list[dict]:
     import json
 

@@ -8,7 +8,7 @@ from datetime import date
 import anthropic
 
 from .connectwise import ConnectWiseClient
-from .tools import build_tools
+from .tools import build_tools, wants_chart
 from . import usage as usage_mod
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
@@ -81,6 +81,12 @@ several companies and it isn't obvious which one is meant, ask a short clarifyin
 tickets"), use get_ticket_totals. Don't look clients up one by one. "Sites" usually means the site \
 or location on the ticket (group_by="site"); if it could also mean clients, answer by site and \
 offer the by-client view.
+- Open tickets: for anything about what's still open, oldest or stale tickets, or the backlog, use \
+get_open_tickets. It covers every open ticket however old; get_company_tickets only covers tickets \
+entered in a date range.
+- Projects: project tickets are separate from service tickets in ConnectWise. For projects, \
+their tasks, phases or budgets, use get_projects and get_project_tickets, not the service ticket tools. \
+get_ticket_details works for both kinds of ticket.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
 times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
@@ -88,14 +94,17 @@ what actually went wrong, based on their summaries (e.g. "printer offline", "Out
 prompts", "POS terminal won't connect"), and give a count for each group. Mention the ticket \
 type/subtype breakdown only when it adds something.
 - Pull ticket details for a few representative tickets when root causes or resolutions matter.
+- Data from earlier questions in a chat is removed once they're answered; your earlier answers \
+remain. If a follow-up needs details you no longer have, call the tool again rather than guessing.
 - Every number you report must come from tool results. Don't estimate or invent data. If a tool \
 returns an error, tell the user plainly what failed.
 
 How to answer:
 - Lead with the answer. Managers read this quickly.
 - Use a short ranked list or small table for breakdowns, and cite example ticket numbers (#12345).
-- When a chart would make a comparison or trend clearer (3+ items, or change over time), call \
-create_chart with numbers from your tool results. Keep the key numbers in your text too.
+- Only call create_chart when the user asks for a chart, graph, plot or visual. Never add a chart \
+they didn't ask for. When you do chart, use numbers from your tool results and keep the key numbers \
+in your text too.
 - State the date range and total ticket count you analyzed.
 - End with one or two practical observations when the data supports them, such as a recurring \
 issue that suggests a project or a user who needs training."""
@@ -109,8 +118,40 @@ TOOL_STATUS = {
     "get_company_time": "Adding up time entries…",
     "get_ticket_totals": "Counting tickets across all clients…",
     "get_sla_performance": "Checking SLA performance…",
+    "get_open_tickets": "Finding open tickets…",
+    "get_projects": "Looking up projects…",
+    "get_project_tickets": "Pulling project tickets…",
     "create_chart": "Drawing a chart…",
 }
+
+
+# Once a question is answered, the raw ConnectWise data behind it (often hundreds of tickets) is
+# dropped from the chat's history; David's answer stays. Otherwise every follow-up re-sends all of
+# it. Small results (company lookups, chart confirmations, errors) are kept.
+KEEP_RESULT_CHARS = 2000
+OMITTED_RESULT = ("[ConnectWise data from an earlier question was removed to save tokens. "
+                  "Call the tool again if you need it.]")
+
+
+def _result_size(content) -> int:
+    return len(content) if isinstance(content, str) else len(json.dumps(content))
+
+
+def compact_history(messages: list) -> list:
+    """Replace large tool results with a short note. Returns new lists; the input is unchanged."""
+    compacted = []
+    for message in messages:
+        content = message.get("content") if isinstance(message, dict) else None
+        if message.get("role") == "user" and isinstance(content, list):
+            blocks = [
+                {**b, "content": OMITTED_RESULT}
+                if isinstance(b, dict) and b.get("type") == "tool_result"
+                and _result_size(b.get("content")) > KEEP_RESULT_CHARS else b
+                for b in content
+            ]
+            message = {**message, "content": blocks}
+        compacted.append(message)
+    return compacted
 
 
 def _to_json(block) -> dict:
@@ -123,7 +164,7 @@ def _to_json(block) -> dict:
 class ReportingAgent:
     def __init__(self, cw: ConnectWiseClient, client: anthropic.Anthropic | None = None):
         self._client = client or anthropic.Anthropic()
-        self._tools = build_tools(cw)
+        self._cw = cw
         self.default_model, self.models = configured_models()
         self._effort = os.environ.get("CLAUDE_EFFORT", "medium").strip() or "medium"
 
@@ -157,10 +198,11 @@ class ReportingAgent:
         if model not in self.models:
             raise ValueError(f"Model {model!r} isn't enabled. Choose one of: {', '.join(self.models)}")
 
-        messages = list(history) + [{"role": "user", "content": dated(question)}]
+        messages = compact_history(history) + [{"role": "user", "content": dated(question)}]
         final = None
         json_retries = 0
         usage = usage_mod.empty()
+        tools = build_tools(self._cw, charts_allowed=wants_chart(question))
         while True:
             runner = self._client.beta.messages.tool_runner(
                 model=model,
@@ -170,7 +212,7 @@ class ReportingAgent:
                 # conversation, so each step and follow-up re-reads earlier context at ~1/10 the price.
                 system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
                 cache_control={"type": "ephemeral"},
-                tools=self._tools,
+                tools=tools,
                 messages=messages,
                 max_iterations=20,
                 stream=True,
@@ -220,7 +262,8 @@ class ReportingAgent:
         answer = "\n".join(b.text for b in final.content if b.type == "text").strip()
         if final.stop_reason == "max_tokens":
             answer += "\n\n_(Answer was cut off. Try a narrower question.)_"
-        yield {"type": "done", "answer": answer or "I couldn't produce an answer for that.", "history": messages,
+        yield {"type": "done", "answer": answer or "I couldn't produce an answer for that.",
+               "history": compact_history(messages),
                "usage": usage}
 
 

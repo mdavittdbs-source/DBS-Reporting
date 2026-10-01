@@ -6,7 +6,7 @@
 <meta name="description" content="Ask plain-English questions about client tickets and time in ConnectWise.">
 <meta name="color-scheme" content="light dark">
 <title>David</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23183e7c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<!--icon--><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23183e7c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"><!--/icon-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -296,6 +296,17 @@
     .actions button { opacity: 1; }
     #model { max-width: 118px; padding-right: 22px; }
   }
+  /* Entrance right after signing in: the sidebar slides in, then the chat settles into place. */
+  @keyframes slide-in { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+  @keyframes settle { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  body.entering header { animation: settle .45s var(--ease) .08s both; }
+  body.entering .start { animation: settle .5s var(--ease) .16s both; }
+  body.entering #form { animation: settle .5s var(--ease) .24s both; }
+  @media (min-width: 761px) {  /* on phones the sidebar is a hidden drawer, so it stays put */
+    body.entering aside { animation: slide-in .45s var(--ease) both; }
+  }
+  @view-transition { navigation: auto; }
+  @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
@@ -306,9 +317,9 @@
 <div class="app">
   <aside aria-label="Your chats">
     <div class="brand">
-      <span class="brand-mark" aria-hidden="true">
+      <!--brand-mark--><span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 16 16" fill="none"><path d="M3.5 12V5m4.5 7V8m4.5 4V3.5" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
-      </span>
+      </span><!--/brand-mark-->
       <span class="brand-name">David<small>DBS ConnectWise Assistant</small></span>
     </div>
     <button id="new" type="button">
@@ -353,6 +364,14 @@
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
+  // Play the entrance once, when arriving straight from the sign-in page.
+  try {
+    if (sessionStorage.getItem("justSignedIn")) {
+      sessionStorage.removeItem("justSignedIn");
+      document.body.classList.add("entering");
+      setTimeout(() => document.body.classList.remove("entering"), 1200);
+    }
+  } catch {}
   const $ = (id) => document.getElementById(id);
   const messages = $("messages"), chatList = $("chats"), q = $("q"), send = $("send");
   const modelSelect = $("model"), chatTitle = $("chat-title");
@@ -456,7 +475,7 @@
              tooltip: "#21211e",
              series: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"] },
   };
-  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");  // also picks the logo
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const liveCharts = [];  // {spec, canvas, chart} so charts can redraw when the theme changes
 
@@ -786,7 +805,7 @@
   function showStart() {
     const start = document.createElement("section");
     start.className = "start";
-    start.innerHTML = "<h2>What do you want to know?</h2><p>Ask about any client in ConnectWise: recurring issues or open tickets. Follow-up questions keep the context.</p>";
+    start.innerHTML = "<h2>What do you want to know?</h2><p>Ask about any client in ConnectWise: recurring issues, open tickets or projects. Follow-up questions keep the context.</p>";
     const list = document.createElement("div");
     list.className = "suggestions";
     for (const text of EXAMPLES) {
@@ -1137,28 +1156,6 @@
     location.href = "/login";
   };
 
-  // Custom logo from the branding folder. Dark-mode viewers get logo-dark if it exists,
-  // otherwise the normal logo. Swaps live when the system theme changes.
-  function loadLogo() {
-    const sources = darkQuery.matches ? ["/logo-dark", "/logo"] : ["/logo"];
-    const tryNext = () => {
-      const src = sources.shift();
-      if (!src) return;
-      const img = new Image();
-      img.alt = "";
-      img.onload = () => {
-        const mark = document.querySelector(".brand-mark");
-        mark.replaceChildren(img);
-        mark.classList.add("has-logo");
-        document.querySelector('link[rel="icon"]').href = src;
-      };
-      img.onerror = tryNext;
-      img.src = src;
-    };
-    tryNext();
-  }
-  darkQuery.addEventListener("change", loadLogo);
-  loadLogo();
 
   (async () => {
     const me = await api("/api/me");
