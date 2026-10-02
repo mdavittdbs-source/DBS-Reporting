@@ -235,6 +235,30 @@ def _key_notes(notes: list[dict]) -> tuple[list[dict], int]:
     return [_note(notes[i]) for i in sorted(keep)], len(notes) - len(keep)
 
 
+def eastern_window(first, days: int) -> tuple[datetime, datetime]:
+    """From Eastern midnight on the date `first`, for `days` days, in UTC."""
+    zone = eastern.to_eastern(datetime(first.year, first.month, first.day, 12, tzinfo=timezone.utc)).tzinfo
+    start = datetime(first.year, first.month, first.day, tzinfo=zone).astimezone(timezone.utc)
+    return start, start + timedelta(days=days)
+
+
+def entry_days(local: datetime, local_end: datetime | None) -> list:
+    """The days a schedule entry covers. An entry can run over several days (training Tuesday 8:30 AM to
+    Wednesday 5:00 PM), and ConnectWise shows it on each of them. A weekday block that spans a weekend
+    skips Saturday and Sunday, as the calendar does; one ending at midnight doesn't include that day."""
+    start_day, end_day = local.date(), local_end.date() if local_end else local.date()
+    if local_end and local_end.hour == local_end.minute == 0 and end_day > start_day:
+        end_day -= timedelta(days=1)
+    covered = [start_day + timedelta(days=i) for i in range((end_day - start_day).days + 1)]
+    if len(covered) > 1 and start_day.weekday() < 5 and end_day.weekday() < 5:
+        covered = [d for d in covered if d.weekday() < 5]
+    return covered
+
+
+# Schedule entries that are time off rather than work, by their kind or title.
+TIME_OFF = re.compile(r"vacation|time off|\bpto\b|holiday|sick|out of office|\bday off\b|\bleave\b", re.I)
+
+
 def _clamp_days(days: int) -> int:
     return max(1, min(int(days), MAX_DAYS))
 
@@ -1148,10 +1172,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             member = members[0]
             days = max(1, min(int(days), 31))
             first = eastern.now().date() + timedelta(days=int(start_day))
-            # From Eastern midnight on the first day, in UTC.
-            zone = eastern.to_eastern(datetime(first.year, first.month, first.day, 12, tzinfo=timezone.utc)).tzinfo
-            start = datetime(first.year, first.month, first.day, tzinfo=zone).astimezone(timezone.utc)
-            end = start + timedelta(days=days)
+            start, end = eastern_window(first, days)
             entries = cw.member_schedule(member["identifier"], start, end)
 
             def is_ticket(e: dict) -> bool:
@@ -1180,18 +1201,11 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                     t = tickets.get(e["objectId"], {})
                     row.update(ticket=f"#{e['objectId']}", summary=t.get("summary"), client=_name(t, "company"),
                                project=(t.get("project") or {}).get("name"))
-                # An entry can run over several days (training Tuesday 8:30 AM to Wednesday 5:00 PM).
-                # ConnectWise shows it on each of those days at its daily hours, so it's listed on each.
-                start_day, end_day = local.date(), local_end.date() if local_end else local.date()
-                if local_end and local_end.hour == local_end.minute == 0 and end_day > start_day:
-                    end_day -= timedelta(days=1)  # ending at midnight: that day isn't included
-                covered = [start_day + timedelta(days=i) for i in range((end_day - start_day).days + 1)]
+                # A multi-day entry is listed on each day it covers, at its daily hours, as ConnectWise shows it.
+                covered = entry_days(local, local_end)
                 if len(covered) > 1:
-                    # A weekday block spanning a weekend skips Saturday and Sunday, as the calendar does.
-                    if start_day.weekday() < 5 and end_day.weekday() < 5:
-                        covered = [d for d in covered if d.weekday() < 5]
-                    row["spans"] = (f"{start_day:%a} {eastern.day(start_day)} to "
-                                    f"{end_day:%a} {eastern.day(end_day)}")
+                    row["spans"] = (f"{covered[0]:%a} {eastern.day(covered[0])} to "
+                                    f"{covered[-1]:%a} {eastern.day(covered[-1])}")
                 for d in covered:
                     if first <= d <= last:
                         placed.append((d, local.hour * 60 + local.minute, n, _compact(row)))
@@ -1207,6 +1221,125 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 "days": [{"day": d, "entries": v} for d, v in by_day.items()],
                 "note": "Days not listed have nothing scheduled.",
             })
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
+    def get_workload(start_day: int = 0, days: int = 7, person: str = "", logged_days: int = 7) -> str:
+        """Technician workload: who's booked and who has room. For each person with anything on the
+        calendar, open tickets or time logged: hours scheduled in the period against their office hours
+        (percent booked), time off, open service tickets they own and open tickets they're a resource
+        on (with the oldest one's age), and hours logged over the last logged_days days.
+
+        Use for "who has room this week", "who's overloaded", "how booked is Sam next week", "who has
+        the most open tickets". Office hours are Mon and Wed-Fri 8:30 AM-5:00 PM, Tue 9:00 AM-5:00 PM.
+        Scheduled hours include meetings and tickets; vacation, holidays and other time off are counted
+        separately and taken off the hours available. Results are a table, most booked first.
+
+        Args:
+            start_day: First day of the period, counted from today: 0 today, 1 tomorrow, -7 a week ago.
+            days: How many days the period covers (most 31), e.g. 7 for a week.
+            person: Optional: only people whose name or username contains this.
+            logged_days: How many past days of logged time to add up (0 to skip).
+        """
+        try:
+            days = max(1, min(int(days), 31))
+            logged_days = max(0, min(int(logged_days), 90))
+            first = eastern.now().date() + timedelta(days=int(start_day))
+            last = first + timedelta(days=days - 1)
+            start, end = eastern_window(first, days)
+            entries, open_tickets, logged = _together(
+                lambda: cw.schedule_between(start, end), lambda: cw.open_tickets(),
+                (lambda: cw.time_entries_since(logged_days)) if logged_days else (lambda: []))
+
+            people: dict[str, dict] = {}
+
+            def person_row(member: dict | None) -> dict | None:
+                member = member or {}
+                key = (member.get("identifier") or member.get("name") or "").strip().lower()
+                if not key:
+                    return None
+                row = people.setdefault(key, {"name": None, "username": member.get("identifier"), "scheduled": 0.0,
+                                              "time_off": 0.0, "owned": 0, "assigned": 0, "oldest": None,
+                                              "logged": 0.0})
+                row["name"] = row["name"] or member.get("name")
+                return row
+
+            # Hours on the calendar, shared out over the days an entry covers; only days in the period count.
+            for e in entries:
+                begin, finish = parse_dt(e.get("dateStart")), parse_dt(e.get("dateEnd"))
+                row = person_row(e.get("member"))
+                if not begin or row is None:
+                    continue
+                local = eastern.to_eastern(begin)
+                local_end = eastern.to_eastern(finish) if finish and finish > begin else None
+                covered = entry_days(local, local_end)
+                hours = _hours(e.get("hoursScheduled"))
+                if hours is None:
+                    hours = (finish - begin).total_seconds() / 3600 if finish and finish > begin else 0
+                share = hours * sum(1 for d in covered if first <= d <= last) / max(1, len(covered))
+                kind = f"{(e.get('type') or {}).get('name') or ''} {e.get('name') or ''}"
+                row["time_off" if TIME_OFF.search(kind) else "scheduled"] += share
+
+            # Open service tickets: the owner, and everyone listed as a resource.
+            now = datetime.now(timezone.utc)
+            for t in open_tickets:
+                entered = parse_dt(_date_entered(t))
+                age = (now - entered).days if entered else None
+                owner = t.get("owner") or {}
+                owner_key = (owner.get("identifier") or "").lower()
+                involved = set()
+                if owner_key:
+                    row = person_row(owner)
+                    row["owned"] += 1
+                    involved.add(owner_key)
+                for ident in re.split(r"[,;\s]+", t.get("resources") or ""):
+                    if ident and ident.lower() not in involved:
+                        involved.add(ident.lower())
+                        person_row({"identifier": ident})["assigned"] += 1
+                for key in involved:
+                    if age is not None and (people[key]["oldest"] is None or age > people[key]["oldest"]):
+                        people[key]["oldest"] = age
+
+            for e in logged:
+                row = person_row(e.get("member"))
+                if row is not None:
+                    row["logged"] += float(e.get("actualHours") or 0)
+
+            # Office hours each person could be booked for in the period.
+            office = sum((eastern.BUSINESS_HOURS[d.weekday()][1] - eastern.BUSINESS_HOURS[d.weekday()][0]) / 60
+                         for d in (first + timedelta(days=i) for i in range(days)) if d.weekday() in eastern.BUSINESS_HOURS)
+            rows = []
+            for key, p in people.items():
+                if person and _plain(person) not in _plain(f"{p['name'] or ''} {p['username'] or ''}"):
+                    continue
+                available = max(0.0, office - p["time_off"])
+                rows.append({
+                    "name": p["name"] or p["username"], "username": p["username"],
+                    "scheduled_hours": round(p["scheduled"], 1), "time_off_hours": round(p["time_off"], 1) or None,
+                    "available_hours": round(available, 1),
+                    "booked_pct": round(100 * p["scheduled"] / available) if available else None,
+                    "open_owned": p["owned"], "open_as_resource": p["assigned"],
+                    "oldest_open_days": p["oldest"],
+                    "logged_hours": round(p["logged"], 1) if logged_days else None,
+                })
+            rows.sort(key=lambda r: (-(r["booked_pct"] or 0), -r["open_owned"], r["name"] or ""))
+            if person and not rows:
+                return _dumps({"error": f'Nobody matching "{person}" has anything scheduled, open or logged.'})
+            result = {
+                "from": eastern.day(first), "to": eastern.day(last),
+                "office_hours_in_period": round(office, 1),
+                "people": len(rows),
+                "workload": _table(rows, ("name", "username", "scheduled_hours", "time_off_hours", "available_hours",
+                                          "booked_pct", "open_owned", "open_as_resource", "oldest_open_days",
+                                          "logged_hours")),
+                "note": ("booked_pct is scheduled hours over office hours less time off. Open tickets are service "
+                         "tickets; project work shows up as scheduled hours. "
+                         + (f"logged_hours covers the last {logged_days} days." if logged_days else "")),
+            }
+            if len(open_tickets) >= 5000:
+                result["limit_note"] = "Open tickets capped at 5000; ticket counts may be low."
+            return _dumps(result)
         except Exception as exc:
             return _error(exc)
 
@@ -1239,5 +1372,5 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance, get_after_hours, get_open_tickets, get_go_lives, get_schedule, search_tickets, get_clients_by_software, get_projects,
+            get_sla_performance, get_after_hours, get_open_tickets, get_go_lives, get_schedule, get_workload, search_tickets, get_clients_by_software, get_projects,
             get_project_tickets, create_chart]
