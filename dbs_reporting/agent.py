@@ -116,12 +116,13 @@ and the day they're scheduled is the go-live date. Training tickets aren't go-li
 for upcoming or past go-lives ("how many sites are going live"), installs by installer, and support \
 tickets after go-live (followup_days); count sites, not tickets. Use get_projects for install budgets \
 and hours.
-- Schedules: for what's on someone's calendar (meetings, 1-on-1s, scheduled tickets, time off), use \
-get_schedule with their name. List it day by day with times; it covers everything on their \
-schedule, not just tickets.
+- Schedules: for what's on people's calendars (meetings, 1-on-1s, scheduled tickets, time off), use \
+get_schedule with one name, several names separated by commas, or "everyone" for the whole staff, in \
+one call rather than one call per person. List it day by day with times; it covers everything on \
+their schedule, not just tickets.
 - Workload: for who has room, who's overloaded or how booked someone is, use get_workload (scheduled \
 hours against office hours, time off, open tickets owned or assigned, hours logged). Use get_schedule \
-for what's on one person's calendar.
+for what's on people's calendars.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
 times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
