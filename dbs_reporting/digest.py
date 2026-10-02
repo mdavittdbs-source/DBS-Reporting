@@ -13,6 +13,7 @@ data/digests/ so it can be opened in a browser.
 Email settings (.env): DIGEST_TO, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, DIGEST_FROM.
 """
 
+import base64
 import html
 import json
 import logging
@@ -34,6 +35,8 @@ from .tools import build_tools
 
 log = logging.getLogger(__name__)
 DIGEST_DIR = PROJECT_ROOT / "data" / "digests"
+BRANDING = PROJECT_ROOT / "branding"
+LOGO_CID = "david-logo"
 CHECK_EVERY = 15 * 60       # seconds between "is a digest due?" checks while David runs
 RETRY_AFTER = 60 * 60       # after a failed send, wait this long before trying again
 NAVY, INK, MUTED, LINE, SOFT = "#183e7c", "#1c1b19", "#6f6b63", "#e2dfd8", "#f4f6fa"
@@ -158,8 +161,19 @@ def _problem(message: str) -> str:
     return f'<p style="color:#b42318;margin:0">Couldn\'t load this: {_esc(message)}</p>'
 
 
-def render(data: dict, ticket_url: str, today=None) -> tuple[str, str, str]:
-    """(subject, html, plain text) for the digest."""
+def email_logo() -> tuple[bytes, str] | None:
+    """The logo for the email, as (image bytes, subtype). Outlook doesn't show SVG, so this is
+    branding/logo-email.png (or logo.png / logo.jpg); None if there's none."""
+    for name, subtype in (("logo-email.png", "png"), ("logo.png", "png"), ("logo.jpg", "jpeg"), ("logo.jpeg", "jpeg")):
+        path = BRANDING / name
+        if path.is_file():
+            return path.read_bytes(), subtype
+    return None
+
+
+def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None) -> tuple[str, str, str]:
+    """(subject, html, plain text) for the digest. `logo_src` is the logo image's address: "cid:..."
+    in the email, a data: URI in the saved copy, or None for no logo."""
     today = today or eastern.now().date()
     monday = today - timedelta(days=today.weekday())
     subject = f"David weekly digest: week of {eastern.day(monday)}"
@@ -248,9 +262,13 @@ def render(data: dict, ticket_url: str, today=None) -> tuple[str, str, str]:
         f'color:{INK}"><table cellpadding="0" cellspacing="0" style="width:100%;background:{SOFT}"><tr><td align="center"'
         f' style="padding:24px 12px"><table cellpadding="0" cellspacing="0" style="width:100%;max-width:720px;'
         f'background:#ffffff;border-radius:16px">'
-        f'<tr><td style="padding:24px 28px 4px;border-bottom:3px solid {NAVY}"><div style="color:{MUTED};'
-        f'font-size:12px;letter-spacing:.06em;text-transform:uppercase">David · weekly digest</div>'
-        f'<h1 style="margin:4px 0 14px;font-size:22px">Week of {eastern.day(monday)}</h1></td></tr>'
+        f'<tr><td style="padding:24px 28px 14px;border-bottom:3px solid {NAVY}">'
+        f'<table cellpadding="0" cellspacing="0"><tr>'
+        + (f'<td style="padding-right:14px;vertical-align:middle"><img src="{_esc(logo_src)}" width="56" height="56" '
+           f'alt="David" style="display:block;width:56px;height:56px;border:0"></td>' if logo_src else "")
+        + f'<td style="vertical-align:middle"><div style="color:{MUTED};font-size:12px;letter-spacing:.06em;'
+        f'text-transform:uppercase">David · weekly digest</div>'
+        f'<h1 style="margin:4px 0 0;font-size:22px">Week of {eastern.day(monday)}</h1></td></tr></table></td></tr>'
         + "".join(parts) +
         f'<tr><td style="padding:20px 28px 24px;color:{MUTED};font-size:12px">From live ConnectWise data on '
         f"{_esc(eastern.stamp(datetime.now(timezone.utc)))}. Times are Eastern.</td></tr>"
@@ -286,6 +304,11 @@ def send_email(settings: DigestSettings, subject: str, html_body: str, text_body
     msg["Subject"], msg["From"], msg["To"] = subject, settings.sender, ", ".join(settings.to)
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
+    logo = email_logo()
+    if logo and f"cid:{LOGO_CID}" in html_body:
+        # Attached inside the email: Outlook blocks pictures loaded from the web until you click to allow them.
+        msg.get_payload()[1].add_related(logo[0], maintype="image", subtype=logo[1], cid=f"<{LOGO_CID}>",
+                                         filename=f"david.{logo[1]}", disposition="inline")
     context = ssl.create_default_context()
     if settings.smtp_port == 465:
         server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=60)
@@ -300,10 +323,15 @@ def send_email(settings: DigestSettings, subject: str, html_body: str, text_body
 
 
 def build_and_save(cw, store: Store, ticket_url: str) -> tuple[str, str, str, Path]:
-    subject, page, text = render(gather(cw, store), ticket_url)
+    """Build the digest; returns (subject, html for the email, plain text, path of the saved copy)."""
+    data, logo = gather(cw, store), email_logo()
+    subject, page, text = render(data, ticket_url, logo_src=f"cid:{LOGO_CID}" if logo else None)
+    # The saved copy opens in a browser, so its logo is part of the file itself.
+    saved = render(data, ticket_url, logo_src=f"data:image/{logo[1]};base64,{base64.b64encode(logo[0]).decode()}"
+                   if logo else None)[1]
     DIGEST_DIR.mkdir(parents=True, exist_ok=True)
     path = DIGEST_DIR / f"digest-{eastern.now():%Y-%m-%d}.html"
-    path.write_text(page, encoding="utf-8")
+    path.write_text(saved, encoding="utf-8")
     return subject, page, text, path
 
 

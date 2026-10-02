@@ -133,3 +133,27 @@ def test_send_errors_are_explained():
         socket.gaierror(11001, "getaddrinfo failed"), SETTINGS)
     assert "port 25 often is" in digest.explain_send_error(TimeoutError(), SETTINGS)
     assert "rejected the sign-in" in digest.explain_send_error(smtplib.SMTPAuthenticationError(535, b"no"), SETTINGS)
+
+
+def test_logo_is_inside_the_email(store, monkeypatch, tmp_path):
+    import email
+    monkeypatch.setattr(digest, "DIGEST_DIR", tmp_path)
+    subject, page, text, path = digest.build_and_save(golive_client([]), store, URL)
+    assert 'src="cid:david-logo"' in page  # the email points at the attached logo
+    assert 'src="data:image/png;base64,' in path.read_text()  # the saved copy carries its own
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *exc): return False
+        def starttls(self, context): pass
+        def login(self, *a): pass
+        def send_message(self, msg): sent.append(msg.as_bytes())
+
+    monkeypatch.setattr(digest.smtplib, "SMTP", FakeSMTP)
+    digest.send_email(SETTINGS, subject, page, text)
+    msg = email.message_from_bytes(sent[0])
+    logo = [p for p in msg.walk() if p.get_content_type() == "image/png"]
+    assert len(logo) == 1 and logo[0]["Content-ID"] == "<david-logo>"
+    assert logo[0].get_payload(decode=True)[:8] == b"\x89PNG\r\n\x1a\n"
