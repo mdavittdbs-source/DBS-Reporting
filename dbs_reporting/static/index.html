@@ -102,23 +102,19 @@
   .theme-switch .t-tab { transition: color var(--tabs-dur) var(--tabs-ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .theme-switch .t-tabs-pill { height: 26px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
   .theme-switch svg { width: 15px; height: 15px; }
-  /* Admins: Feedback from users, an icon at the right of the David name; the dot means thumbs down this week. */
+  /* Admins: Feedback from users, an icon at the right of the David name. Hovering shows this week's thumbs down. */
   .icon-link { position: relative; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center;
                color: var(--muted); flex-shrink: 0; transition: transform var(--duration-quick) var(--ease-smooth-out); }
   .icon-link[hidden] { display: none; }
   .name-line { display: flex; align-items: center; gap: 4px; }
   .brand .icon-link { width: 26px; height: 26px; margin: -4px 0; }
   .brand .icon-link svg { width: 15px; height: 15px; }
-  .brand .icon-link .dot { top: 3px; right: 2px; }
   .brand .icon-link::after { inset: -7px; }
   .icon-link:hover { color: var(--text); background: var(--hover); }
   .icon-link:active { transform: scale(.96); }
   .icon-link:focus-visible { outline: none; box-shadow: var(--ring); }
   .icon-link::after { content: ""; position: absolute; inset: -4px; }
   .icon-link svg { width: 16px; height: 16px; }
-  .icon-link .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%;
-                    background: var(--danger); box-shadow: 0 0 0 2px var(--panel); }
-  .icon-link .dot[hidden] { display: none; }
   .me { margin: 0 10px; padding: 12px 6px 14px; display: flex; align-items: center; gap: 10px; }
   .avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--pill); color: var(--text);
             box-shadow: inset 0 0 0 1px var(--hair); display: grid; place-items: center; font-size: 11.5px;
@@ -265,7 +261,7 @@
   .thumb.down svg { transform: scaleY(-1); }
   .thumb[aria-pressed="true"] { color: var(--tag-ink); }
   .thumb[aria-pressed="true"] svg { fill: currentColor; fill-opacity: .18; }
-  .note { margin-top: 12px; max-width: 520px; padding: 12px; border-radius: 18px; background: var(--core);
+  .note { margin: 16px auto 0; width: 100%; max-width: 520px; padding: 12px; border-radius: 18px; background: var(--core);
           box-shadow: var(--core-hi), var(--ambient); display: flex; flex-direction: column; gap: 8px;
           animation: rise var(--duration-fast) var(--ease-smooth-out); }
   .note label { font-size: 13px; color: var(--muted); }
@@ -426,7 +422,6 @@
       <span class="brand-name"><span class="name-line">David
       <a class="icon-link" id="feedback-link" href="/feedback" hidden aria-label="Feedback from users" title="Feedback from users">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 6.5h6M5 8.8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <span class="dot" id="feedback-dot" hidden></span>
       </a></span><small>DBS ConnectWise Assistant</small></span>
     </div>
     <button id="new" type="button">
@@ -1611,7 +1606,6 @@
       api("/api/feedback").then((f) => {
         const recent = f.items.filter((i) => i.rating < 0 && Date.now() - Date.parse(i.updated_at) < 7 * 86400000).length;
         if (recent) {
-          $("feedback-dot").hidden = false;
           const label = `Feedback from users: ${recent} thumbs down this week`;
           $("feedback-link").title = label;
           $("feedback-link").setAttribute("aria-label", label);
