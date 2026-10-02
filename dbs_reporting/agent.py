@@ -119,6 +119,9 @@ and hours.
 - Schedules: for what's on someone's calendar (meetings, 1-on-1s, scheduled tickets, time off), use \
 get_schedule with their name. List it day by day with times; it covers everything on their \
 schedule, not just tickets.
+- Workload: for who has room, who's overloaded or how booked someone is, use get_workload (scheduled \
+hours against office hours, time off, open tickets owned or assigned, hours logged). Use get_schedule \
+for what's on one person's calendar.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
 times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
@@ -161,6 +164,7 @@ TOOL_STATUS = {
     "get_after_hours": "Checking when tickets came in…",
     "get_go_lives": "Looking up go-lives…",
     "get_schedule": "Checking the schedule…",
+    "get_workload": "Adding up everyone's workload…",
     "search_tickets": "Searching tickets across clients…",
     "get_clients_by_software": "Checking which software clients use…",
     "get_projects": "Looking up projects…",

@@ -382,6 +382,16 @@ class ConnectWiseClient:
                       f" and dateEnd>{cw_date(start)}")
         return self._fetch("/schedule/entries", conditions, 1000, MEMBER_SCHEDULE_FIELDS, order_by="dateStart asc")
 
+    def schedule_between(self, start: datetime, end: datetime, limit: int = 10000) -> list[dict]:
+        """Everyone's schedule entries between `start` and `end`."""
+        conditions = f"dateStart<{cw_date(end)} and dateEnd>{cw_date(start)}"
+        return self._fetch("/schedule/entries", conditions, limit, MEMBER_SCHEDULE_FIELDS, order_by="dateStart asc")
+
+    def time_entries_since(self, days: int, limit: int = 20000) -> list[dict]:
+        """Everyone's time entries started in the last `days` days (who and how many hours)."""
+        return self._fetch("/time/entries", f"timeStart>={cw_date(since(days))}", limit,
+                           "actualHours,member/name,member/identifier")
+
     def tickets_by_id(self, ids: list[int]) -> dict[int, dict]:
         """Service or project tickets by id (summary and client), for labelling schedule entries.
         Both kinds are looked up at the same time."""
