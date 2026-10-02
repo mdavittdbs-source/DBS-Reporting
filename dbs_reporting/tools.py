@@ -1154,14 +1154,16 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 return (kind.get("identifier") or "").upper() in ("S", "P") or "ticket" in (kind.get("name") or "").lower()
 
             tickets = cw.tickets_by_id([e.get("objectId") for e in entries if is_ticket(e)])
-            by_day: dict[str, list] = {}
-            for e in entries:
+            last = first + timedelta(days=days - 1)
+            placed: list[tuple] = []  # (day, start minute, order, row)
+            for n, e in enumerate(entries):
                 begin, finish = parse_dt(e.get("dateStart")), parse_dt(e.get("dateEnd"))
                 if not begin:
                     continue
                 local = eastern.to_eastern(begin)
+                local_end = eastern.to_eastern(finish) if finish and finish > begin else None
                 row = {
-                    "time": eastern.clock(local) + (f"–{eastern.clock(eastern.to_eastern(finish))}" if finish else ""),
+                    "time": eastern.clock(local) + (f"–{eastern.clock(local_end)}" if local_end else ""),
                     "title": e.get("name"),
                     "kind": (e.get("type") or {}).get("name"),
                     "hours": e.get("hoursScheduled"),
@@ -1173,11 +1175,29 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                     t = tickets.get(e["objectId"], {})
                     row.update(ticket=f"#{e['objectId']}", summary=t.get("summary"), client=_name(t, "company"),
                                project=(t.get("project") or {}).get("name"))
-                by_day.setdefault(f"{local:%a} {eastern.day(local.date())}", []).append(_compact(row))
+                # An entry can run over several days (training Tuesday 8:30 AM to Wednesday 5:00 PM).
+                # ConnectWise shows it on each of those days at its daily hours, so it's listed on each.
+                start_day, end_day = local.date(), local_end.date() if local_end else local.date()
+                if local_end and local_end.hour == local_end.minute == 0 and end_day > start_day:
+                    end_day -= timedelta(days=1)  # ending at midnight: that day isn't included
+                covered = [start_day + timedelta(days=i) for i in range((end_day - start_day).days + 1)]
+                if len(covered) > 1:
+                    # A weekday block spanning a weekend skips Saturday and Sunday, as the calendar does.
+                    if start_day.weekday() < 5 and end_day.weekday() < 5:
+                        covered = [d for d in covered if d.weekday() < 5]
+                    row["spans"] = (f"{start_day:%a} {eastern.day(start_day)} to "
+                                    f"{end_day:%a} {eastern.day(end_day)}")
+                for d in covered:
+                    if first <= d <= last:
+                        placed.append((d, local.hour * 60 + local.minute, n, _compact(row)))
+            placed.sort(key=lambda p: p[:3])
+            by_day: dict[str, list] = {}
+            for d, _, _, row in placed:
+                by_day.setdefault(f"{d:%a} {eastern.day(d)}", []).append(row)
             return _dumps({
                 "person": full_name(member), "title": member.get("title"),
-                "from": eastern.day(first), "to": eastern.day(first + timedelta(days=days - 1)),
-                "entry_count": sum(len(v) for v in by_day.values()),
+                "from": eastern.day(first), "to": eastern.day(last),
+                "entry_count": len({p[2] for p in placed}),
                 "hours_scheduled": round(sum(float(e.get("hoursScheduled") or 0) for e in entries), 2),
                 "days": [{"day": d, "entries": v} for d, v in by_day.items()],
                 "note": "Days not listed have nothing scheduled.",

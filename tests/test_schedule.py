@@ -1,6 +1,7 @@
 """What's on a staff member's schedule: meetings and 1-on-1s as well as tickets."""
 
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -75,3 +76,24 @@ def test_blank_first_or_last_name():
     two = ({**VANESSA, "lastName": None}, {**VANESSA, "identifier": "vsmith", "firstName": None, "lastName": "Smith"})
     result = json.loads(tools_by_name(client([], members=two))["get_schedule"].call({"person": "V"}))
     assert [m["name"] for m in result["matches"]] == ["Vanessa", "Smith"]  # never "Vanessa None"
+
+
+def test_entry_running_over_several_days_shows_on_each(monkeypatch):
+    # Anthony's training: one entry from Tuesday 8:30 AM to Wednesday 5:00 PM, which ConnectWise draws on both
+    # days. It used to show on Tuesday only, so Wednesday looked open.
+    monday = TODAY - timedelta(days=TODAY.weekday()) + timedelta(days=7)
+    day = (monday - TODAY).days
+    training = {"id": 9, "name": "Internal Training / Oversee: Server image setup", "type": {"identifier": "C",
+                "name": "Internal Training"}, "dateStart": at(day + 1, 8, 30), "dateEnd": at(day + 2, 17),
+                "hoursScheduled": 17}
+    over_weekend = {"id": 10, "name": "On call", "type": {"name": "On Call"}, "dateStart": at(day - 3, 9),
+                    "dateEnd": at(day, 17), "hoursScheduled": 16}  # Friday to Monday, started before the week
+    monkeypatch.setattr(sys.modules[__name__], "ENTRIES", [over_weekend, training])
+    result = json.loads(tools_by_name(client([]))["get_schedule"].call({"person": "Vanessa", "start_day": day,
+                                                                          "days": 7}))
+    days = {d["day"][:3]: [e["title"] for e in d["entries"]] for d in result["days"]}
+    assert days == {"Mon": ["On call"], "Tue": ["Internal Training / Oversee: Server image setup"],
+                    "Wed": ["Internal Training / Oversee: Server image setup"]}
+    tuesday = result["days"][1]["entries"][0]
+    assert tuesday["time"] == "8:30 AM–5:00 PM" and tuesday["spans"].startswith("Tue") and "to Wed" in tuesday["spans"]
+    assert result["entry_count"] == 2
