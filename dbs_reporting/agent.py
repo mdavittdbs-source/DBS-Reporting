@@ -112,6 +112,9 @@ day, and that person is the installer. Training tickets in that phase (e.g. mana
 aren't go-lives and are left out. Use \
 get_go_lives for upcoming or past go-lives, installs by installer, unscheduled deployments, and support \
 tickets after go-live (followup_days). Use get_projects for install budgets and hours.
+- Schedules: for what's on someone's calendar (meetings, 1-on-1s, scheduled tickets, time off), use \
+get_schedule with their name. List it day by day with times; it covers everything on their \
+schedule, not just tickets.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
 times. Say that the times are calendar hours, not business hours.
 - "Most common issues" means recurring problems, not just the ticket type field. Group tickets by \
@@ -151,6 +154,7 @@ TOOL_STATUS = {
     "get_open_tickets": "Finding open tickets…",
     "get_after_hours": "Checking when tickets came in…",
     "get_go_lives": "Looking up go-lives…",
+    "get_schedule": "Checking the schedule…",
     "search_tickets": "Searching tickets across clients…",
     "get_clients_by_software": "Checking which software clients use…",
     "get_projects": "Looking up projects…",
