@@ -102,6 +102,13 @@
   .theme-switch .t-tab { transition: color var(--tabs-dur) var(--tabs-ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .theme-switch .t-tabs-pill { height: 26px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
   .theme-switch svg { width: 15px; height: 15px; }
+  .admin-link { margin: 0 10px; padding: 10px 6px 0; font-size: 12.5px; color: var(--muted); text-decoration: none;
+                display: flex; align-items: center; justify-content: space-between; }
+  .admin-link[hidden] { display: none; }
+  .admin-link:hover { color: var(--text); }
+  .admin-link span { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--danger);
+                     font-variant-numeric: tabular-nums; }
+  .admin-link span svg { width: 12px; height: 12px; fill: none; transform: scaleY(-1); }
   .me { margin: 0 10px; padding: 12px 6px 14px; display: flex; align-items: center; gap: 10px; }
   .avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--pill); color: var(--text);
             box-shadow: inset 0 0 0 1px var(--hair); display: grid; place-items: center; font-size: 11.5px;
@@ -240,6 +247,26 @@
   :is(#chats button.menu, .popover button, #logout, .actions button, .chart-tools button, .theme-switch button):active {
     transform: scale(.96); }
   .actions button.copied { color: var(--tag-ink); }
+  /* Thumbs: outline by default, filled when chosen. */
+  .rate { display: inline-flex; gap: 2px; margin-left: auto; }
+  .actions .rate button.thumb { padding: 6px 9px; background: none; box-shadow: none; }
+  .actions .rate button.thumb:hover { background: var(--hover); }
+  .thumb svg { width: 15px; height: 15px; fill: none; transition: fill var(--duration-quick) var(--ease-smooth-out); }
+  .thumb.down svg { transform: scaleY(-1); }
+  .thumb[aria-pressed="true"] { color: var(--tag-ink); }
+  .thumb[aria-pressed="true"] svg { fill: currentColor; fill-opacity: .18; }
+  .note { margin-top: 12px; max-width: 520px; padding: 12px; border-radius: 18px; background: var(--core);
+          box-shadow: var(--core-hi), var(--ambient); display: flex; flex-direction: column; gap: 8px;
+          animation: rise var(--duration-fast) var(--ease-smooth-out); }
+  .note label { font-size: 13px; color: var(--muted); }
+  .note textarea { font: inherit; font-size: 14px; resize: vertical; min-height: 54px; padding: 9px 12px; border: 0;
+                   border-radius: 12px; background: var(--pill); color: var(--text); box-shadow: inset 0 0 0 1px var(--hair); }
+  .note textarea:focus { outline: none; box-shadow: inset 0 0 0 1px var(--glass-ring), var(--ring); }
+  .note .row { display: flex; justify-content: flex-end; gap: 6px; }
+  .note button { font: inherit; font-size: 13px; font-weight: 500; border: 0; border-radius: 999px; padding: 7px 14px;
+                 background: var(--pill); color: var(--muted); transition: transform var(--duration-quick) var(--ease-smooth-out); }
+  .note button[type="submit"] { background: var(--cta); color: var(--cta-ink); }
+  .note button:active { transform: scale(.96); }
   .actions button.copied svg { animation: check-in var(--duration-fast) cubic-bezier(0.2, 0, 0, 1); }
   @keyframes check-in { from { opacity: 0; transform: scale(.25); filter: blur(4px); } }
   .actions svg { width: 14px; height: 14px; }
@@ -408,6 +435,7 @@
         </button>
       </div>
     </div>
+    <a class="admin-link" id="feedback-link" href="/feedback" hidden>Feedback from users<span id="feedback-count"></span></a>
     <div class="me">
       <span class="avatar" id="avatar" aria-hidden="true"></span>
       <span id="me"></span>
@@ -987,7 +1015,7 @@
   const CHECK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const DOWNLOAD = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5v8m0 0L4.5 7M8 10.5 11.5 7M3 13.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  function addAnswer(text, usage, charts, answerId, model, seconds) {
+  function addAnswer(text, usage, charts, answerId, model, seconds, feedback) {
     const div = document.createElement("div");
     div.className = "msg bot";
     div.appendChild(byline(model, seconds));
@@ -1025,8 +1053,84 @@
       div.appendChild(wrap);
     }
     div.appendChild(actions);
+    if (answerId) feedbackButtons(div, actions, answerId, feedback);
     messages.appendChild(div);
     return div;
+  }
+
+  // Thumbs up / down on each answer. A thumbs down asks what was wrong; ratings and notes go to
+  // the admins' Feedback page. Clicking the same thumb again takes the rating back.
+  const THUMB = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7.2 7.6 2.4c.9 0 1.6.8 1.4 1.7L8.6 6.2h3.6c.9 0 ' +
+    '1.6.9 1.3 1.8l-1.3 4.6c-.2.6-.7 1-1.3 1H5m0-6.4v6.4m0-6.4H3.3c-.5 0-.8.4-.8.8v4.8c0 .4.3.8.8.8H5" ' +
+    'stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  function feedbackButtons(msg, actions, answerId, saved) {
+    let rating = saved?.rating || 0;
+    const group = document.createElement("span");
+    group.className = "rate";
+    const make = (value, label) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "thumb" + (value < 0 ? " down" : "");
+      b.setAttribute("aria-label", label);
+      b.title = label;
+      b.innerHTML = THUMB;
+      b.onclick = () => choose(rating === value ? 0 : value);
+      return b;
+    };
+    const up = make(1, "Good answer"), down = make(-1, "Something's wrong with this answer");
+    group.append(up, down);
+    actions.appendChild(group);
+    const paint = () => {
+      up.setAttribute("aria-pressed", String(rating === 1));
+      down.setAttribute("aria-pressed", String(rating === -1));
+    };
+    paint();
+
+    async function send(value, comment = "") {
+      await api(`/api/answers/${answerId}/feedback`, { method: "POST", body: JSON.stringify({ rating: value, comment }) });
+    }
+    async function choose(value) {
+      const before = rating;
+      rating = value;
+      paint();
+      msg.querySelector(".note")?.remove();
+      try {
+        await send(value);
+      } catch (err) {
+        rating = before; paint();
+        toast("Couldn't save your feedback: " + err.message);
+        return;
+      }
+      if (value === -1) askWhy(); else if (value === 1) toast("Thanks for the feedback");
+    }
+    function askWhy() {
+      const note = document.createElement("form");
+      note.className = "note";
+      note.innerHTML = '<label for="note-' + answerId + '">What was wrong? It goes to your admin with this answer.</label>' +
+        '<textarea id="note-' + answerId + '" rows="2" maxlength="2000" ' +
+        'placeholder="e.g. the numbers look off, it missed some tickets, wrong client…"></textarea>' +
+        '<div class="row"><button type="button" class="skip-note">Skip</button><button type="submit">Send</button></div>';
+      const box = note.querySelector("textarea");
+      note.querySelector(".skip-note").onclick = () => note.remove();
+      note.onsubmit = async (e) => {
+        e.preventDefault();
+        const comment = box.value.trim();
+        if (!comment) { note.remove(); return; }
+        try {
+          await send(-1, comment);
+          note.remove();
+          toast("Thanks, your note was sent");
+        } catch (err) {
+          toast("Couldn't send your note: " + err.message);
+        }
+      };
+      box.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); note.requestSubmit(); }
+        if (e.key === "Escape") note.remove();
+      });
+      msg.appendChild(note);
+      box.focus();
+    }
   }
 
   function addThinking() {
@@ -1290,7 +1394,7 @@
       clearMessages();
       for (const t of chat.turns) {
         if (t.role === "user") addUser(t.text);
-        else addAnswer(t.text, t.usage, t.charts, t.id, t.model || chat.model);
+        else addAnswer(t.text, t.usage, t.charts, t.id, t.model || chat.model, undefined, t.feedback);
       }
       scrollToEnd();
       loadChats();
@@ -1489,6 +1593,13 @@
     const me = await api("/api/me");
     $("me").textContent = me.display_name;
     isAdmin = me.is_admin;
+    if (isAdmin) {
+      $("feedback-link").hidden = false;
+      api("/api/feedback").then((f) => {
+        const recent = f.items.filter((i) => i.rating < 0 && Date.now() - Date.parse(i.updated_at) < 7 * 86400000).length;
+        if (recent) $("feedback-count").innerHTML = THUMB + `${recent} this week`;
+      }).catch(() => {});
+    }
     firstName = me.display_name.trim().split(/\s+/)[0] || "";
     ticketUrl = me.ticket_url || "";
     $("avatar").textContent = me.display_name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();

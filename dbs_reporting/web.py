@@ -239,12 +239,53 @@ def conversation(conversation_id: str, user: dict = Depends(current_user)) -> di
     found = store.get_conversation(user["id"], conversation_id, with_history=False)
     if found is None:
         raise HTTPException(404, "Chat not found.")
+    ratings = store.feedback_in_chat(user["id"], conversation_id)
     return {
         "id": found["id"], "title": found["title"], "model": found["model"],
         "turns": [
-            {**t, "usage": t["usage"] if user["is_admin"] else None} for t in store.turns(conversation_id)
+            {**t, "usage": t["usage"] if user["is_admin"] else None, "feedback": ratings.get(t["id"])}
+            for t in store.turns(conversation_id)
         ],
     }
+
+
+class FeedbackRequest(BaseModel):
+    rating: int  # 1 thumbs up, -1 thumbs down, 0 take it back
+    comment: str = ""
+
+
+@app.post("/api/answers/{answer_id}/feedback")
+def feedback(answer_id: int, body: FeedbackRequest, user: dict = Depends(current_user)) -> dict:
+    """Thumbs up / down (with an optional note) on one of your answers."""
+    if body.rating not in (-1, 0, 1):
+        raise HTTPException(400, "rating must be 1, -1 or 0.")
+    if not store.set_feedback(user["id"], answer_id, body.rating, body.comment):
+        raise HTTPException(404, "Answer not found.")
+    return {"ok": True}
+
+
+def _require_admin(user: dict) -> None:
+    if not user["is_admin"]:
+        raise HTTPException(403, "Only admins can see feedback.")
+
+
+@app.get("/api/feedback")
+def all_feedback(user: dict = Depends(current_user)) -> dict:
+    """Everyone's ratings and notes, newest first (admins only)."""
+    _require_admin(user)
+    rows = store.list_feedback()
+    return {"items": rows, "up": sum(r["rating"] > 0 for r in rows), "down": sum(r["rating"] < 0 for r in rows)}
+
+
+@app.get("/feedback")
+def feedback_page(dbs_session: str | None = Cookie(default=None)):
+    users_file.refresh()
+    user = store.session_user(dbs_session) if dbs_session else None
+    if user is None:
+        return RedirectResponse("/login")
+    if not user["is_admin"]:
+        return RedirectResponse("/")
+    return _page("feedback.html")
 
 
 class RenameRequest(BaseModel):
