@@ -141,7 +141,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); -web
 
 /* A round icon nested inside a pill button; it nudges on hover */
 .ico { width: 30px; height: 30px; border-radius: 999px; background: var(--cta-icon); display: inline-grid;
-       place-items: center; flex-shrink: 0; transition: transform .5s var(--spring); }
+       place-items: center; flex-shrink: 0; transition: transform var(--duration-fast) var(--ease-smooth-out); }
 .ico svg { width: 15px; height: 15px; }
 :is(button, .cta):hover > .ico { transform: translate(2px, -1px) scale(1.05); }
 

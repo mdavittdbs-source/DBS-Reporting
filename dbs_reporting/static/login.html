@@ -17,6 +17,7 @@
 <link rel="prefetch" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" crossorigin>
 <script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/motion.css">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px;
@@ -46,25 +47,34 @@
   button:active:not(:disabled) { transform: scale(.98); }
   button:focus-visible { outline: none; box-shadow: var(--ring); }
   button:disabled { opacity: .8; cursor: default; }
-  button .ico { width: 34px; height: 34px; }
+  button .ico { width: 34px; height: 34px; display: grid; place-items: center; }
+  button .ico > * { grid-area: 1 / 1; }
   .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
              animation: spin .7s linear infinite; display: none; }
   button:disabled .spinner { display: block; }
   button:disabled .arrow { display: none; }
+  button.done .spinner { display: none; }
+  .t-success-check svg { width: 16px; height: 16px; }
+  /* The button label swaps in place (text swap: up and out through a blur, new text rises in). */
+  #submit-label { display: inline-block; transition: opacity var(--duration-quick) var(--ease-in-out),
+                  transform var(--duration-quick) var(--ease-in-out), filter var(--duration-quick) var(--ease-in-out); }
+  #submit-label.out { opacity: 0; transform: translateY(-4px); filter: blur(2px); }
+  #submit-label.in { transition: none; opacity: 0; transform: translateY(4px); filter: blur(2px); }
   #error { font-size: 14px; color: var(--danger); background: var(--danger-soft); border-radius: 14px; padding: 10px 14px; }
   #error:empty { display: none; }
   .foot { margin: 18px 0 0; font-size: 13px; color: var(--faint); text-align: center; text-wrap: balance; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes rise-in { from { opacity: 0; transform: translateY(24px); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
-  .card { animation: rise-in .8s var(--spring) both; }
-  /* After signing in, the card lifts away while the chat loads. */
-  main.leaving .card { animation: leave .26s var(--ease) forwards; }
-  main.leaving .foot { animation: fade-out .18s var(--ease) forwards; }
-  @keyframes leave { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-10px) scale(.97); } }
+  @keyframes rise-in { from { opacity: 0; transform: translateY(12px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+  .card { animation: rise-in var(--duration-very-slow) var(--ease-smooth-out) both; }
+  /* After signing in: a check, "Welcome, <name>", then the card lifts away through a blur while
+     the background light blooms; the chat page picks the bloom up and settles it. */
+  main.leaving .card { animation: leave var(--duration-medium) var(--ease-smooth-out) forwards; }
+  main.leaving .foot, main.leaving .brand { animation: fade-out var(--duration-fast) var(--ease-smooth-out) forwards; }
+  body.leaving .aurora { animation: bloom-out .6s var(--ease-smooth-out) forwards; }
+  @keyframes leave { from { opacity: 1; transform: none; filter: none; }
+                     to { opacity: 0; transform: translateY(-12px) scale(.96); filter: blur(8px); } }
   @keyframes fade-out { to { opacity: 0; } }
-  /* Browsers that support it (Chrome, Edge) also cross-fade between the pages. */
-  @view-transition { navigation: auto; }
-  @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+  @keyframes bloom-out { to { opacity: .4; transform: scale(1.18); filter: brightness(1.5) saturate(1.4); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -79,14 +89,14 @@
     <span>DBS Autonomous Virtual Information Desk</span>
   </div>
   <div class="card shell">
-  <form id="form" class="core" novalidate>
+  <form id="form" class="core t-input" novalidate>
     <span class="eyebrow">David · ConnectWise</span>
     <h1>Sign in</h1>
     <p class="lead">Ask questions about tickets in ConnectWise.</p>
     <label>Username <input id="username" autocomplete="username" autocapitalize="off" spellcheck="false" required autofocus></label>
     <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
     <div id="error" role="alert"></div>
-    <button id="submit"><span id="submit-label">Sign in</span><span class="ico" aria-hidden="true"><span class="spinner"></span><svg class="arrow" viewBox="0 0 16 16" fill="none"><path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+    <button id="submit"><span id="submit-label">Sign in</span><span class="ico" aria-hidden="true"><span class="spinner"></span><span class="t-success-check" data-state="out"><svg viewBox="0 0 16 16" fill="none"><path d="M4 8.5l2.6 2.5L12 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><svg class="arrow" viewBox="0 0 16 16" fill="none"><path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   </form>
   </div>
   <p class="foot">Need an account or a password reset? Ask Mikey Davitt.</p>
@@ -100,6 +110,26 @@
   const fields = [document.getElementById("username"), document.getElementById("password")];
 
   fields.forEach((f) => f.addEventListener("input", () => f.removeAttribute("aria-invalid")));
+  const css = (name, fallback) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || fallback;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Wrong or missing details: the card shakes (error state shake).
+  function shake() {
+    form.classList.remove("is-shaking");
+    void form.offsetWidth;  // replay from rest
+    form.classList.add("is-shaking");
+    setTimeout(() => form.classList.remove("is-shaking"), css("--shake-dur-a", 80) * 2 + css("--shake-dur-b", 60) * 2 + 20);
+  }
+  function swapLabel(text) {
+    label.classList.add("out");
+    setTimeout(() => {
+      label.textContent = text;
+      label.classList.remove("out");
+      label.classList.add("in");
+      void label.offsetWidth;
+      label.classList.remove("in");
+    }, css("--duration-quick", 150));
+  }
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -109,6 +139,7 @@
       empty.forEach((f) => f.setAttribute("aria-invalid", "true"));
       error.textContent = "Enter your username and password.";
       empty[0].focus();
+      shake();
       return;
     }
     submit.disabled = true;
@@ -121,13 +152,22 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "Sign in failed. Try again.");
-      // Hand off to the chat page, which plays its entrance (see index.html). The card's exit
-      // plays while the chat page loads, so there's no pause in between.
+      // Hand off to the chat page, which plays its entrance (see index.html): a check and a
+      // welcome first, then the card's exit plays while the chat page loads.
       try { sessionStorage.setItem("justSignedIn", "1"); } catch {}
-      document.querySelector("main").classList.add("leaving");
-      location.href = "/";
+      if (reduced) { location.href = "/"; return; }
+      submit.classList.add("done");
+      submit.querySelector(".t-success-check").dataset.state = "in";
+      const first = (data.display_name || "").trim().split(/\s+/)[0];
+      swapLabel(first ? `Welcome, ${first}` : "Welcome");
+      setTimeout(() => {
+        document.querySelector("main").classList.add("leaving");
+        document.body.classList.add("leaving");
+      }, 520);
+      setTimeout(() => { location.href = "/"; }, 720);
     } catch (err) {
       error.textContent = err.message;
+      shake();
       fields[1].value = "";
       fields[1].focus();
       submit.disabled = false;
