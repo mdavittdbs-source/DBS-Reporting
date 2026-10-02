@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import smtplib
+import socket
 import ssl
 import threading
 import time
@@ -260,6 +261,26 @@ def render(data: dict, ticket_url: str, today=None) -> tuple[str, str, str]:
 # --- Sending ----------------------------------------------------------------
 
 
+def explain_send_error(exc: Exception, settings: DigestSettings) -> str:
+    """What went wrong sending the email, in words someone can act on."""
+    where = f"{settings.smtp_host}:{settings.smtp_port}"
+    if isinstance(exc, socket.gaierror):
+        return (f"Couldn't find the mail server {settings.smtp_host!r}. Check SMTP_HOST in .env (no quotes or "
+                "spaces). For Microsoft 365, run  nslookup -type=mx yourcompany.com  and use the name ending in "
+                ".mail.protection.outlook.com.")
+    if isinstance(exc, (socket.timeout, TimeoutError, ConnectionRefusedError)):
+        return (f"Couldn't connect to {where}. The network may block that port (port 25 often is); "
+                "try from the office network, or ask IT.")
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return (f"{where} rejected the sign-in for {settings.smtp_user}. Many company mailboxes don't allow "
+                "password sign-in for sending; ask IT, or leave SMTP_USER and SMTP_PASSWORD empty to use Direct Send.")
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return f"{where} refused the recipient(s) {', '.join(settings.to)} (Direct Send only reaches your own company)."
+    if isinstance(exc, smtplib.SMTPException):
+        return f"{where} refused the email: {exc}"
+    return f"Couldn't send through {where}: {exc}"
+
+
 def send_email(settings: DigestSettings, subject: str, html_body: str, text_body: str) -> None:
     msg = EmailMessage()
     msg["Subject"], msg["From"], msg["To"] = subject, settings.sender, ", ".join(settings.to)
@@ -322,9 +343,9 @@ class DigestScheduler:
             try:
                 subject, page, text, path = build_and_save(self.cw, self.store, self.ticket_url)
                 send_email(self.settings, subject, page, text)
-            except Exception:
+            except Exception as exc:
                 self._failed_at = time.monotonic()
-                log.exception("Weekly digest couldn't be sent; trying again in an hour")
+                log.error("Weekly digest not sent (trying again in an hour). %s", explain_send_error(exc, self.settings))
                 return False
             self.store.set_state("digest_week", week_key())
             log.warning("Weekly digest sent to %s (saved in %s)", ", ".join(self.settings.to), path)
@@ -365,7 +386,10 @@ if __name__ == "__main__":
         settings = DigestSettings.from_env()
         if not settings.enabled:
             raise SystemExit("Set DIGEST_TO, SMTP_HOST and SMTP_USER (or DIGEST_FROM) in .env to send it.")
-        send_email(settings, subject, page, text)
+        try:
+            send_email(settings, subject, page, text)
+        except Exception as exc:
+            raise SystemExit(f"Not sent. {explain_send_error(exc, settings)}")
         store.set_state("digest_week", week_key())
         print(f"Sent to {', '.join(settings.to)}")
     else:

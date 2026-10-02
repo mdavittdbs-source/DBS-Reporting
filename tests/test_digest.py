@@ -124,3 +124,12 @@ def test_settings_from_env(monkeypatch):
     monkeypatch.delenv("DIGEST_FROM", raising=False)
     s = digest.DigestSettings.from_env()
     assert s.to == ["a@dbs.com", "b@dbs.com"] and s.sender == "david@dbs.com" and s.smtp_port == 587 and s.enabled
+
+
+def test_send_errors_are_explained():
+    import smtplib
+    import socket
+    assert "Couldn't find the mail server 'smtp.example.com'" in digest.explain_send_error(
+        socket.gaierror(11001, "getaddrinfo failed"), SETTINGS)
+    assert "port 25 often is" in digest.explain_send_error(TimeoutError(), SETTINGS)
+    assert "rejected the sign-in" in digest.explain_send_error(smtplib.SMTPAuthenticationError(535, b"no"), SETTINGS)
