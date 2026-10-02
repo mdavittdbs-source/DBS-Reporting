@@ -449,3 +449,40 @@ def test_chat_deleted_while_answering_explains(web, monkeypatch):
     events = read_events(alice.post("/api/chat/stream", json={"question": "more", "conversation_id": chat_id}))
     assert events[-1]["type"] == "error" and "deleted while David was answering" in events[-1]["message"]
 
+
+
+def test_feedback_on_answers(web):
+    module, _ = web
+    alice = login(module, "alice", "password-a")  # admin
+    bob = login(module, "bob", "password-b")
+    asked = bob.post("/api/chat", json={"question": "Printer issues at Jimmy's?"}).json()
+    answer_id, chat_id = asked["answer_id"], asked["conversation_id"]
+
+    # Only the person who asked can rate their answer.
+    assert alice.post(f"/api/answers/{answer_id}/feedback", json={"rating": 1}).status_code == 404
+    assert bob.post(f"/api/answers/{answer_id}/feedback", json={"rating": 5}).status_code == 400
+    assert bob.post(f"/api/answers/{answer_id}/feedback", json={"rating": -1}).status_code == 200
+    assert bob.post(f"/api/answers/{answer_id}/feedback",
+                    json={"rating": -1, "comment": "  Missed two tickets.  "}).status_code == 200
+
+    # The rating shows again when the chat is reopened.
+    turns = bob.get(f"/api/conversations/{chat_id}").json()["turns"]
+    assert turns[1]["feedback"] == {"rating": -1, "comment": "Missed two tickets."} and turns[0]["feedback"] is None
+
+    # Admins see everyone's feedback; others can't.
+    assert bob.get("/api/feedback").status_code == 403
+    assert bob.get("/feedback", follow_redirects=False).headers["location"] == "/"
+    assert alice.get("/feedback").status_code == 200
+    data = alice.get("/api/feedback").json()
+    item = data["items"][0]
+    assert data["down"] == 1 and data["up"] == 0
+    assert item["display_name"] == "Bob B" and item["question"] == "Printer issues at Jimmy's?"
+    assert item["comment"] == "Missed two tickets." and item["answer"].startswith("answer to")
+
+    # Feedback stays readable after the chat is deleted, and can be taken back.
+    bob.delete(f"/api/conversations/{chat_id}")
+    assert alice.get("/api/feedback").json()["items"][0]["comment"] == "Missed two tickets."
+    second = bob.post("/api/chat", json={"question": "hours?"}).json()["answer_id"]
+    bob.post(f"/api/answers/{second}/feedback", json={"rating": 1})
+    bob.post(f"/api/answers/{second}/feedback", json={"rating": 0})
+    assert alice.get("/api/feedback").json()["up"] == 0

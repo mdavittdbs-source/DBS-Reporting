@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Feedback · David</title>
+<!--icon--><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23183e7c'/%3E%3Cpath d='M9 21V11m7 10v-6m7 6v-9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"><!--/icon-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/motion.css">
+<style>
+  /* Admins only: every thumbs up / down and note, newest first. */
+  * { box-sizing: border-box; }
+  body { margin: 0; font-size: 15px; line-height: 1.6; min-height: 100dvh; }
+  main { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; padding: 40px 24px 64px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+  .back { color: var(--muted); text-decoration: none; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+  .back:hover { color: var(--text); }
+  .back svg { width: 14px; height: 14px; }
+  h1 { font-size: 34px; font-weight: 600; letter-spacing: -.045em; line-height: 1.1; margin: 18px 0 6px; text-wrap: balance; }
+  .lead { color: var(--muted); margin: 0 0 22px; max-width: 60ch; text-wrap: pretty; }
+  .filters { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pill);
+             box-shadow: inset 0 0 0 1px var(--hair); margin-bottom: 18px; }
+  .filters button { font: inherit; font-size: 13px; border: 0; background: none; color: var(--muted); padding: 6px 14px;
+                    border-radius: 999px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
+  .filters button:active { transform: scale(.96); }
+  .filters button[aria-pressed="true"] { background: var(--core); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+  .filters button { display: inline-flex; align-items: center; }
+  svg.thumb { width: 14px; height: 14px; }
+  svg.thumb.down { transform: scaleY(-1); }
+  .filters b { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--faint); margin-left: 4px; }
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  li { border-radius: 22px; background: var(--core); box-shadow: var(--core-hi), var(--ambient); padding: 18px 20px;
+       animation: rise var(--duration-slow) var(--ease-smooth-out) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; padding: 3px 10px 3px 8px;
+           border-radius: 999px; }
+  .badge svg.thumb { width: 12px; height: 12px; }
+  .badge.up { background: var(--tag-bg); color: var(--tag-ink); }
+  .badge.down { background: var(--danger-soft); color: var(--danger); }
+  .who { color: var(--text); font-weight: 500; }
+  .when { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .comment { margin: 12px 0 0; padding: 10px 14px; border-radius: 14px; background: var(--pill); font-size: 14.5px;
+             white-space: pre-wrap; overflow-wrap: anywhere; }
+  .q { margin: 12px 0 0; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
+  .meta { font-size: 12.5px; color: var(--faint); margin-top: 2px; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  summary:hover { color: var(--text); }
+  .answer { margin-top: 8px; font-size: 14px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere;
+            max-height: 360px; overflow: auto; padding: 10px 14px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--hair); }
+  .empty { color: var(--faint); padding: 30px 4px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<div class="grain" aria-hidden="true"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <path id="thumb" d="M5 7.2 7.6 2.4c.9 0 1.6.8 1.4 1.7L8.6 6.2h3.6c.9 0 1.6.9 1.3 1.8l-1.3 4.6c-.2.6-.7 1-1.3 1H5m0-6.4v6.4m0-6.4H3.3c-.5 0-.8.4-.8.8v4.8c0 .4.3.8.8.8H5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+</defs></svg>
+<main>
+  <div class="top">
+    <a class="back" href="/"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M12.5 8h-9M7.5 4l-4 4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Back to David</a>
+  </div>
+  <span class="eyebrow">Admin</span>
+  <h1>Feedback from users</h1>
+  <p class="lead">Every thumbs up and thumbs down people gave David's answers, newest first. A thumbs down with a note is the quickest way to find what David gets wrong.</p>
+  <div class="filters" role="group" aria-label="Show">
+    <button type="button" data-filter="all" aria-pressed="true">All<b id="n-all"></b></button>
+    <button type="button" data-filter="down" aria-pressed="false" aria-label="Thumbs down"><svg class="thumb down" viewBox="0 0 16 16" aria-hidden="true"><use href="#thumb"/></svg><b id="n-down"></b></button>
+    <button type="button" data-filter="up" aria-pressed="false" aria-label="Thumbs up"><svg class="thumb" viewBox="0 0 16 16" aria-hidden="true"><use href="#thumb"/></svg><b id="n-up"></b></button>
+    <button type="button" data-filter="notes" aria-pressed="false">With notes<b id="n-notes"></b></button>
+  </div>
+  <ul id="list"></ul>
+</main>
+<script>
+  let items = [], filter = "all";
+  const list = document.getElementById("list");
+  const when = (iso) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric", timeZone: "America/New_York" }) + " " +
+      d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }) + " ET";
+  };
+  // "claude-sonnet-5-5" -> "Sonnet 5.5"
+  const modelName = (id) => {
+    const m = /claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(id || "");
+    return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] && m[3].length < 3 ? "." + m[3] : ""}` : id;
+  };
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  function draw() {
+    const shown = items.filter((i) => filter === "all" || (filter === "up" && i.rating > 0) ||
+      (filter === "down" && i.rating < 0) || (filter === "notes" && i.comment));
+    list.replaceChildren();
+    if (!shown.length) { list.append(el("li", "empty", items.length ? "Nothing here with this filter." : "No feedback yet.")); return; }
+    shown.slice(0, 200).forEach((i, n) => {
+      const li = el("li");
+      li.style.animationDelay = `${Math.min(n, 6) * 40}ms`;
+      const head = el("div", "head");
+      const badge = el("span", "badge " + (i.rating > 0 ? "up" : "down"));
+      badge.innerHTML = `<svg class="thumb${i.rating > 0 ? "" : " down"}" viewBox="0 0 16 16" aria-hidden="true"><use href="#thumb"/></svg>`;
+      badge.append(i.rating > 0 ? "Good answer" : "Needs work");
+      head.append(badge,
+                  el("span", "who", i.display_name), el("span", "when", when(i.updated_at)));
+      li.append(head);
+      if (i.comment) li.append(el("p", "comment", i.comment));
+      // The chat's title only when it adds something (a new chat is titled after its first question).
+      const title = i.chat_title && i.chat_title !== (i.question || "").slice(0, 80) ? i.chat_title : "";
+      li.append(el("p", "q", i.question || "(question not recorded)"),
+                el("div", "meta", [title && `Chat: ${title}`, modelName(i.model)].filter(Boolean).join(" · ")));
+      const more = el("details");
+      more.append(el("summary", null, "David's answer"), el("div", "answer", i.answer));
+      li.append(more);
+      list.append(li);
+    });
+  }
+  document.querySelectorAll(".filters button").forEach((b) => b.onclick = () => {
+    filter = b.dataset.filter;
+    document.querySelectorAll(".filters button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    draw();
+  });
+  fetch("/api/feedback").then(async (r) => {
+    if (r.status === 401) { location.href = "/login"; return; }
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const data = await r.json();
+    items = data.items;
+    document.getElementById("n-all").textContent = items.length;
+    document.getElementById("n-up").textContent = data.up;
+    document.getElementById("n-down").textContent = data.down;
+    document.getElementById("n-notes").textContent = items.filter((i) => i.comment).length;
+    draw();
+  }).catch((err) => { list.replaceChildren(el("li", "empty", "Couldn't load feedback: " + err.message)); });
+</script>
+</body>
+</html>

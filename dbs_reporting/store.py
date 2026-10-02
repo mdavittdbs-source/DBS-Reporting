@@ -50,6 +50,22 @@ CREATE TABLE IF NOT EXISTS turns (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS turns_by_conversation ON turns(conversation_id, id);
+-- Thumbs up / down on answers. A copy of the question and answer is kept, so feedback stays
+-- readable even if the chat is deleted later.
+CREATE TABLE IF NOT EXISTS feedback (
+    turn_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rating INTEGER NOT NULL,
+    comment TEXT NOT NULL DEFAULT '',
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    chat_title TEXT NOT NULL,
+    model TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (turn_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS feedback_by_time ON feedback(updated_at);
 """
 
 
@@ -290,6 +306,46 @@ class Store:
         answer = dict(row)
         answer["charts"] = json.loads(answer["charts"]) if answer["charts"] else []
         return answer
+
+    # --- Feedback ----------------------------------------------------------
+
+    def set_feedback(self, user_id: int, turn_id: int, rating: int, comment: str = "") -> bool:
+        """Record (or with rating 0, remove) a user's thumbs up (1) / down (-1) on one of their own
+        answers. Returns False if the answer isn't theirs."""
+        answer = self.get_answer(user_id, turn_id)
+        if answer is None:
+            return False
+        now = _now()
+        with self._db() as db:
+            if rating == 0:
+                db.execute("DELETE FROM feedback WHERE turn_id = ? AND user_id = ?", (turn_id, user_id))
+                return True
+            db.execute(
+                "INSERT INTO feedback (turn_id, user_id, rating, comment, question, answer, chat_title, model,"
+                " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT (turn_id, user_id) DO UPDATE SET rating = excluded.rating,"
+                " comment = excluded.comment, updated_at = excluded.updated_at",
+                (turn_id, user_id, rating, comment.strip()[:2000], answer.get("question") or "", answer["text"],
+                 answer.get("title") or "", answer.get("model"), now, now),
+            )
+        return True
+
+    def feedback_in_chat(self, user_id: int, conversation_id: str) -> dict[int, dict]:
+        """This user's ratings on the answers in one chat: {turn id: {"rating", "comment"}}."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT f.turn_id, f.rating, f.comment FROM feedback f JOIN turns t ON t.id = f.turn_id"
+                " WHERE f.user_id = ? AND t.conversation_id = ?", (user_id, conversation_id)).fetchall()
+        return {r["turn_id"]: {"rating": r["rating"], "comment": r["comment"]} for r in rows}
+
+    def list_feedback(self, limit: int = 500) -> list[dict]:
+        """Everyone's feedback, newest first, with who gave it."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT f.turn_id AS answer_id, f.rating, f.comment, f.question, f.answer, f.chat_title, f.model,"
+                " f.created_at, f.updated_at, u.username, u.display_name FROM feedback f"
+                " JOIN users u ON u.id = f.user_id ORDER BY f.updated_at DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
 
     def save_turn(
         self, conversation_id: str, question: str, answer: str, history: list, model: str | None = None,
