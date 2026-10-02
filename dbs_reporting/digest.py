@@ -39,7 +39,19 @@ BRANDING = PROJECT_ROOT / "branding"
 LOGO_CID = "david-logo"
 CHECK_EVERY = 15 * 60       # seconds between "is a digest due?" checks while David runs
 RETRY_AFTER = 60 * 60       # after a failed send, wait this long before trying again
-NAVY, INK, MUTED, LINE, SOFT = "#183e7c", "#1c1b19", "#6f6b63", "#e2dfd8", "#f4f6fa"
+# The David site's colours (static/theme.css, light theme), as solid colours: Outlook can't do see-through.
+NAVY = "#183e7c"     # --pill-ink / --tag-ink
+TEXT = "#0b0d12"     # --text
+MUTED = "#4f5054"    # --muted on white
+FAINT = "#808184"    # --faint on white
+HAIR = "#eeeef0"     # --hair on white
+PAGE = "#f1f4f9"     # --bg
+PILL = "#eff2f6"     # --pill on white
+TAG = "#edf0f5"      # --tag-bg on white
+DANGER, DANGER_SOFT = "#a8402c", "#f8e6e1"
+FONT = "Geist,'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif"
+MONO = "'Geist Mono','Cascadia Mono',Consolas,Menlo,monospace"
+SHADOW = "0 30px 60px -30px rgba(15,23,42,.18)"  # --ambient (mail apps that can't show it skip it)
 
 
 @dataclass(frozen=True)
@@ -113,6 +125,10 @@ def gather(cw, store: Store) -> dict:
 
 
 # --- Layout -----------------------------------------------------------------
+# The same look as the David site: a pale blue-white page, white cards with big round corners, small
+# spaced-out labels in pills, and ticket numbers as navy tags. Email has no CSS files, flexbox or
+# reliable web fonts, so it's tables with the styles written on each element; Geist shows where the
+# mail app allows web fonts (Apple Mail, iPhone) and Segoe UI elsewhere.
 
 
 def _esc(value) -> str:
@@ -120,37 +136,65 @@ def _esc(value) -> str:
 
 
 def _ticket(ticket_id, ticket_url: str) -> str:
+    """A ticket number as the site's navy tag, opening the ticket in ConnectWise."""
     if not ticket_id:
         return ""
+    style = (f"font-family:{MONO};font-size:12px;padding:2px 8px;border-radius:999px;white-space:nowrap;"
+             f"background:{TAG};color:{NAVY};text-decoration:none")
     label = f"#{_esc(ticket_id)}"
     if not ticket_url:
-        return label
-    href = _esc(ticket_url.replace("{id}", str(ticket_id)))
-    return f'<a href="{href}" style="color:{NAVY};text-decoration:none">{label}</a>'
+        return f'<span style="{style}">{label}</span>'
+    return f'<a href="{_esc(ticket_url.replace("{id}", str(ticket_id)))}" style="{style}">{label}</a>'
+
+
+def _pill(text: str, ink: str = NAVY, bg: str = PILL) -> str:
+    """The site's eyebrow: a small spaced-out uppercase label in a pill."""
+    return (f'<span style="display:inline-block;border-radius:999px;padding:5px 12px;font-size:10px;font-weight:500;'
+            f'letter-spacing:.2em;text-transform:uppercase;color:{ink};background:{bg}">{_esc(text)}</span>')
 
 
 def _table(headers: list[str], rows: list[list[str]], right: set[int] = frozenset()) -> str:
-    """An email-safe table; cells are already escaped HTML."""
-    th = "".join(f'<th style="text-align:{"right" if i in right else "left"};padding:6px 10px;border-bottom:1px solid '
-                 f'{LINE};color:{MUTED};font-weight:600;font-size:12px">{_esc(h)}</th>' for i, h in enumerate(headers))
-    body = "".join("<tr>" + "".join(
-        f'<td style="text-align:{"right" if i in right else "left"};padding:6px 10px;border-bottom:1px solid {LINE};'
-        f'vertical-align:top">{c}</td>' for i, c in enumerate(r)) + "</tr>" for r in rows)
-    return (f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:14px">'
+    """A table the way answers show them on the site; cells are already escaped HTML."""
+    def align(i: int) -> str:
+        return "right" if i in right else "left"
+
+    th = "".join(f'<th style="text-align:{align(i)};font-size:10px;font-weight:500;letter-spacing:.2em;'
+                 f'text-transform:uppercase;color:{FAINT};border-bottom:1px solid {HAIR};padding:12px 14px;white-space:nowrap">'
+                 f'{_esc(h)}</th>' for i, h in enumerate(headers))
+    body = "".join(
+        "<tr>" + "".join(
+            f'<td style="text-align:{align(i)};padding:11px 14px;vertical-align:top;color:{TEXT};'
+            + ("" if n == len(rows) - 1 else f"border-bottom:1px solid {HAIR};")
+            + ("white-space:nowrap;" if i in right else "") + f'">{c}</td>' for i, c in enumerate(r)) + "</tr>"
+        for n, r in enumerate(rows))
+    return (f'<table role="presentation" cellpadding="0" cellspacing="0" width="100%" '
+            f'style="border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums">'
             f"<tr>{th}</tr>{body}</table>")
 
 
+def _card(inner: str) -> str:
+    """One of the site's cards: white, 22px corners, a soft shadow."""
+    return (f'<tr><td style="padding:0 0 14px"><table role="presentation" cellpadding="0" cellspacing="0" width="100%" '
+            f'style="background:#ffffff;border-radius:22px;box-shadow:{SHADOW}"><tr><td style="padding:22px 24px">'
+            f"{inner}</td></tr></table></td></tr>")
+
+
 def _section(title: str, inner: str, note: str = "") -> str:
-    sub = f'<p style="margin:2px 0 10px;color:{MUTED};font-size:13px">{_esc(note)}</p>' if note else ""
-    return (f'<tr><td style="padding:22px 28px 6px"><h2 style="margin:0;font-size:17px;color:{INK}">{_esc(title)}</h2>'
-            f'{sub}<div style="font-size:14px;line-height:1.5">{inner}</div></td></tr>')
+    sub = f'<div style="margin-top:2px;color:{MUTED};font-size:13px">{_esc(note)}</div>' if note else ""
+    head = (f'<div style="font-size:17px;font-weight:600;letter-spacing:-.02em;color:{TEXT}">{_esc(title)}</div>'
+            f'{sub}<div style="height:12px;line-height:12px;font-size:1px">&nbsp;</div>')
+    return _card(f'{head}<div style="font-size:14px;line-height:1.55;color:{TEXT}">{inner}</div>')
 
 
-def _stat(label: str, value: str, detail: str = "") -> str:
-    extra = f'<div style="color:{MUTED};font-size:12px">{_esc(detail)}</div>' if detail else ""
-    return (f'<td style="padding:12px 14px;background:{SOFT};border-radius:10px;width:33%">'
-            f'<div style="color:{MUTED};font-size:12px">{_esc(label)}</div>'
-            f'<div style="font-size:22px;font-weight:700;color:{INK}">{_esc(value)}</div>{extra}</td>')
+def _stat(label: str, value: str, detail: str = "", pad: str = "0 5px") -> str:
+    """A number in its own card, like the site's start-screen cards."""
+    extra = f'<div style="color:{MUTED};font-size:12px;margin-top:4px">{_esc(detail)}</div>' if detail else ""
+    return (f'<td class="stat" valign="top" width="33%" style="padding:{pad}">'
+            f'<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;'
+            f'border-radius:22px;box-shadow:{SHADOW}"><tr><td style="padding:18px 20px">'
+            f'{_pill(label)}<div style="font-size:34px;font-weight:600;letter-spacing:-.045em;line-height:1.1;'
+            f'color:{TEXT};margin-top:12px;font-variant-numeric:tabular-nums">{_esc(value)}</div>{extra}'
+            f"</td></tr></table></td>")
 
 
 def _failed(part: dict) -> str | None:
@@ -158,7 +202,7 @@ def _failed(part: dict) -> str | None:
 
 
 def _problem(message: str) -> str:
-    return f'<p style="color:#b42318;margin:0">Couldn\'t load this: {_esc(message)}</p>'
+    return f'<p style="color:{DANGER};margin:0">Couldn\'t load this: {_esc(message)}</p>'
 
 
 def email_logo() -> tuple[bytes, str] | None:
@@ -179,7 +223,7 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
     subject = f"David weekly digest: week of {eastern.day(monday)}"
     parts, text = [], [subject, ""]
 
-    # Last week in numbers
+    # Last week in numbers: three cards side by side
     week, two, after = data["week"], data["two_weeks"], data["after_hours"]
     if _failed(week):
         parts.append(_section("Last 7 days", _problem(_failed(week))))
@@ -195,15 +239,18 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
         if not _failed(after):
             p = after.get("by_period", {})
             after_txt = f"{p.get('after_hours', 0)}"
-            after_detail = f"{p.get('after_hours_pct', 0)}% · {p.get('evening', 0)} evening, {p.get('weekend', 0)} weekend"
-        still_open = f"{week.get('open_count', 0):,}"
-        stats = ('<table cellpadding="0" cellspacing="8" style="width:100%;border-collapse:separate"><tr>'
-                 + _stat("Tickets in", f"{count:,}", change) + _stat("Still open from those", still_open)
-                 + _stat("After hours", after_txt, after_detail) + "</tr></table>")
+            after_detail = (f"{p.get('after_hours_pct', 0)}% · {p.get('evening', 0)} evening, "
+                            f"{p.get('weekend', 0)} weekend")
+        parts.append(
+            '<tr><td style="padding:0 0 14px"><table role="presentation" cellpadding="0" cellspacing="0" width="100%">'
+            # The outer cards' edges line up with the cards below; 10px gaps between.
+            "<tr>" + _stat("Tickets in", f"{count:,}", change, "0 7px 0 0")
+            + _stat("Still open", f"{week.get('open_count', 0):,}", "of last week's tickets")
+            + _stat("After hours", after_txt, after_detail, "0 0 0 7px") + "</tr></table></td></tr>")
         top = [[_esc(g["name"]), f"{g['tickets']:,}", f"{g['open']:,}"] for g in week.get("groups", [])]
-        inner = stats + (f'<p style="margin:14px 0 6px;font-weight:600">Busiest clients</p>'
-                         + _table(["Client", "Tickets", "Open"], top, {1, 2}) if top else "")
-        parts.append(_section("Last 7 days", inner))
+        if top:
+            parts.append(_section("Busiest clients", _table(["Client", "Tickets", "Open"], top, {1, 2}),
+                                  "Last 7 days"))
         text += [f"Last 7 days: {count} tickets in{f' ({change})' if change else ''}; {after_txt} after hours."]
         text += [f"  {g['name']}: {g['tickets']}" for g in week.get("groups", [])]
 
@@ -215,7 +262,8 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
         rows = _rows(go.get("go_lives"))
         if rows:
             inner = _table(["Day", "Client", "Ticket", "Installer"], [[
-                _esc(f"{r.get('weekday', '')} {r.get('date', '')} {r.get('time', '')}".strip()),
+                f'<span style="font-weight:600">{_esc(r.get("weekday", ""))}</span> {_esc(r.get("date", ""))}'
+                f'<div style="color:{MUTED};font-size:12px">{_esc(r.get("time", ""))}</div>',
                 _esc(r.get("company")), f"{_ticket(r.get('ticket_id'), ticket_url)} {_esc(r.get('ticket'))}",
                 _esc(", ".join(r.get("installers") or [])),
             ] for r in rows])
@@ -223,7 +271,8 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
             inner = f'<p style="margin:0;color:{MUTED}">None scheduled.</p>'
         waiting = _rows(go.get("scheduled_but_not_on_calendar"))
         if waiting:
-            inner += (f'<p style="margin:12px 0 4px;font-weight:600">Marked Scheduled, but nobody is on the calendar</p>'
+            inner += (f'<div style="margin:18px 0 10px">'
+                      f'{_pill("Marked Scheduled, but nobody is on the calendar", DANGER, DANGER_SOFT)}</div>'
                       + "<br>".join(f"{_ticket(w.get('ticket_id'), ticket_url)} {_esc(w.get('company'))}: "
                                     f"{_esc(w.get('ticket'))}" for w in waiting[:10]))
         sites = go.get("site_count", len(rows))
@@ -246,33 +295,51 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
         text += [f"  #{r.get('id')} {r.get('company')}: {r.get('summary')} ({r.get('age_days')} days)" for r in rows]
 
     # Feedback
-    fb = data["feedback"]
+    fb = data["feedback"][:10]
     if fb:
         inner = "".join(
-            f'<div style="padding:8px 0;border-bottom:1px solid {LINE}"><div style="color:{MUTED};font-size:12px">'
-            f"{_esc(f['display_name'])}</div><div style=\"font-weight:600\">{_esc(f['question'])}</div>"
-            + (f"<div>{_esc(f['comment'])}</div>" if f.get("comment") else "") + "</div>" for f in fb[:10])
-        parts.append(_section("Thumbs down on David's answers", inner, f"{len(fb)} in the last 7 days"))
-        text += ["", f"Thumbs down on David's answers: {len(fb)}"]
+            f'<div style="padding:12px 0;{"" if i == len(fb) - 1 else f"border-bottom:1px solid {HAIR};"}">'
+            f'<div style="color:{FAINT};font-size:12px">{_esc(f["display_name"])}</div>'
+            f'<div style="font-weight:600;letter-spacing:-.01em">{_esc(f["question"])}</div>'
+            + (f'<div style="color:{MUTED};margin-top:2px">{_esc(f["comment"])}</div>' if f.get("comment") else "")
+            + "</div>" for i, f in enumerate(fb))
+        total = len(data["feedback"])
+        parts.append(_section("Thumbs down on David's answers", inner, f"{total} in the last 7 days"))
+        text += ["", f"Thumbs down on David's answers: {total}"]
         text += [f"  {f['display_name']}: {f['question']}" + (f" – {f['comment']}" if f.get("comment") else "")
-                 for f in fb[:10]]
+                 for f in fb]
 
+    # The header, like the site's start screen: David's mark and an eyebrow pill, then a big headline.
+    mark = (f'<td style="padding-right:12px;vertical-align:middle"><img src="{_esc(logo_src)}" width="44" height="44" '
+            f'alt="David" style="display:block;width:44px;height:44px;border:0"></td>' if logo_src else "")
+    header = (
+        f'<tr><td style="padding:6px 6px 24px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>{mark}'
+        f'<td style="vertical-align:middle">{_pill("David · Weekly digest")}</td></tr></table>'
+        f'<div style="font-size:38px;font-weight:600;letter-spacing:-.05em;line-height:1.05;color:{TEXT};'
+        f'margin:18px 0 8px">Week of {eastern.day(monday)}</div>'
+        f'<div style="font-size:15px;color:{MUTED};line-height:1.55">Go-lives, last week\'s tickets and the oldest '
+        f"open tickets, from live ConnectWise data.</div></td></tr>")
+    footer = (f'<tr><td style="padding:10px 6px 0;color:{FAINT};font-size:12px">From live ConnectWise data on '
+              f"{_esc(eastern.stamp(datetime.now(timezone.utc)))}. Times are Eastern.</td></tr>")
     page = (
-        f'<!doctype html><html><body style="margin:0;background:{SOFT};font-family:Segoe UI,Arial,sans-serif;'
-        f'color:{INK}"><table cellpadding="0" cellspacing="0" style="width:100%;background:{SOFT}"><tr><td align="center"'
-        f' style="padding:24px 12px"><table cellpadding="0" cellspacing="0" style="width:100%;max-width:720px;'
-        f'background:#ffffff;border-radius:16px">'
-        f'<tr><td style="padding:24px 28px 14px;border-bottom:3px solid {NAVY}">'
-        f'<table cellpadding="0" cellspacing="0"><tr>'
-        + (f'<td style="padding-right:14px;vertical-align:middle"><img src="{_esc(logo_src)}" width="56" height="56" '
-           f'alt="David" style="display:block;width:56px;height:56px;border:0"></td>' if logo_src else "")
-        + f'<td style="vertical-align:middle"><div style="color:{MUTED};font-size:12px;letter-spacing:.06em;'
-        f'text-transform:uppercase">David · weekly digest</div>'
-        f'<h1 style="margin:4px 0 0;font-size:22px">Week of {eastern.day(monday)}</h1></td></tr></table></td></tr>'
-        + "".join(parts) +
-        f'<tr><td style="padding:20px 28px 24px;color:{MUTED};font-size:12px">From live ConnectWise data on '
-        f"{_esc(eastern.stamp(datetime.now(timezone.utc)))}. Times are Eastern.</td></tr>"
-        "</table></td></tr></table></body></html>")
+        '<!doctype html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light">'
+        '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono'
+        '&amp;display=swap" rel="stylesheet">'
+        # On phones the three number cards stack instead of squeezing side by side.
+        "<style>@media (max-width:600px){td.stat{display:block!important;width:100%!important;"
+        "padding:0 0 10px!important}}</style>"
+        f'</head><body style="margin:0;padding:0;background:{PAGE};font-family:{FONT};color:{TEXT}">'
+        # The site's soft blue light at the top (mail apps without gradients show the plain page colour).
+        f'<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:{PAGE};'
+        f"background-image:radial-gradient(640px 320px at 8% 0%,rgba(80,135,235,.20),transparent),"
+        f'radial-gradient(520px 280px at 96% 0%,rgba(24,62,124,.10),transparent)">'
+        f'<tr><td align="center" style="padding:32px 14px">'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" width="100%" '
+        f'style="max-width:720px;font-family:{FONT}">'
+        + header + "".join(parts) + footer
+        + "</table></td></tr></table></body></html>")
     return subject, page, "\n".join(text)
 
 
