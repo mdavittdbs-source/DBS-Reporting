@@ -54,7 +54,9 @@
   summary:hover { color: var(--text); }
   .answer { margin-top: 8px; font-size: 14px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere;
             max-height: 360px; overflow: auto; padding: 10px 14px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--hair); }
-  .empty { color: var(--faint); padding: 30px 4px; }
+  /* Empty and error states: centred in their card. */
+  li.empty { padding: 34px 24px; text-align: center; color: var(--muted); }
+  li.empty strong { display: block; color: var(--text); font-weight: 600; margin-bottom: 2px; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -98,7 +100,13 @@
     const shown = items.filter((i) => filter === "all" || (filter === "up" && i.rating > 0) ||
       (filter === "down" && i.rating < 0) || (filter === "notes" && i.comment));
     list.replaceChildren();
-    if (!shown.length) { list.append(el("li", "empty", items.length ? "Nothing here with this filter." : "No feedback yet.")); return; }
+    if (!shown.length) {
+      const empty = el("li", "empty");
+      empty.append(el("strong", null, items.length ? "Nothing here with this filter" : "No feedback yet"),
+                   items.length ? "Try another filter." : "When people rate David's answers, their ratings and notes show up here.");
+      list.append(empty);
+      return;
+    }
     shown.slice(0, 200).forEach((i, n) => {
       const li = el("li");
       li.style.animationDelay = `${Math.min(n, 6) * 40}ms`;
