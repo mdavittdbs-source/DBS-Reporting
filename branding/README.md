@@ -19,3 +19,8 @@ Reload the page with Ctrl+F5 to see it; no restart needed.
 
 A square or nearly square image works best (at least 128 x 128 pixels). A wide logo also
 works: it's shown at the same height and scales its width to fit.
+
+## Email
+
+The weekly email digest uses `logo-email.png` (Outlook can't show SVG). It's a PNG copy of
+`logo.svg`; if you change the logo, replace it with a PNG of the new one (192 x 192 pixels works well).
