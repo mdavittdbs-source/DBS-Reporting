@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS feedback (
     PRIMARY KEY (turn_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS feedback_by_time ON feedback(updated_at);
+-- Small bits of app state, e.g. which week's email digest has been sent.
+CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -306,6 +308,18 @@ class Store:
         answer = dict(row)
         answer["charts"] = json.loads(answer["charts"]) if answer["charts"] else []
         return answer
+
+    # --- App state ---------------------------------------------------------
+
+    def get_state(self, key: str) -> str | None:
+        with self._db() as db:
+            row = db.execute("SELECT value FROM app_state WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_state(self, key: str, value: str) -> None:
+        with self._db() as db:
+            db.execute("INSERT INTO app_state (key, value) VALUES (?, ?)"
+                       " ON CONFLICT (key) DO UPDATE SET value = excluded.value", (key, value))
 
     # --- Feedback ----------------------------------------------------------
 

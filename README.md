@@ -141,6 +141,20 @@ Every answer records the tokens it used (across all of its steps) and an estimat
 Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic console
 (Settings → Usage / Cost) has exact billing.
 
+## Weekly email digest
+
+Every week David emails a digest: go-lives in the next 7 days (with the installer, and any marked
+Scheduled with nobody on the calendar), last week's ticket count against the week before, after-hours
+calls, the busiest clients, the oldest open tickets, and thumbs-down notes on David's answers. It's
+built straight from ConnectWise, without Claude, so it costs no tokens.
+
+David runs on a laptop, so it isn't sent at a fixed time: the first time David is running on or after
+Monday 7 AM Eastern, it goes out, once per week (start David on Tuesday and it still goes out then).
+Each one is also saved in `data/digests/`.
+
+To turn it on, fill in `DIGEST_TO` and the `SMTP_` settings in `.env` (see `.env.example`), then restart.
+To preview it, run `python -m dbs_reporting.digest`; it opens in your browser. Add `--send` to email it now.
+
 ## Activity log
 
 Every question and answer is logged with who asked, the ConnectWise lookups David ran, the full
