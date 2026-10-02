@@ -15,6 +15,7 @@
 <script src="/static/vendor/chart.umd.min.js"></script>
 <script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/motion.css">
 <style>
   :root { --z-popover: 20; --z-drawer: 30; --z-toast: 40; }
 
@@ -77,7 +78,7 @@
   #chats input.rename:focus { outline: none; box-shadow: var(--ring); }
   .popover { position: absolute; right: 6px; top: calc(100% - 2px); z-index: var(--z-popover);
              background: var(--core); border: 1px solid var(--glass-ring); border-radius: 16px;
-             box-shadow: var(--ambient); padding: 5px; min-width: 176px; animation: pop .2s var(--spring); }
+             box-shadow: var(--ambient); padding: 5px; min-width: 176px; }
   .popover p { margin: 6px 10px 8px; font-size: 13px; color: var(--muted); }
   .popover button { display: block; width: 100%; text-align: left; background: none; border: 0;
                     padding: 8px 12px; border-radius: 11px; font-size: 13.5px; }
@@ -90,12 +91,12 @@
 
   .appearance { border-top: 1px solid var(--hair); margin: 0 10px; padding: 12px 6px 2px; display: flex; align-items: center;
                 justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--muted); }
-  .theme-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pill);
+  /* The highlight slides between the three choices (tabs sliding). */
+  .theme-switch { position: relative; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pill);
                   box-shadow: inset 0 0 0 1px var(--hair); }
-  .theme-switch button { width: 32px; height: 26px; border: 0; border-radius: 999px; background: none; color: var(--faint);
-                         display: grid; place-items: center; transition: background .2s, color .2s; }
-  .theme-switch button:hover { color: var(--text); }
-  .theme-switch button[aria-checked="true"] { background: var(--core); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+  .theme-switch button { width: 32px; height: 26px; border: 0; border-radius: 999px; background: none;
+                         display: grid; place-items: center; }
+  .theme-switch .t-tabs-pill { height: 26px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
   .theme-switch svg { width: 15px; height: 15px; }
   .me { margin: 0 10px; padding: 12px 6px 14px; display: flex; align-items: center; gap: 10px; }
   .avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--pill); color: var(--text);
@@ -128,16 +129,18 @@
   #log:has(.start) .inner { min-height: 100%; display: flex; flex-direction: column; }
   #log:has(.start) #messages { flex: 1; justify-content: center; }
   .start { padding: clamp(0px, 2vh, 24px) 0 clamp(8px, 2vh, 24px); }
-  .start > .eyebrow { margin-bottom: clamp(10px, 2.2vh, 18px); }
+  .start .eyebrow-row { margin-bottom: clamp(10px, 2.2vh, 18px); }
   .start h2 { font-size: clamp(30px, min(4.4vw, 6.2vh), 56px); font-weight: 600; letter-spacing: -.05em; line-height: 1.02;
-              margin: 0 0 clamp(8px, 1.6vh, 16px); text-wrap: balance; color: var(--text);
+              margin: 0 0 clamp(8px, 1.6vh, 16px); text-wrap: balance; color: var(--text); }
+  .start h2 .word { display: inline-block;
               background: linear-gradient(180deg, var(--text) 30%, var(--muted)); -webkit-background-clip: text;
               background-clip: text; -webkit-text-fill-color: transparent; }
   .start p { margin: 0 0 clamp(14px, 3vh, 28px); font-size: clamp(14px, 1.9vh, 16px); color: var(--muted);
              max-width: 44ch; text-wrap: pretty; }
   .suggestions { display: grid; grid-template-columns: 1.5fr 1fr; gap: clamp(10px, 1.6vh, 14px); }
   .suggestions button.shell { display: block; text-align: left; color: inherit;
-    transition: transform .7s var(--spring); animation: rise-in .9s var(--spring) both; animation-delay: calc(var(--i) * 110ms); }
+    transition: transform var(--duration-fast) var(--ease-smooth-out);
+    animation: rise-in var(--duration-very-slow) var(--ease-smooth-out) both; animation-delay: calc(var(--i) * var(--duration-micro)); }
   .suggestions button.shell:hover { transform: translateY(-2px); }
   .suggestions button.shell:active { transform: scale(.99); }
   .suggestions button.shell:first-child { grid-row: span 2; }
@@ -165,7 +168,7 @@
   .cta.ghost .ico { background: var(--pill); }
 
   /* Messages */
-  .msg { animation: rise .35s var(--spring); }
+  .msg { animation: rise var(--duration-slow) var(--ease-smooth-out); }
   .msg.user { align-self: flex-end; max-width: 82%; background: var(--glass); border: 1px solid var(--glass-ring);
               padding: 11px 18px; border-radius: 22px 22px 8px 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.bot { align-self: stretch; min-width: 0; }
@@ -236,6 +239,7 @@
   .chart-table td:not(:first-child), .chart-table th:not(:first-child) { text-align: right; }
 
   .thinking { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; }
+  .thinking .t-think { min-width: 270px; }  /* a steady width, so the seconds counter doesn't jump at each step */
   .dots { display: inline-flex; gap: 4px; }
   .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--tag-ink); opacity: .3;
             animation: pulse 1.2s infinite var(--ease); }
@@ -287,16 +291,19 @@
   kbd { font-family: var(--mono); font-size: 11px; border-radius: 6px; padding: 0 5px; background: var(--pill);
         box-shadow: inset 0 0 0 1px var(--hair); }
 
-  #toast { position: fixed; left: 50%; bottom: 112px; z-index: var(--z-toast); transform: translate(-50%, 20px);
-           background: var(--cta); color: var(--cta-ink); padding: 10px 18px; border-radius: 999px; font-size: 14px;
-           box-shadow: var(--ambient); opacity: 0; pointer-events: none;
-           transition: opacity .25s var(--ease), transform .4s var(--spring); }
-  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  /* A small pill that drops in at the top of the chat column (centred over the chat, not the
+     sidebar), clear of the answer's buttons. Centred with margins rather than a transform, so the
+     toast transition owns transform; it drops down rather than rising, since it sits at the top. */
+  #toast { position: fixed; left: 306px; right: 0; top: 58px; margin: 0 auto; width: max-content;
+           max-width: min(420px, calc(100vw - 340px)); z-index: var(--z-toast); --toast-distance: -8px;
+           display: flex; align-items: center; gap: 7px; background: var(--cta); color: var(--cta-ink);
+           padding: 6px 13px 6px 10px; border-radius: 999px; font-size: 13px; font-weight: 500; line-height: 1.4;
+           box-shadow: 0 8px 24px -12px rgba(15, 23, 42, .45); pointer-events: none; }
+  #toast svg { width: 13px; height: 13px; flex-shrink: 0; }
   .backdrop { display: none; }
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  @keyframes rise-in { from { opacity: 0; transform: translateY(14px); filter: blur(10px); } to { opacity: 1; transform: none; filter: none; } }
-  @keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes rise-in { from { opacity: 0; transform: translateY(12px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
   @keyframes blink { to { visibility: hidden; } }
   @keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
 
@@ -304,12 +311,11 @@
     .app { grid-template-columns: minmax(0, 1fr); }
     /* The sidebar becomes a slide-out panel */
     aside { position: fixed; inset: 10px auto 10px 0; margin: 0 0 0 10px; width: min(300px, 84vw); z-index: var(--z-drawer);
-            background: var(--core); transform: translateX(calc(-100% - 24px)); transition: transform .45s var(--spring); }
+            background: var(--core); transform: translateX(calc(-100% - 24px)); transition: transform var(--duration-slow) var(--ease-smooth-out); }
     body.sidebar-open aside { transform: none; }
     body.sidebar-open .backdrop { display: block; position: fixed; inset: 0; z-index: calc(var(--z-drawer) - 1);
                                   background: rgba(4, 6, 12, .5); }
-    #toast { bottom: auto; top: 16px; }
-    #toast.show { transform: translate(-50%, 0); }
+    #toast { left: 0; top: 16px; max-width: calc(100vw - 32px); }
     header { padding: 12px 14px 2px; }
     #toggle { display: inline-block; margin-left: 0; }
     #log { padding: 20px 16px 12px; }
@@ -325,17 +331,24 @@
     #send .label { display: none; }
     .answer > p:first-child { font-size: 19px; }
   }
-  /* Entrance right after signing in: the sidebar slides in, then the chat settles into place. */
-  @keyframes slide-in { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
-  @keyframes settle { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-  body.entering header { animation: settle .45s var(--ease) .08s both; }
-  body.entering .start { animation: settle .5s var(--ease) .16s both; }
-  body.entering #form { animation: settle .5s var(--ease) .24s both; }
+  /* Entrance right after signing in: the background light blooms and settles, the sidebar slides
+     in with its chats one after another, the greeting rises word by word (texts reveal, in
+     showStart), then the example cards and the question box. The logo doesn't move. */
+  @keyframes slide-in { from { opacity: 0; transform: translateX(-16px); filter: blur(6px); }
+                        to { opacity: 1; transform: none; filter: none; } }
+  @keyframes settle { from { opacity: 0; transform: translateY(12px); filter: blur(3px); }
+                      to { opacity: 1; transform: none; filter: none; } }
+  @keyframes bloom { from { opacity: .4; transform: scale(1.18); filter: brightness(1.5) saturate(1.4); }
+                     to { opacity: 1; transform: none; filter: none; } }
+  body.entering .aurora { animation: bloom 1.4s var(--ease-smooth-out) both; }
+  body.entering header { animation: settle var(--duration-very-slow) var(--ease-smooth-out) 80ms both; }
+  body.entering .suggestions button.shell { animation-delay: calc(260ms + var(--i) * 80ms); }
+  body.entering #form { animation: settle var(--duration-very-slow) var(--ease-smooth-out) 420ms both; }
   @media (min-width: 761px) {  /* on phones the sidebar is a hidden drawer, so it stays put */
-    body.entering aside { animation: slide-in .45s var(--ease) both; }
+    body.entering aside { animation: slide-in var(--duration-very-slow) var(--ease-smooth-out) both; }
+    body.entering #chats li { animation: settle var(--duration-slow) var(--ease-smooth-out) both;
+                              animation-delay: calc(140ms + var(--n, 0) * var(--duration-stagger)); }
   }
-  @view-transition { navigation: auto; }
-  @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
@@ -361,13 +374,14 @@
     <div class="appearance">
       <span id="theme-label">Theme</span>
       <div class="theme-switch" role="radiogroup" aria-labelledby="theme-label">
-        <button type="button" role="radio" data-choice="light" aria-label="Light" title="Light">
+        <span class="t-tabs-pill" aria-hidden="true"></span>
+        <button type="button" class="t-tab" role="radio" data-choice="light" aria-label="Light" title="Light">
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         </button>
-        <button type="button" role="radio" data-choice="system" aria-label="Match system" title="Match system">
+        <button type="button" class="t-tab" role="radio" data-choice="system" aria-label="Match system" title="Match system">
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M6 14h4M8 11.5V14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         </button>
-        <button type="button" role="radio" data-choice="dark" aria-label="Dark" title="Dark">
+        <button type="button" class="t-tab" role="radio" data-choice="dark" aria-label="Dark" title="Dark">
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
         </button>
       </div>
@@ -408,14 +422,14 @@
     </form>
   </main>
 </div>
-<div id="toast" role="status" aria-live="polite"></div>
+<div id="toast" class="t-toast" role="status" aria-live="polite"></div>
 <script>
   // Play the entrance once, when arriving straight from the sign-in page.
   try {
     if (sessionStorage.getItem("justSignedIn")) {
       sessionStorage.removeItem("justSignedIn");
       document.body.classList.add("entering");
-      setTimeout(() => document.body.classList.remove("entering"), 1200);
+      setTimeout(() => document.body.classList.remove("entering"), 1600);
     }
   } catch {}
   const $ = (id) => document.getElementById(id);
@@ -451,10 +465,14 @@
   let toastTimer;
   function toast(text) {
     const t = $("toast");
-    t.textContent = text;
-    t.classList.add("show");
+    // A check for confirmations ("Answer copied"), nothing for problems ("Couldn't …").
+    const ok = !/^(couldn|allow|that didn|error)/i.test(text);
+    t.innerHTML = ok ? '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" ' +
+      'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' : "";
+    t.append(text);
+    t.classList.add("is-open");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+    toastTimer = setTimeout(() => t.classList.remove("is-open"), 2600);
   }
 
   function renderMarkdown(el, text) {
@@ -793,12 +811,23 @@
 
   // Theme switch at the bottom of the sidebar: Light / Match system / Dark.
   const themeButtons = document.querySelectorAll(".theme-switch button");
-  function showThemeChoice() {
+  const themePill = document.querySelector(".theme-switch .t-tabs-pill");
+  function showThemeChoice(animate) {
     const choice = davidTheme.get();
-    themeButtons.forEach((b) => b.setAttribute("aria-checked", String(b.dataset.choice === choice)));
+    let active = themeButtons[0];
+    themeButtons.forEach((b) => {
+      b.setAttribute("aria-checked", String(b.dataset.choice === choice));
+      if (b.dataset.choice === choice) active = b;
+    });
+    // First paint and resizes snap into place; clicks slide.
+    if (!animate) themePill.style.transition = "none";
+    themePill.style.transform = `translateX(${active.offsetLeft}px)`;
+    themePill.style.width = `${active.offsetWidth}px`;
+    if (!animate) { void themePill.offsetWidth; themePill.style.transition = ""; }
   }
-  themeButtons.forEach((b) => { b.onclick = () => { davidTheme.set(b.dataset.choice); showThemeChoice(); }; });
-  showThemeChoice();
+  themeButtons.forEach((b) => { b.onclick = () => { davidTheme.set(b.dataset.choice); showThemeChoice(true); }; });
+  requestAnimationFrame(() => showThemeChoice(false));
+  addEventListener("resize", () => showThemeChoice(false));
 
   // A light-theme, fixed-size rendering for PNG downloads and PDF reports.
   function chartImage(spec) {
@@ -975,24 +1004,54 @@
     const div = document.createElement("div");
     div.className = "msg bot";
     div.innerHTML = '<div class="thinking"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
-      '<span class="status">Thinking…</span><span class="elapsed">0s</span></div>';
+      '<span class="t-think" role="status"><span class="t-think-sizer" aria-hidden="true">Thinking…</span>' +
+      '<span class="t-think-text" data-text="Thinking…">Thinking…</span></span><span class="elapsed">0s</span></div>';
     messages.appendChild(div);
     scrollToEnd();
     const started = Date.now();
     const elapsed = div.querySelector(".elapsed");
-    const status = div.querySelector(".status");
     const timer = setInterval(() => { elapsed.textContent = Math.round((Date.now() - started) / 1000) + "s"; }, 1000);
-    return { el: div, stop: () => clearInterval(timer), setStatus: (text) => { status.textContent = text; } };
+    // Each step ("Pulling tickets…", "Checking the schedule…") shimmers while it runs, then the old
+    // line lifts out as the new one rises in (thinking states).
+    const box = div.querySelector(".t-think"), sizer = box.querySelector(".t-think-sizer");
+    let live = box.querySelector(".t-think-text");
+    const css = (name, fallback) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || fallback;
+    function setStatus(text) {
+      if (text === live.dataset.text) return;
+      const swap = css("--think-swap", 150), gap = css("--think-gap", 50);
+      const leaving = live;
+      leaving.classList.add("is-exit");
+      const next = document.createElement("span");
+      next.className = "t-think-text is-enter-start";
+      next.textContent = text;
+      next.dataset.text = text;
+      box.appendChild(next);
+      sizer.textContent = text;
+      live = next;
+      setTimeout(() => { void next.offsetWidth; next.classList.remove("is-enter-start"); }, gap);
+      setTimeout(() => leaving.remove(), swap + gap);
+    }
+    return { el: div, stop: () => clearInterval(timer), setStatus };
   }
 
   function showStart() {
     const start = document.createElement("section");
-    start.className = "start";
-    start.innerHTML = '<span class="eyebrow">David · ConnectWise intelligence</span>' +
+    start.className = "start t-stagger";
+    start.innerHTML = '<div class="eyebrow-row t-stagger-line" style="--line:0"><span class="eyebrow">David · ConnectWise intelligence</span></div>' +
       "<h2></h2>" +
-      "<p>Ask anything about our clients: tickets, time, SLAs and projects, answered from live ConnectWise data. " +
+      "<p class=\"t-stagger-line\">Ask anything about our clients: tickets, time, SLAs and projects, answered from live ConnectWise data. " +
       "Follow-up questions keep the context.</p>";
-    start.querySelector("h2").textContent = firstName ? `Hey, ${firstName}` : "Hey there";
+    // The greeting rises in word by word, then the line under it.
+    const words = (firstName ? `Hey, ${firstName}` : "Hey there").split(" ");
+    const h2 = start.querySelector("h2");
+    words.forEach((w, i) => {
+      const span = document.createElement("span");
+      span.className = "word t-stagger-line";
+      span.style.setProperty("--line", i + 1);
+      span.textContent = w;
+      h2.append(span, i < words.length - 1 ? " " : "");
+    });
+    start.querySelector("p").style.setProperty("--line", words.length + 1);
     const list = document.createElement("div");
     list.className = "suggestions";
     EXAMPLES.forEach(([kind, text], i) => {
@@ -1009,6 +1068,8 @@
     });
     start.appendChild(list);
     messages.appendChild(start);
+    const reveal = () => requestAnimationFrame(() => start.classList.add("is-shown"));
+    if (document.body.classList.contains("entering")) setTimeout(reveal, 140); else reveal();
   }
 
   function groupLabel(iso) {
@@ -1022,8 +1083,14 @@
     return "Older";
   }
 
+  // Chat menus grow from their ⋯ button and close a little faster than they open (menu dropdown).
   function closePopovers() {
-    chatList.querySelectorAll(".popover").forEach((p) => p.remove());
+    const closeMs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
+    chatList.querySelectorAll(".popover:not(.is-closing)").forEach((p) => {
+      p.classList.remove("is-open");
+      p.classList.add("is-closing");
+      setTimeout(() => p.remove(), closeMs);
+    });
     chatList.querySelectorAll("button.menu[aria-expanded]").forEach((b) => b.setAttribute("aria-expanded", "false"));
   }
 
@@ -1056,6 +1123,7 @@
       }
       const li = document.createElement("li");
       li.className = "chat" + (c.id === conversationId ? " active" : "");
+      li.style.setProperty("--n", Math.min(chatList.children.length, 10));
       const open = document.createElement("button");
       open.className = "open";
       open.type = "button";
@@ -1082,7 +1150,8 @@
     if (wasOpen) return;
     menuButton.setAttribute("aria-expanded", "true");
     const pop = document.createElement("div");
-    pop.className = "popover";
+    pop.className = "popover t-dropdown";
+    pop.dataset.origin = "top-right";
     pop.onclick = (e) => e.stopPropagation();
     const rename = document.createElement("button");
     rename.type = "button";
@@ -1116,6 +1185,8 @@
     };
     pop.append(rename, del);
     li.appendChild(pop);
+    void pop.offsetWidth;  // start from the pre-open scale
+    pop.classList.add("is-open");
     rename.focus();
   }
 
