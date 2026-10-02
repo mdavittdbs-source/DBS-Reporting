@@ -1141,51 +1141,81 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
-    def get_schedule(person: str, start_day: int = 0, days: int = 7) -> str:
-        """Everything on a staff member's ConnectWise schedule: meetings, 1-on-1s, scheduled tickets
-        and project work, appointments and time off, day by day in Eastern Time.
+    def get_schedule(person: str = "", start_day: int = 0, days: int = 7) -> str:
+        """Everything on staff members' ConnectWise schedules: meetings, 1-on-1s, scheduled tickets and
+        project work, appointments and time off, day by day in Eastern Time. For one person, several,
+        or everyone at once.
 
-        Use for "what's on Vanessa's schedule", "is Chris free Thursday", "what's Sam doing next week".
-        Each entry has its time, length, title, kind (meeting, ticket, etc.), whether it's in the
-        office or remote when set, and for tickets the ticket number, summary and client.
+        Use for "what's on Vanessa's schedule", "is Chris free Thursday", "what are Sam and Ana doing
+        tomorrow", "everyone's calendar for Friday". Each entry has its time, title, kind (meeting,
+        ticket, etc.), whether it's in the office or remote when set, and for tickets the ticket
+        number, summary and client. For several people the entries come as one table, by person.
+        For how booked people are in total, use get_workload instead.
 
         Args:
-            person: The staff member's name or ConnectWise username, e.g. "Vanessa" or "Vanessa Duprey".
+            person: One name or ConnectWise username ("Vanessa"), several separated by commas ("Sam, Ana Ruiz, kchen"), or "everyone" (or blank) for the whole staff.
             start_day: First day to show, counted from today: 0 today, 1 tomorrow, -7 a week ago.
-            days: How many days to show (most 31).
+            days: How many days to show (most 31; keep it short for everyone, e.g. 1 to 7).
         """
         try:
-            members = cw.find_members(person)
-            if not members:
-                return _dumps({"error": f'No active staff member matches "{person}".'})
             def full_name(m: dict) -> str:  # either name can be blank in ConnectWise
                 return f"{m.get('firstName') or ''} {m.get('lastName') or ''}".strip() or m.get("identifier") or ""
 
-            if len(members) > 1:
-                exact = [m for m in members if _plain(full_name(m)) == _plain(person)
-                         or _plain(m.get("firstName") or "") == _plain(person)]
-                if len(exact) != 1:
-                    return _dumps({"matches": [_compact({"name": full_name(m), "username": m.get("identifier"),
-                                                         "title": m.get("title")}) for m in members],
-                                   "note": "Several people match; ask which one, or call again with the full name."})
-                members = exact
-            member = members[0]
+            def pick(asked: str, found: list[dict]):
+                """The one member meant by `asked`, else the list of candidates (none or several)."""
+                if len(found) == 1:
+                    return found[0]
+                exact = [m for m in found if _plain(full_name(m)) == _plain(asked)
+                         or _plain(m.get("firstName") or "") == _plain(asked)]
+                return exact[0] if len(exact) == 1 else found
+
             days = max(1, min(int(days), 31))
             first = eastern.now().date() + timedelta(days=int(start_day))
+            last = first + timedelta(days=days - 1)
             start, end = eastern_window(first, days)
-            entries = cw.member_schedule(member["identifier"], start, end)
+            asked = [a.strip() for a in re.split(r",|;|\band\b|&", person or "") if a.strip()]
+            everyone = not asked or any(_plain(a) in ("everyone", "everybody", "all", "allstaff", "team", "staff")
+                                        for a in asked)
+            chosen, not_found, unclear = [], [], {}
+            if not everyone:
+                for a, found in zip(asked, _together(*[(lambda a=a: cw.find_members(a)) for a in asked])):
+                    member = pick(a, found)
+                    if isinstance(member, dict):
+                        chosen.append(member)
+                    elif member:
+                        unclear[a] = [_compact({"name": full_name(m), "username": m.get("identifier"),
+                                                "title": m.get("title")}) for m in member]
+                    else:
+                        not_found.append(a)
+                if len(asked) == 1 and not chosen:
+                    if unclear:
+                        return _dumps({"matches": unclear[asked[0]],
+                                       "note": "Several people match; ask which one, or call again with the full name."})
+                    return _dumps({"error": f'No active staff member matches "{asked[0]}".'})
+                if not chosen:
+                    return _dumps({"error": "None of those people could be found.", "not_found": not_found,
+                                   "unclear": unclear or None})
+            if len(chosen) == 1:
+                entries = cw.member_schedule(chosen[0]["identifier"], start, end)
+            else:
+                entries = cw.schedule_between(start, end, [m["identifier"] for m in chosen] or None)
 
             def is_ticket(e: dict) -> bool:
                 kind = e.get("type") or {}
                 return (kind.get("identifier") or "").upper() in ("S", "P") or "ticket" in (kind.get("name") or "").lower()
 
             tickets = cw.tickets_by_id([e.get("objectId") for e in entries if is_ticket(e)])
-            last = first + timedelta(days=days - 1)
-            placed: list[tuple] = []  # (day, start minute, order, row)
+            names = {(m.get("identifier") or "").lower(): full_name(m) for m in chosen}
+            placed: list[tuple] = []  # (person, day, start minute, order, row)
+            hours: Counter = Counter()
             for n, e in enumerate(entries):
                 begin, finish = parse_dt(e.get("dateStart")), parse_dt(e.get("dateEnd"))
                 if not begin:
                     continue
+                member = e.get("member") or {}
+                who = (names.get((member.get("identifier") or "").lower()) or member.get("name")
+                       or member.get("identifier") or "(unknown)")
+                hours[who] += float(e.get("hoursScheduled") or 0)
                 local = eastern.to_eastern(begin)
                 local_end = eastern.to_eastern(finish) if finish and finish > begin else None
                 row = {
@@ -1208,19 +1238,49 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                                     f"{covered[-1]:%a} {eastern.day(covered[-1])}")
                 for d in covered:
                     if first <= d <= last:
-                        placed.append((d, local.hour * 60 + local.minute, n, _compact(row)))
-            placed.sort(key=lambda p: p[:3])
-            by_day: dict[str, list] = {}
-            for d, _, _, row in placed:
-                by_day.setdefault(f"{d:%a} {eastern.day(d)}", []).append(row)
-            return _dumps({
-                "person": full_name(member), "title": member.get("title"),
-                "from": eastern.day(first), "to": eastern.day(last),
-                "entry_count": len({p[2] for p in placed}),
-                "hours_scheduled": round(sum(float(e.get("hoursScheduled") or 0) for e in entries), 2),
-                "days": [{"day": d, "entries": v} for d, v in by_day.items()],
-                "note": "Days not listed have nothing scheduled.",
-            })
+                        placed.append((who, d, local.hour * 60 + local.minute, n, row))
+            placed.sort(key=lambda p: p[1:4])
+            period = {"from": eastern.day(first), "to": eastern.day(last)}
+
+            if len(chosen) == 1:  # one person: their days, one after another
+                by_day: dict[str, list] = {}
+                for _, d, _, _, row in placed:
+                    by_day.setdefault(f"{d:%a} {eastern.day(d)}", []).append(_compact(row))
+                return _dumps({
+                    "person": full_name(chosen[0]), "title": chosen[0].get("title"), **period,
+                    "entry_count": len({p[3] for p in placed}),
+                    "hours_scheduled": round(sum(hours.values()), 2),
+                    "days": [{"day": d, "entries": v} for d, v in by_day.items()],
+                    "note": "Days not listed have nothing scheduled.",
+                })
+
+            # Several people or everyone: one table, by person, then day and time.
+            placed.sort(key=lambda p: (p[0].lower(), p[1], p[2], p[3]))
+            limit = 600
+            rows = [{"person": who, "day": f"{d:%a} {eastern.day(d)}", **row} for who, d, _, _, row in placed[:limit]]
+            result: dict[str, Any] = {
+                **period,
+                "who": "everyone with something scheduled" if everyone else ", ".join(full_name(m) for m in chosen),
+                "people_with_entries": len(hours),
+                "entry_count": len({p[3] for p in placed}),
+                "hours_by_person": [[k, round(v, 2)] for k, v in sorted(hours.items(), key=lambda kv: kv[0].lower())],
+                "schedule": _table(rows, ("person", "day", "time", "title", "kind", "where", "status", "ticket",
+                                          "summary", "client", "project", "spans", "hours", "done")),
+            }
+            if not everyone:
+                free = [full_name(m) for m in chosen if full_name(m) not in hours]
+                if free:
+                    result["nothing_scheduled"] = free
+                if not_found:
+                    result["not_found"] = not_found
+                if unclear:
+                    result["unclear"] = unclear
+                    result["note"] = "Some names match several people; ask which one."
+            else:
+                result["note"] = "People with nothing scheduled in this period aren't listed."
+            if len(placed) > limit:
+                result["limit_note"] = f"Showing the first {limit} of {len(placed)} entries; use fewer days or people."
+            return _dumps(result)
         except Exception as exc:
             return _error(exc)
 

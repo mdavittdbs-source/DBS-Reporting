@@ -382,9 +382,12 @@ class ConnectWiseClient:
                       f" and dateEnd>{cw_date(start)}")
         return self._fetch("/schedule/entries", conditions, 1000, MEMBER_SCHEDULE_FIELDS, order_by="dateStart asc")
 
-    def schedule_between(self, start: datetime, end: datetime, limit: int = 10000) -> list[dict]:
-        """Everyone's schedule entries between `start` and `end`."""
+    def schedule_between(self, start: datetime, end: datetime, members: list[str] | None = None,
+                         limit: int = 10000) -> list[dict]:
+        """Schedule entries between `start` and `end`: everyone's, or just these members' (usernames)."""
         conditions = f"dateStart<{cw_date(end)} and dateEnd>{cw_date(start)}"
+        if members:
+            conditions += f" and member/identifier in ({','.join(quote(m) for m in members)})"
         return self._fetch("/schedule/entries", conditions, limit, MEMBER_SCHEDULE_FIELDS, order_by="dateStart asc")
 
     def time_entries_since(self, days: int, limit: int = 20000) -> list[dict]:

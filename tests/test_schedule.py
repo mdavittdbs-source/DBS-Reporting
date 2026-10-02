@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import httpx
+from tables import rows
 from test_tools import SETTINGS, tools_by_name
 
 from dbs_reporting import eastern
@@ -97,3 +98,62 @@ def test_entry_running_over_several_days_shows_on_each(monkeypatch):
     tuesday = result["days"][1]["entries"][0]
     assert tuesday["time"] == "8:30 AM–5:00 PM" and tuesday["spans"].startswith("Tue") and "to Wed" in tuesday["spans"]
     assert result["entry_count"] == 2
+
+
+STAFF = [VANESSA, {"id": 6, "identifier": "sortiz", "firstName": "Sam", "lastName": "Ortiz", "title": "Technician"},
+         {"id": 7, "identifier": "kchen", "firstName": "Kim", "lastName": "Chen", "title": "Technician"},
+         {"id": 8, "identifier": "kmoss", "firstName": "Kim", "lastName": "Moss", "title": "Technician"}]
+TEAM_ENTRIES = [
+    {"id": 20, "member": {"identifier": "sortiz", "name": "Sam Ortiz"}, "name": "Taco Town / printer",
+     "type": {"identifier": "S", "name": "Service"}, "objectId": 105102, "dateStart": at(1, 9), "dateEnd": at(1, 11)},
+    {"id": 21, "member": {"identifier": "vduprey", "name": "Vanessa Duprey"}, "name": "Top Callers Meeting",
+     "type": {"identifier": "M", "name": "Meeting"}, "dateStart": at(0, 14), "dateEnd": at(0, 15), "hoursScheduled": 1},
+    {"id": 22, "member": {"identifier": "aruiz", "name": "Ana Ruiz"}, "name": "Vacation",
+     "type": {"name": "Vacation"}, "dateStart": at(0, 8, 30), "dateEnd": at(1, 17), "hoursScheduled": 16.5},
+]
+
+
+def team_client(requests):
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        path, conditions = request.url.path, request.url.params.get("conditions", "")
+        if path.endswith("/system/members"):
+            words = [w.split("%")[1] for w in conditions.split("like ")[1:]]
+            return httpx.Response(200, json=[m for m in STAFF if all(
+                any(w.lower() in (m[f] or "").lower() for f in ("firstName", "lastName", "identifier")) for w in words)])
+        if path.endswith("/schedule/entries"):
+            wanted = [i.strip('"') for i in conditions.split("in (")[1].rstrip(")").split(",")] if " in (" in conditions else None
+            return httpx.Response(200, json=[e for e in TEAM_ENTRIES if wanted is None or e["member"]["identifier"] in wanted])
+        if path.endswith("/service/tickets"):
+            return httpx.Response(200, json=[{"id": 105102, "summary": "Printer down", "company": {"name": "Taco Town"}}])
+        if path.endswith("/project/tickets"):
+            return httpx.Response(200, json=[])
+        return httpx.Response(404, json={})
+
+    return ConnectWiseClient(SETTINGS, transport=httpx.MockTransport(handler))
+
+
+def test_several_people_at_once():
+    requests = []
+    tool = tools_by_name(team_client(requests))["get_schedule"]
+    result = json.loads(tool.call({"person": "Sam, Vanessa, Kim Chen, Kim, Nobody", "days": 2}))
+    entries = rows(result["schedule"])
+    assert [(e["person"], e["title"]) for e in entries] == [("Sam Ortiz", "Taco Town / printer"),
+                                                           ("Vanessa Duprey", "Top Callers Meeting")]
+    assert entries[0]["ticket"] == "#105102" and entries[0]["client"] == "Taco Town"
+    assert result["nothing_scheduled"] == ["Kim Chen"]
+    assert result["not_found"] == ["Nobody"] and len(result["unclear"]["Kim"]) == 2  # Kim Chen or Kim Moss?
+    query = next(r for r in requests if r.url.path.endswith("/schedule/entries")).url.params["conditions"]
+    assert 'member/identifier in ("sortiz","vduprey","kchen")' in query  # one query for all of them
+
+
+def test_everyones_calendar():
+    requests = []
+    result = json.loads(tools_by_name(team_client(requests))["get_schedule"].call({"person": "everyone", "days": 2}))
+    entries = rows(result["schedule"])
+    assert [e["person"] for e in entries] == ["Ana Ruiz", "Ana Ruiz", "Sam Ortiz", "Vanessa Duprey"]
+    assert entries[0]["spans"].startswith(f"{TODAY:%a}")  # Ana's two-day vacation shows on both days
+    assert result["people_with_entries"] == 3 and ["Ana Ruiz", 16.5] in result["hours_by_person"]
+    assert not any(r.url.path.endswith("/system/members") for r in requests)  # no name lookups needed
+    blank = json.loads(tools_by_name(team_client([]))["get_schedule"].call({"days": 1}))
+    assert blank["who"] == "everyone with something scheduled"
