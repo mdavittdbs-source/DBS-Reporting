@@ -61,6 +61,12 @@ TIME_FIELDS = "actualHours,member/name,member/identifier,workType/name,chargeToT
 # When people are scheduled on tickets (go-live days are scheduled on the deployment ticket).
 SCHEDULE_FIELDS = "id,objectId,type/identifier,type/name,member/identifier,member/name,dateStart,dateEnd,doneFlag"
 
+# Everything on a person's calendar: meetings, 1-on-1s, tickets, time off.
+MEMBER_SCHEDULE_FIELDS = (
+    "id,objectId,name,type/identifier,type/name,member/identifier,member/name,dateStart,dateEnd,"
+    "hoursScheduled,where/name,status/name,doneFlag"
+)
+
 # What a text search returns for each match.
 TICKET_SEARCH_FIELDS = (
     "id,summary,closedFlag,closedDate,company/id,company/name,site/name,board/name,status/name,"
@@ -325,6 +331,38 @@ class ConnectWiseClient:
 
         with ThreadPoolExecutor(PARALLEL_PAGES) as pool:
             return [e for found in pool.map(fetch, batches) for e in found]
+
+    def find_members(self, name: str, max_results: int = 10) -> list[dict]:
+        """Active staff whose first name, last name or username contains every word of `name`."""
+        words = [w for w in name.replace(",", " ").split() if w][:3]
+        conditions = ["inactiveFlag=false"] + [
+            f"(firstName like {quote('%' + w + '%')} or lastName like {quote('%' + w + '%')}"
+            f" or identifier like {quote('%' + w + '%')})" for w in words]
+        return self.get("/system/members", conditions=" and ".join(conditions), orderBy="firstName asc",
+                        pageSize=max_results, fields="id,identifier,firstName,lastName,title")
+
+    def member_schedule(self, identifier: str, start: datetime, end: datetime) -> list[dict]:
+        """Everything on one person's schedule between `start` and `end`."""
+        conditions = (f"member/identifier={quote(identifier)} and dateStart<{cw_date(end)}"
+                      f" and dateEnd>{cw_date(start)}")
+        return self._fetch("/schedule/entries", conditions, 1000, MEMBER_SCHEDULE_FIELDS, order_by="dateStart asc")
+
+    def tickets_by_id(self, ids: list[int]) -> dict[int, dict]:
+        """Service or project tickets by id (summary and client), for labelling schedule entries."""
+        wanted = sorted({int(i) for i in ids if i})
+        found: dict[int, dict] = {}
+        if not wanted:
+            return found
+        for path, fields in (("/service/tickets", "id,summary,company/name"),
+                             ("/project/tickets", "id,summary,company/name,project/name")):
+            missing = [i for i in wanted if i not in found]
+            if not missing:
+                break
+            for i in range(0, len(missing), 100):
+                ids_clause = ",".join(map(str, missing[i:i + 100]))
+                for t in self._fetch(path, f"id in ({ids_clause})", 100, fields):
+                    found[t["id"]] = t
+        return found
 
     def project_ticket(self, ticket_id: int) -> dict:
         return self.get(f"/project/tickets/{int(ticket_id)}")

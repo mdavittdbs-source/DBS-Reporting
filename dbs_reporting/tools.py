@@ -1026,6 +1026,79 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _error(exc)
 
     @beta_tool(eager_input_streaming=True)
+    def get_schedule(person: str, start_day: int = 0, days: int = 7) -> str:
+        """Everything on a staff member's ConnectWise schedule: meetings, 1-on-1s, scheduled tickets
+        and project work, appointments and time off, day by day in Eastern Time.
+
+        Use for "what's on Vanessa's schedule", "is Chris free Thursday", "what's Sam doing next week".
+        Each entry has its time, length, title, kind (meeting, ticket, etc.), whether it's in the
+        office or remote when set, and for tickets the ticket number, summary and client.
+
+        Args:
+            person: The staff member's name or ConnectWise username, e.g. "Vanessa" or "Vanessa Duprey".
+            start_day: First day to show, counted from today: 0 today, 1 tomorrow, -7 a week ago.
+            days: How many days to show (most 31).
+        """
+        try:
+            members = cw.find_members(person)
+            if not members:
+                return _dumps({"error": f'No active staff member matches "{person}".'})
+            if len(members) > 1:
+                exact = [m for m in members if _plain(f"{m.get('firstName', '')}{m.get('lastName', '')}") == _plain(person)
+                         or _plain(m.get("firstName") or "") == _plain(person)]
+                if len(exact) != 1:
+                    return _dumps({"matches": [{"name": f"{m.get('firstName', '')} {m.get('lastName', '')}".strip(),
+                                                "username": m.get("identifier"), "title": m.get("title")}
+                                               for m in members],
+                                   "note": "Several people match; ask which one, or call again with the full name."})
+                members = exact
+            member = members[0]
+            days = max(1, min(int(days), 31))
+            first = eastern.now().date() + timedelta(days=int(start_day))
+            # From Eastern midnight on the first day, in UTC.
+            zone = eastern.to_eastern(datetime(first.year, first.month, first.day, 12, tzinfo=timezone.utc)).tzinfo
+            start = datetime(first.year, first.month, first.day, tzinfo=zone).astimezone(timezone.utc)
+            end = start + timedelta(days=days)
+            entries = cw.member_schedule(member["identifier"], start, end)
+
+            def is_ticket(e: dict) -> bool:
+                kind = e.get("type") or {}
+                return (kind.get("identifier") or "").upper() in ("S", "P") or "ticket" in (kind.get("name") or "").lower()
+
+            tickets = cw.tickets_by_id([e.get("objectId") for e in entries if is_ticket(e)])
+            by_day: dict[str, list] = {}
+            for e in entries:
+                begin, finish = parse_dt(e.get("dateStart")), parse_dt(e.get("dateEnd"))
+                if not begin:
+                    continue
+                local = eastern.to_eastern(begin)
+                row = {
+                    "time": eastern.clock(local) + (f"–{eastern.clock(eastern.to_eastern(finish))}" if finish else ""),
+                    "title": e.get("name"),
+                    "kind": (e.get("type") or {}).get("name"),
+                    "hours": e.get("hoursScheduled"),
+                    "where": (e.get("where") or {}).get("name"),
+                    "status": (e.get("status") or {}).get("name"),
+                    "done": True if e.get("doneFlag") else None,
+                }
+                if is_ticket(e) and e.get("objectId"):
+                    t = tickets.get(e["objectId"], {})
+                    row.update(ticket=f"#{e['objectId']}", summary=t.get("summary"), client=_name(t, "company"),
+                               project=(t.get("project") or {}).get("name"))
+                by_day.setdefault(f"{local:%a} {eastern.day(local.date())}", []).append(_compact(row))
+            name = f"{member.get('firstName', '')} {member.get('lastName', '')}".strip()
+            return _dumps({
+                "person": name, "title": member.get("title"),
+                "from": eastern.day(first), "to": eastern.day(first + timedelta(days=days - 1)),
+                "entry_count": sum(len(v) for v in by_day.values()),
+                "hours_scheduled": round(sum(float(e.get("hoursScheduled") or 0) for e in entries), 2),
+                "days": [{"day": d, "entries": v} for d, v in by_day.items()],
+                "note": "Days not listed have nothing scheduled.",
+            })
+        except Exception as exc:
+            return _error(exc)
+
+    @beta_tool(eager_input_streaming=True)
     def create_chart(title: str, chart_type: str, labels: list[str], series: list[dict],
                      subtitle: str = "", x_label: str = "", y_label: str = "") -> str:
         """Add a chart to your answer. It's drawn below your text and can be exported.
@@ -1054,5 +1127,5 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                            "rather than repeating every value."})
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
-            get_sla_performance, get_after_hours, get_open_tickets, get_go_lives, search_tickets, get_clients_by_software, get_projects,
+            get_sla_performance, get_after_hours, get_open_tickets, get_go_lives, get_schedule, search_tickets, get_clients_by_software, get_projects,
             get_project_tickets, create_chart]
