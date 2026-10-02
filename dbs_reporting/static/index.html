@@ -51,9 +51,9 @@
 
   #new { margin: 0 14px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
          padding: 6px 6px 6px 18px; border-radius: 999px; border: 0; background: var(--cta); color: var(--cta-ink);
-         font-weight: 500; transition: transform .5s var(--spring), opacity .2s; }
+         font-weight: 500; transition: transform var(--duration-quick) var(--ease-smooth-out), opacity .2s; }
   #new:hover { opacity: .92; }
-  #new:active { transform: scale(.98); }
+  #new:active { transform: scale(.96); }
 
   #chats { list-style: none; margin: 0; padding: 4px 10px 12px; overflow-y: auto; flex: 1; }
   #chats .group { font-size: 10px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase; color: var(--faint);
@@ -68,8 +68,10 @@
   #chats .title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                   font-size: 13.5px; color: var(--muted); }
   #chats li.active .title { color: var(--text); font-weight: 500; }
-  #chats button.menu { background: none; border: 0; color: var(--muted); padding: 4px 8px; margin-right: 4px;
-                       border-radius: 999px; opacity: 0; transition: opacity .15s, background .15s; line-height: 1; }
+  #chats button.menu { position: relative; width: 36px; height: 32px; display: grid; place-items: center;
+                       background: none; border: 0; color: var(--muted); padding: 0; margin-right: 3px;
+                       border-radius: 999px; opacity: 0; line-height: 1;
+                       transition: opacity .15s, background .15s, transform var(--duration-quick) var(--ease-smooth-out); }
   #chats li.chat:hover button.menu, #chats li.chat.active button.menu,
   #chats button.menu:focus-visible, #chats button.menu[aria-expanded="true"] { opacity: 1; }
   #chats button.menu:hover { background: var(--hover); color: var(--text); }
@@ -82,6 +84,7 @@
   .popover p { margin: 6px 10px 8px; font-size: 13px; color: var(--muted); }
   .popover button { display: block; width: 100%; text-align: left; background: none; border: 0;
                     padding: 8px 12px; border-radius: 11px; font-size: 13.5px; }
+  .popover button { transition: transform var(--duration-quick) var(--ease-smooth-out); }
   .popover button:hover { background: var(--hover); }
   .popover button.danger { color: var(--danger); }
   .popover button.danger:hover { background: var(--danger-soft); }
@@ -94,8 +97,9 @@
   /* The highlight slides between the three choices (tabs sliding). */
   .theme-switch { position: relative; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pill);
                   box-shadow: inset 0 0 0 1px var(--hair); }
-  .theme-switch button { width: 32px; height: 26px; border: 0; border-radius: 999px; background: none;
+  .theme-switch button { position: relative; width: 36px; height: 26px; border: 0; border-radius: 999px; background: none;
                          display: grid; place-items: center; }
+  .theme-switch .t-tab { transition: color var(--tabs-dur) var(--tabs-ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .theme-switch .t-tabs-pill { height: 26px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
   .theme-switch svg { width: 15px; height: 15px; }
   .me { margin: 0 10px; padding: 12px 6px 14px; display: flex; align-items: center; gap: 10px; }
@@ -103,7 +107,8 @@
             box-shadow: inset 0 0 0 1px var(--hair); display: grid; place-items: center; font-size: 11.5px;
             font-weight: 600; flex-shrink: 0; }
   #me { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #logout { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 5px 10px; border-radius: 999px; }
+  #logout { position: relative; background: none; border: 0; color: var(--muted); font-size: 13px; padding: 5px 10px;
+            border-radius: 999px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
   #logout:hover { color: var(--text); background: var(--hover); }
 
   /* ---------- Main ---------- */
@@ -142,7 +147,7 @@
     transition: transform var(--duration-fast) var(--ease-smooth-out);
     animation: rise-in var(--duration-very-slow) var(--ease-smooth-out) both; animation-delay: calc(var(--i) * var(--duration-micro)); }
   .suggestions button.shell:hover { transform: translateY(-2px); }
-  .suggestions button.shell:active { transform: scale(.99); }
+  .suggestions button.shell:active { transform: scale(.96); }
   .suggestions button.shell:first-child { grid-row: span 2; }
   .suggestions .core { position: relative; overflow: hidden; height: 100%; padding: clamp(14px, 2.3vh, 20px);
                        display: flex; flex-direction: column; gap: clamp(8px, 1.6vh, 14px); }
@@ -169,7 +174,8 @@
 
   /* Messages */
   .msg { animation: rise var(--duration-slow) var(--ease-smooth-out); }
-  .msg.user { align-self: flex-end; max-width: 82%; background: var(--glass); border: 1px solid var(--glass-ring);
+  .msg.user { align-self: flex-end; max-width: 82%; background: var(--glass);
+              box-shadow: 0 0 0 1px var(--glass-ring), 0 1px 2px rgba(0, 0, 0, .04), 0 8px 20px -12px rgba(0, 0, 0, .18);
               padding: 11px 18px; border-radius: 22px 22px 8px 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.bot { align-self: stretch; min-width: 0; }
   .byline { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -184,6 +190,8 @@
   .answer > :last-child { margin-bottom: 0; }
   .answer > p:first-child { font-size: 22px; font-weight: 600; letter-spacing: -.03em; line-height: 1.32; }
   .answer > p:first-child strong { font-weight: 600; }
+  .answer :is(h1, h2, h3, h4), .answer > p:first-child { text-wrap: balance; }
+  .answer :is(p, li) { text-wrap: pretty; }
   .answer h1, .answer h2, .answer h3 { font-size: 17px; font-weight: 600; letter-spacing: -.02em; margin: 1.4em 0 .5em; }
   .answer strong { font-weight: 600; }
   .answer ul, .answer ol { padding-left: 1.3em; }
@@ -218,8 +226,22 @@
   .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
   .actions button { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 999px;
                     background: var(--pill); box-shadow: inset 0 0 0 1px var(--hair); color: var(--muted);
-                    font-size: 13px; padding: 6px 12px; transition: color .15s, background .15s; }
+                    font-size: 13px; padding: 6px 12px; position: relative;
+                    transition: color .15s, background .15s, transform var(--duration-quick) var(--ease-smooth-out); }
   .actions button:hover { color: var(--text); background: var(--hover); }
+  /* Hit areas: small controls get an invisible target of about 40px (without overlapping their
+     neighbours), so they're easy to click; nothing looks different. */
+  #chats button.menu::after { content: ""; position: absolute; inset: -3px 0; }
+  .theme-switch button::after { content: ""; position: absolute; inset: -8px -1px; }
+  #logout::after { content: ""; position: absolute; inset: -5px 0; }
+  .chart-tools button::after { content: ""; position: absolute; inset: -6px 0; }
+  .actions button::after { content: ""; position: absolute; inset: -4px 0; }
+  /* Press feedback: buttons dip to 96% while held. */
+  :is(#chats button.menu, .popover button, #logout, .actions button, .chart-tools button, .theme-switch button):active {
+    transform: scale(.96); }
+  .actions button.copied { color: var(--tag-ink); }
+  .actions button.copied svg { animation: check-in var(--duration-fast) cubic-bezier(0.2, 0, 0, 1); }
+  @keyframes check-in { from { opacity: 0; transform: scale(.25); filter: blur(4px); } }
   .actions svg { width: 14px; height: 14px; }
   .usage { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; padding: 4px 6px 4px 2px; cursor: help; }
 
@@ -230,8 +252,9 @@
   .chart-card .chart-sub { margin: 6px 0 0; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
   .chart-box { position: relative; margin-top: 12px; }
   .chart-tools { display: flex; gap: 6px; margin-top: 8px; }
-  .chart-tools button { background: var(--pill); border: 0; color: var(--muted); font-size: 12px; padding: 5px 12px;
-                        border-radius: 999px; }
+  .chart-tools button { position: relative; background: var(--pill); border: 0; color: var(--muted); font-size: 12px;
+                        padding: 5px 12px; border-radius: 999px;
+                        transition: transform var(--duration-quick) var(--ease-smooth-out); }
   .chart-tools button:hover { color: var(--text); background: var(--hover); }
   .chart-table { width: 100%; margin-top: 10px; font-size: 13px; font-variant-numeric: tabular-nums; border-collapse: collapse; }
   .chart-table th { text-align: left; font-weight: 500; color: var(--faint); border-bottom: 1px solid var(--hair); padding: 6px 12px 6px 0; }
@@ -256,11 +279,11 @@
 
   /* Question box: a framed island with the model picker and an Ask pill */
   #form { padding: 8px 24px 18px; }
-  .composer { border-radius: 24px;
+  .composer { border-radius: 26px;
               box-shadow: var(--ambient); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
               transition: box-shadow .2s, border-color .2s; }
   .composer:focus-within { box-shadow: var(--ambient), var(--ring); }
-  .composer > .core { display: flex; align-items: flex-end; gap: 10px; padding: 6px 6px 6px 20px; border-radius: 24px; }
+  .composer > .core { display: flex; align-items: flex-end; gap: 10px; padding: 6px 6px 6px 20px; border-radius: 26px; }
   #q { flex: 1; min-width: 0; resize: none; border: 0; background: none; padding: 9px 0; max-height: 200px;
        line-height: 1.5; outline: none; }
   #q:focus-visible { box-shadow: none; }
@@ -291,11 +314,10 @@
   kbd { font-family: var(--mono); font-size: 11px; border-radius: 6px; padding: 0 5px; background: var(--pill);
         box-shadow: inset 0 0 0 1px var(--hair); }
 
-  /* A small pill that drops in at the top of the chat column (centred over the chat, not the
-     sidebar), clear of the answer's buttons. Centred with margins rather than a transform, so the
-     toast transition owns transform; it drops down rather than rising, since it sits at the top. */
-  #toast { position: fixed; left: 306px; right: 0; top: 58px; margin: 0 auto; width: max-content;
-           max-width: min(420px, calc(100vw - 340px)); z-index: var(--z-toast); --toast-distance: -8px;
+  /* Notices ("Chat deleted", "Couldn't rename…") rise into the bottom-right corner, away from the
+     chat and the question box. Copying confirms on the Copy button itself instead. */
+  #toast { position: fixed; right: 24px; bottom: 24px; width: max-content;
+           max-width: min(420px, calc(100vw - 48px)); z-index: var(--z-toast);
            display: flex; align-items: center; gap: 7px; background: var(--cta); color: var(--cta-ink);
            padding: 6px 13px 6px 10px; border-radius: 999px; font-size: 13px; font-weight: 500; line-height: 1.4;
            box-shadow: 0 8px 24px -12px rgba(15, 23, 42, .45); pointer-events: none; }
@@ -315,7 +337,7 @@
     body.sidebar-open aside { transform: none; }
     body.sidebar-open .backdrop { display: block; position: fixed; inset: 0; z-index: calc(var(--z-drawer) - 1);
                                   background: rgba(4, 6, 12, .5); }
-    #toast { left: 0; top: 16px; max-width: calc(100vw - 32px); }
+    #toast { left: 0; right: 0; margin: 0 auto; bottom: auto; top: 16px; max-width: calc(100vw - 32px); --toast-distance: -8px; }
     header { padding: 12px 14px 2px; }
     #toggle { display: inline-block; margin-left: 0; }
     #log { padding: 20px 16px 12px; }
@@ -368,7 +390,7 @@
     </div>
     <button id="new" type="button">
       New chat
-      <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
+      <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
     </button>
     <ul id="chats"></ul>
     <div class="appearance">
@@ -376,13 +398,13 @@
       <div class="theme-switch" role="radiogroup" aria-labelledby="theme-label">
         <span class="t-tabs-pill" aria-hidden="true"></span>
         <button type="button" class="t-tab" role="radio" data-choice="light" aria-label="Light" title="Light">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
         <button type="button" class="t-tab" role="radio" data-choice="system" aria-label="Match system" title="Match system">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M6 14h4M8 11.5V14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 14h4M8 11.5V14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
         <button type="button" class="t-tab" role="radio" data-choice="dark" aria-label="Dark" title="Dark">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         </button>
       </div>
     </div>
@@ -396,7 +418,7 @@
   <main>
     <header>
       <button id="toggle" type="button" aria-label="Show chats">
-        <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </button>
       <span id="chat-title"></span>
     </header>
@@ -411,7 +433,7 @@
           </span>
           <button id="send" aria-label="Ask">
             <span class="label">Ask</span>
-            <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 12.5v-9M4 7.5l4-4 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 12.5v-9M4 7.5l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           </button>
         </div></div>
         <div class="composer-hint">
@@ -448,8 +470,8 @@
     ["Across clients", "Which sites had the most printer or handheld problems this month?"],
     ["Backlog", "Which open tickets at Jimmy's Grille are oldest?"],
   ];
-  const ARROW = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 11 11 5M6 5h5v5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const COPY = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M3 10.5V4.5A1.5 1.5 0 0 1 4.5 3h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const ARROW = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 11 11 5M6 5h5v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const COPY = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5V4.5A1.5 1.5 0 0 1 4.5 3h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
 
   async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -468,7 +490,7 @@
     // A check for confirmations ("Answer copied"), nothing for problems ("Couldn't …").
     const ok = !/^(couldn|allow|that didn|error)/i.test(text);
     t.innerHTML = ok ? '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" ' +
-      'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' : "";
+      'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' : "";
     t.append(text);
     t.classList.add("is-open");
     clearTimeout(toastTimer);
@@ -584,7 +606,6 @@
       document.execCommand("copy");
       ta.remove();
     }
-    toast("Answer copied");
   }
 
   // The chat stays scrolled to the newest content as an answer arrives and when it finishes (tables,
@@ -963,7 +984,8 @@
     return b;
   }
 
-  const DOWNLOAD = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5v8m0 0L4.5 7M8 10.5 11.5 7M3 13.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const CHECK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const DOWNLOAD = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5v8m0 0L4.5 7M8 10.5 11.5 7M3 13.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   function addAnswer(text, usage, charts, answerId, model, seconds) {
     const div = document.createElement("div");
@@ -977,7 +999,14 @@
     const copy = document.createElement("button");
     copy.type = "button";
     copy.innerHTML = COPY + "Copy";
-    copy.onclick = () => copyText(text);
+    // The button itself confirms: its icon and label swap to a check and "Copied" for a moment.
+    copy.onclick = async () => {
+      await copyText(text);
+      clearTimeout(copy._reset);
+      copy.classList.add("copied");
+      copy.innerHTML = CHECK + "Copied";
+      copy._reset = setTimeout(() => { copy.classList.remove("copied"); copy.innerHTML = COPY + "Copy"; }, 1600);
+    };
     if (isAdmin && usage) actions.appendChild(usageTag(usage));
     actions.appendChild(copy);
     // Only reports can be downloaded: the answer's tables and charts, never the chat itself.
@@ -1224,10 +1253,11 @@
     // Only select models that are still enabled; otherwise show the default.
     if (model && [...modelSelect.options].some((o) => o.value === model)) modelSelect.value = model;
     else if (modelInfo.default) modelSelect.value = modelInfo.default;
+    // The picker only shows before the first question: a chat keeps its model, which each answer's
+    // byline already names ("David · Sonnet 5.5").
     modelSelect.disabled = locked;
-    modelSelect.title = locked
-      ? "This chat's model. Start a new chat to use a different one."
-      : "Model for this chat. It can't be changed after the first question.";
+    $("model-wrap").hidden = locked || modelInfo.models.length < 2;
+    modelSelect.title = "Model for this chat. It can't be changed after the first question.";
   }
 
   // Empty the conversation view, freeing its charts.
@@ -1295,6 +1325,8 @@
     const shown = () => view === askedIn;  // false once the person has opened another chat
     messages.querySelector(".start")?.remove();
     addUser(question);
+    const startsChat = !conversationId;
+    if (startsChat) $("model-wrap").hidden = true;
     const thinking = addThinking();
     const askedAt = Date.now();
     let streamed = null;   // the answer element while text is arriving
@@ -1390,6 +1422,7 @@
       if (frame) cancelAnimationFrame(frame);
       thinking.stop();
       if (!shown()) { toast("That answer didn't go through: " + err.message); return; }
+      if (startsChat && !conversationId) setModel(modelSelect.value, false);  // nothing was saved: still a new chat
       if (streamed) streamed.parentElement.remove();
       thinking.el.hidden = false;
       thinking.el.className = "msg error";
@@ -1463,7 +1496,6 @@
     for (const m of modelInfo.models) modelSelect.add(new Option(m.label, m.id));
     fitToScreen();
     narrowQuery.addEventListener("change", fitToScreen);
-    $("model-wrap").hidden = modelInfo.models.length < 2;
     updateSend();
     newChat();
   })();
