@@ -1,6 +1,7 @@
 """Thin read-only client for the ConnectWise Manage REST API."""
 
 import base64
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -131,6 +132,10 @@ class ConnectWiseClient:
         self._rejected_fields: set[str] = set()
         self.software_field = settings.software_field
         self.golive_names = [p.split() for p in settings.golive_tickets.split(",") if p.split()]
+        # ConnectWise's "like" matches inside words ("live" in "Deliver"), so names are checked again here
+        # as whole words (a plural "s" allowed).
+        self._golive_name = re.compile("|".join(
+            r"".join(rf"(?=.*\b{re.escape(w)}s?\b)" for w in words) for words in self.golive_names), re.I)
         self.golive_status = settings.golive_status
         self.golive_exclude = [w.strip().lower() for w in settings.golive_exclude.split(",") if w.strip()]
         self._company_fields: tuple[float, list[dict]] | None = None
@@ -326,10 +331,14 @@ class ConnectWiseClient:
 
     def golive_tickets(self, closed_since: datetime | None = None, company_id: int | None = None,
                        limit: int = 5000) -> list[dict]:
-        """Installation and live support project tickets (CW_GOLIVE_TICKETS) that are open in the Scheduled
+        """Installation and live project tickets (CW_GOLIVE_TICKETS) that are open in the Scheduled
         status (CW_GOLIVE_STATUS), plus ones closed since `closed_since`. Project tickets have no "in
         progress": an open one in any other status (e.g. Open) hasn't been picked up yet. If this server
         won't filter on the status name, the status is checked here instead."""
+        found = self._golive_candidates(closed_since, company_id, limit)
+        return [t for t in found if self._golive_name.match(t.get("summary") or "")]
+
+    def _golive_candidates(self, closed_since: datetime | None, company_id: int | None, limit: int) -> list[dict]:
         names = summary_matches(self.golive_names)
         company = [f"company/id={int(company_id)}"] if company_id else []
         closed = f" or closedDate>={cw_date(closed_since)}" if closed_since else ""

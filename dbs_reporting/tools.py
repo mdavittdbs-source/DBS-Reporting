@@ -974,10 +974,10 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                      followup_days: int = 0) -> str:
         """POS installs going live: upcoming and/or recent go-lives, from ConnectWise projects.
 
-        Go-lives are the Installation and Live Support project tickets in the Scheduled status (or
+        Go-lives are the Installation and Live ("Live", "Live Support", "Go-Live") project tickets in the Scheduled status (or
         closed, for past ones): the person scheduled on the ticket is the installer, and the day
         they're scheduled is the date. Open project tickets in other statuses haven't been picked up
-        yet and are left out. A site can have both an Installation and a Live Support ticket, so each
+        yet and are left out. A site can have both an Installation and a Live ticket, so each
         is listed and "site_count" counts sites (projects). Returns each go-live (date, client, project,
         ticket, installers, status, software), counts by week, installer and software, and Scheduled
         tickets with nobody on the calendar. With followup_days, also counts the support tickets each
