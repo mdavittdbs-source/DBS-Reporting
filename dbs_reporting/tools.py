@@ -974,12 +974,15 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                      followup_days: int = 0) -> str:
         """POS installs going live: upcoming and/or recent go-lives, from ConnectWise projects.
 
-        Each project ticket has a phase. When a ticket's phase is Deployment and someone is scheduled
-        on that ticket, the day they're scheduled is the site's go-live day, and they're the installer. Returns each go-live (date, client,
-        project, deployment ticket, installers, status, software), counts by week, installer and
-        software, and open deployment tickets nobody is scheduled on yet. With followup_days, also
-        counts the support tickets each site opened in the days after going live, overall and by
-        installer and software, a sign of how well installs went.
+        Go-lives are the Installation and Live Support project tickets in the Scheduled status (or
+        closed, for past ones): the person scheduled on the ticket is the installer, and the day
+        they're scheduled is the date. Open project tickets in other statuses haven't been picked up
+        yet and are left out. A site can have both an Installation and a Live Support ticket, so each
+        is listed and "site_count" counts sites (projects). Returns each go-live (date, client, project,
+        ticket, installers, status, software), counts by week, installer and software, and Scheduled
+        tickets with nobody on the calendar. With followup_days, also counts the support tickets each
+        site opened in the days after going live, overall and by installer and software, a sign of
+        how well installs went.
 
         Args:
             days_ahead: Days from today to look ahead for upcoming go-lives (0 for none).
@@ -998,11 +1001,11 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             # Support tickets for the follow-up count are fetched alongside, from the start of the window
             # (every past go-live is inside it), instead of after the go-lives are worked out.
             tickets, lookup, support = _together(
-                lambda: cw.deployment_tickets(closed_since, company_id or None),
+                lambda: cw.golive_tickets(closed_since, company_id or None),
                 software_by_company if software else software_if_readable,  # only the filter needs it
                 (lambda: cw.tickets_with_times(_clamp_days(days_back + 1), company_id or None, limit=TOTALS_LIMIT))
                 if followup_days and days_back else _nothing)
-            # Other work in the Deployment phase, like management training, isn't a go-live.
+            # Training tickets (e.g. management training) aren't go-lives.
             tickets = [t for t in tickets
                        if not any(w in (t.get("summary") or "").lower() for w in cw.golive_exclude)]
             of = ticket_software(lookup) if lookup else None
@@ -1049,8 +1052,11 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             go_lives.sort(key=lambda g: g["_when"])
 
             result: dict[str, Any] = {
-                "from": eastern.day(first_day), "to": eastern.day(last_day), "phase": cw.golive_phase,
+                "from": eastern.day(first_day), "to": eastern.day(last_day),
+                "counted": f"project tickets named {' or '.join(' '.join(p) for p in cw.golive_names)}, "
+                           f"status {cw.golive_status} (or closed)",
                 "go_live_count": len(go_lives),
+                "site_count": len({g.get("project_id") or g.get("company") for g in go_lives}),
                 "upcoming": sum(1 for g in go_lives if not g.get("past")),
                 "past": sum(1 for g in go_lives if g.get("past")),
             }
@@ -1103,8 +1109,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             if len(go_lives) > 150:
                 result["note"] = f"Listing the first 150 of {len(go_lives)} go-lives; counts include all of them."
             if days_ahead and unscheduled:
-                result["deployment_not_scheduled"] = _table(unscheduled[:50], GO_LIVE_COLUMNS)
-                result["deployment_not_scheduled_count"] = len(unscheduled)
+                result["scheduled_but_not_on_calendar"] = _table(unscheduled[:50], GO_LIVE_COLUMNS)
             if software:
                 result["software"] = software
             return _dumps(result)
