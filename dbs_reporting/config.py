@@ -50,6 +50,8 @@ class ConnectWiseSettings:
     golive_status: str = "Scheduled"
     # Matching tickets that aren't go-lives, by words in the ticket summary (comma-separated)
     golive_exclude: str = "training"
+    # Staff left out of "everyone" (schedules, workload): ConnectWise usernames, comma-separated
+    staff_exclude: str = ""
 
     @classmethod
     def from_env(cls) -> "ConnectWiseSettings":
@@ -64,6 +66,7 @@ class ConnectWiseSettings:
             golive_tickets=os.environ.get("CW_GOLIVE_TICKETS", "").strip() or "installation, live",
             golive_status=os.environ.get("CW_GOLIVE_STATUS", "").strip() or "Scheduled",
             golive_exclude=os.environ.get("CW_GOLIVE_EXCLUDE", "training").strip(),
+            staff_exclude=os.environ.get("CW_STAFF_EXCLUDE", "").strip(),
         )
 
     @property

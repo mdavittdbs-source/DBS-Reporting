@@ -138,6 +138,8 @@ class ConnectWiseClient:
             r"".join(rf"(?=.*\b{re.escape(w)}s?\b)" for w in words) for words in self.golive_names), re.I)
         self.golive_status = settings.golive_status
         self.golive_exclude = [w.strip().lower() for w in settings.golive_exclude.split(",") if w.strip()]
+        self.staff_exclude = {u.strip().lower() for u in settings.staff_exclude.split(",") if u.strip()}
+        self._staff: tuple[float, list[dict]] | None = None
         self._company_fields: tuple[float, list[dict]] | None = None
         self._company_fields_lock = threading.Lock()
 
@@ -375,6 +377,17 @@ class ConnectWiseClient:
             f" or identifier like {quote('%' + w + '%')})" for w in words]
         return self.get("/system/members", conditions=" and ".join(conditions), orderBy="firstName asc",
                         pageSize=max_results, fields="id,identifier,firstName,lastName,title")
+
+    def staff(self) -> list[dict]:
+        """Everyone on staff: active members, minus API logins and CW_STAFF_EXCLUDE. Kept for an hour."""
+        if self._staff and time.monotonic() - self._staff[0] < COMPANY_FIELDS_TTL:
+            return self._staff[1]
+        members = self._fetch("/system/members", "inactiveFlag=false", 2000,
+                              "id,identifier,firstName,lastName,title,licenseClass", order_by="firstName asc")
+        people = [m for m in members if (m.get("licenseClass") or "").upper() != "A"  # A: API member
+                  and (m.get("identifier") or "").lower() not in self.staff_exclude]
+        self._staff = (time.monotonic(), people)
+        return people
 
     def member_schedule(self, identifier: str, start: datetime, end: datetime) -> list[dict]:
         """Everything on one person's schedule between `start` and `end`."""

@@ -47,10 +47,12 @@ LOGGED = [{"member": SAM, "actualHours": 3.5}, {"member": SAM, "actualHours": 1.
           {"member": {"identifier": "kchen", "name": "Kim Chen"}, "actualHours": 2}]
 
 
-def client(requests):
+def client(requests, staff=None):
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         path = request.url.path
+        if path.endswith("/system/members") and staff is not None:
+            return httpx.Response(200, json=staff)
         if path.endswith("/schedule/entries"):
             return httpx.Response(200, json=ENTRIES)
         if path.endswith("/service/tickets"):
@@ -85,3 +87,13 @@ def test_workload_for_one_person():
     assert [p["name"] for p in rows(result["workload"])] == ["Ana Ruiz"]
     assert "logged_hours" not in result["workload"]["columns"]
     assert "error" in json.loads(tools["get_workload"].call({"person": "nobody"}))
+
+
+def test_everyone_on_staff_counts_even_with_nothing_booked():
+    staff = [{"identifier": "sortiz", "firstName": "Sam", "lastName": "Ortiz"},
+             {"identifier": "lpark", "firstName": "Lee", "lastName": "Park"},  # empty week: the most room
+             {"identifier": "apiuser", "firstName": "API", "licenseClass": "A"}]
+    result = json.loads(tools_by_name(client([], staff))["get_workload"].call({"start_day": START}))
+    people = {p["username"]: p for p in rows(result["workload"])}
+    assert people["lpark"]["name"] == "Lee Park" and people["lpark"]["booked_pct"] == 0
+    assert people["lpark"]["available_hours"] == 42.0 and "apiuser" not in people

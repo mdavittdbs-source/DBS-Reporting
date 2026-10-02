@@ -259,6 +259,11 @@ def entry_days(local: datetime, local_end: datetime | None) -> list:
 TIME_OFF = re.compile(r"vacation|time off|\bpto\b|holiday|sick|out of office|\bday off\b|\bleave\b", re.I)
 
 
+def member_name(m: dict) -> str:
+    """A staff member's full name; either part can be blank in ConnectWise."""
+    return f"{m.get('firstName') or ''} {m.get('lastName') or ''}".strip() or m.get("identifier") or ""
+
+
 def _clamp_days(days: int) -> int:
     return max(1, min(int(days), MAX_DAYS))
 
@@ -339,6 +344,13 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
         """The software lookup when it's only an extra (a breakdown, not a filter): None if unreadable."""
         try:
             return software_by_company()
+        except Exception:
+            return None
+
+    def staff_if_readable() -> list[dict] | None:
+        """Everyone on staff, so people with an empty calendar count too; None if it can't be read."""
+        try:
+            return cw.staff()
         except Exception:
             return None
 
@@ -1158,8 +1170,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             days: How many days to show (most 31; keep it short for everyone, e.g. 1 to 7).
         """
         try:
-            def full_name(m: dict) -> str:  # either name can be blank in ConnectWise
-                return f"{m.get('firstName') or ''} {m.get('lastName') or ''}".strip() or m.get("identifier") or ""
+            full_name = member_name
 
             def pick(asked: str, found: list[dict]):
                 """The one member meant by `asked`, else the list of candidates (none or several)."""
@@ -1195,17 +1206,23 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 if not chosen:
                     return _dumps({"error": "None of those people could be found.", "not_found": not_found,
                                    "unclear": unclear or None})
+            staff = None
             if len(chosen) == 1:
                 entries = cw.member_schedule(chosen[0]["identifier"], start, end)
+            elif everyone:
+                # The staff list too, so everyone with an empty calendar shows as free, not missing.
+                entries, staff = _together(lambda: cw.schedule_between(start, end), staff_if_readable)
+                entries = [e for e in entries
+                           if ((e.get("member") or {}).get("identifier") or "").lower() not in cw.staff_exclude]
             else:
-                entries = cw.schedule_between(start, end, [m["identifier"] for m in chosen] or None)
+                entries = cw.schedule_between(start, end, [m["identifier"] for m in chosen])
 
             def is_ticket(e: dict) -> bool:
                 kind = e.get("type") or {}
                 return (kind.get("identifier") or "").upper() in ("S", "P") or "ticket" in (kind.get("name") or "").lower()
 
             tickets = cw.tickets_by_id([e.get("objectId") for e in entries if is_ticket(e)])
-            names = {(m.get("identifier") or "").lower(): full_name(m) for m in chosen}
+            names = {(m.get("identifier") or "").lower(): full_name(m) for m in chosen + (staff or [])}
             placed: list[tuple] = []  # (person, day, start minute, order, row)
             hours: Counter = Counter()
             for n, e in enumerate(entries):
@@ -1260,15 +1277,16 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             rows = [{"person": who, "day": f"{d:%a} {eastern.day(d)}", **row} for who, d, _, _, row in placed[:limit]]
             result: dict[str, Any] = {
                 **period,
-                "who": "everyone with something scheduled" if everyone else ", ".join(full_name(m) for m in chosen),
+                "who": ("everyone on staff" if staff is not None else "everyone with something scheduled")
+                if everyone else ", ".join(full_name(m) for m in chosen),
                 "people_with_entries": len(hours),
                 "entry_count": len({p[3] for p in placed}),
                 "hours_by_person": [[k, round(v, 2)] for k, v in sorted(hours.items(), key=lambda kv: kv[0].lower())],
                 "schedule": _table(rows, ("person", "day", "time", "title", "kind", "where", "status", "ticket",
                                           "summary", "client", "project", "spans", "hours", "done")),
             }
-            if not everyone:
-                free = [full_name(m) for m in chosen if full_name(m) not in hours]
+            if not everyone or staff is not None:
+                free = sorted({full_name(m) for m in (chosen or staff) if full_name(m) not in hours}, key=str.lower)
                 if free:
                     result["nothing_scheduled"] = free
                 if not_found:
@@ -1276,8 +1294,9 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 if unclear:
                     result["unclear"] = unclear
                     result["note"] = "Some names match several people; ask which one."
-            else:
-                result["note"] = "People with nothing scheduled in this period aren't listed."
+            if everyone and staff is None:
+                result["note"] = ("The staff list couldn't be read, so people with nothing scheduled in this "
+                                  "period aren't listed.")
             if len(placed) > limit:
                 result["limit_note"] = f"Showing the first {limit} of {len(placed)} entries; use fewer days or people."
             return _dumps(result)
@@ -1286,8 +1305,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
 
     @beta_tool(eager_input_streaming=True)
     def get_workload(start_day: int = 0, days: int = 7, person: str = "", logged_days: int = 7) -> str:
-        """Technician workload: who's booked and who has room. For each person with anything on the
-        calendar, open tickets or time logged: hours scheduled in the period against their office hours
+        """Technician workload: who's booked and who has room. For everyone on staff (people with
+        nothing booked show at 0%, the most room): hours scheduled in the period against their office hours
         (percent booked), time off, open service tickets they own and open tickets they're a resource
         on (with the oldest one's age), and hours logged over the last logged_days days.
 
@@ -1308,9 +1327,9 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             first = eastern.now().date() + timedelta(days=int(start_day))
             last = first + timedelta(days=days - 1)
             start, end = eastern_window(first, days)
-            entries, open_tickets, logged = _together(
+            entries, open_tickets, logged, staff = _together(
                 lambda: cw.schedule_between(start, end), lambda: cw.open_tickets(),
-                (lambda: cw.time_entries_since(logged_days)) if logged_days else (lambda: []))
+                (lambda: cw.time_entries_since(logged_days)) if logged_days else (lambda: []), staff_if_readable)
 
             people: dict[str, dict] = {}
 
@@ -1324,6 +1343,10 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                                               "logged": 0.0})
                 row["name"] = row["name"] or member.get("name")
                 return row
+
+            # Everyone on staff starts with a row, so people with nothing booked show up (they have the most room).
+            for m in staff or []:
+                person_row({"identifier": m.get("identifier"), "name": member_name(m)})
 
             # Hours on the calendar, shared out over the days an entry covers; only days in the period count.
             for e in entries:
@@ -1371,6 +1394,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                          for d in (first + timedelta(days=i) for i in range(days)) if d.weekday() in eastern.BUSINESS_HOURS)
             rows = []
             for key, p in people.items():
+                if key in cw.staff_exclude:
+                    continue
                 if person and _plain(person) not in _plain(f"{p['name'] or ''} {p['username'] or ''}"):
                     continue
                 available = max(0.0, office - p["time_off"])

@@ -102,7 +102,8 @@ def test_entry_running_over_several_days_shows_on_each(monkeypatch):
 
 STAFF = [VANESSA, {"id": 6, "identifier": "sortiz", "firstName": "Sam", "lastName": "Ortiz", "title": "Technician"},
          {"id": 7, "identifier": "kchen", "firstName": "Kim", "lastName": "Chen", "title": "Technician"},
-         {"id": 8, "identifier": "kmoss", "firstName": "Kim", "lastName": "Moss", "title": "Technician"}]
+         {"id": 8, "identifier": "kmoss", "firstName": "Kim", "lastName": "Moss", "title": "Technician"},
+         {"id": 9, "identifier": "apiuser", "firstName": "API", "lastName": "Reports", "licenseClass": "A"}]
 TEAM_ENTRIES = [
     {"id": 20, "member": {"identifier": "sortiz", "name": "Sam Ortiz"}, "name": "Taco Town / printer",
      "type": {"identifier": "S", "name": "Service"}, "objectId": 105102, "dateStart": at(1, 9), "dateEnd": at(1, 11)},
@@ -154,6 +155,18 @@ def test_everyones_calendar():
     assert [e["person"] for e in entries] == ["Ana Ruiz", "Ana Ruiz", "Sam Ortiz", "Vanessa Duprey"]
     assert entries[0]["spans"].startswith(f"{TODAY:%a}")  # Ana's two-day vacation shows on both days
     assert result["people_with_entries"] == 3 and ["Ana Ruiz", 16.5] in result["hours_by_person"]
-    assert not any(r.url.path.endswith("/system/members") for r in requests)  # no name lookups needed
+    # Everyone on staff counts, so people with an empty calendar show as free; the API login doesn't.
+    assert result["who"] == "everyone on staff" and result["nothing_scheduled"] == ["Kim Chen", "Kim Moss"]
     blank = json.loads(tools_by_name(team_client([]))["get_schedule"].call({"days": 1}))
-    assert blank["who"] == "everyone with something scheduled"
+    assert blank["who"] == "everyone on staff"
+
+
+def test_everyone_leaves_out_excluded_staff():
+    from dbs_reporting.config import ConnectWiseSettings
+    cw = team_client([])
+    cw.staff_exclude = {"kmoss", "vduprey"}  # CW_STAFF_EXCLUDE=kmoss, vduprey
+    result = json.loads(tools_by_name(cw)["get_schedule"].call({"person": "everyone", "days": 2}))
+    assert "Vanessa Duprey" not in [e["person"] for e in rows(result["schedule"])]
+    assert result["nothing_scheduled"] == ["Kim Chen"]
+    assert ConnectWiseSettings(site="x", company_id="a", public_key="p", private_key="k", client_id="c",
+                               staff_exclude="kmoss").staff_exclude == "kmoss"
