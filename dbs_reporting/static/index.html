@@ -102,10 +102,15 @@
   .theme-switch .t-tab { transition: color var(--tabs-dur) var(--tabs-ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .theme-switch .t-tabs-pill { height: 26px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
   .theme-switch svg { width: 15px; height: 15px; }
-  /* Admins: Feedback from users, an icon beside Sign out; the dot means thumbs down this week. */
+  /* Admins: Feedback from users, an icon at the right of the David name; the dot means thumbs down this week. */
   .icon-link { position: relative; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center;
                color: var(--muted); flex-shrink: 0; transition: transform var(--duration-quick) var(--ease-smooth-out); }
   .icon-link[hidden] { display: none; }
+  .name-line { display: flex; align-items: center; gap: 4px; }
+  .brand .icon-link { width: 26px; height: 26px; margin: -4px 0; }
+  .brand .icon-link svg { width: 15px; height: 15px; }
+  .brand .icon-link .dot { top: 3px; right: 2px; }
+  .brand .icon-link::after { inset: -7px; }
   .icon-link:hover { color: var(--text); background: var(--hover); }
   .icon-link:active { transform: scale(.96); }
   .icon-link:focus-visible { outline: none; box-shadow: var(--ring); }
@@ -418,7 +423,11 @@
       <!--brand-mark--><span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 16 16" fill="none"><path d="M3.5 12V5m4.5 7V8m4.5 4V3.5" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
       </span><!--/brand-mark-->
-      <span class="brand-name">David<small>DBS ConnectWise Assistant</small></span>
+      <span class="brand-name"><span class="name-line">David
+      <a class="icon-link" id="feedback-link" href="/feedback" hidden aria-label="Feedback from users" title="Feedback from users">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 6.5h6M5 8.8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="dot" id="feedback-dot" hidden></span>
+      </a></span><small>DBS ConnectWise Assistant</small></span>
     </div>
     <button id="new" type="button">
       New chat
@@ -443,10 +452,6 @@
     <div class="me">
       <span class="avatar" id="avatar" aria-hidden="true"></span>
       <span id="me"></span>
-      <a class="icon-link" id="feedback-link" href="/feedback" hidden aria-label="Feedback from users" title="Feedback from users">
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 6.5h6M5 8.8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <span class="dot" id="feedback-dot" hidden></span>
-      </a>
       <button id="logout" type="button">Sign out</button>
     </div>
   </aside>
