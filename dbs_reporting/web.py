@@ -13,6 +13,7 @@ import threading
 import time
 from collections import defaultdict
 from collections.abc import Iterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import anthropic
@@ -22,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, exports
+from . import activity, digest, exports
 from .charts import extract_charts
 from .agent import create_agent
 from .config import ConnectWiseSettings
@@ -34,13 +35,25 @@ log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
 COOKIE = "dbs_session"
 
-app = FastAPI(title="DBS Autonomous Virtual Information Desk")
 store = Store()
 users_file = UsersFile(store)
 users_file.ensure_exists()
 users_file.refresh()
 cw_settings = ConnectWiseSettings.from_env()
-agent = create_agent(ConnectWiseClient(cw_settings))
+cw = ConnectWiseClient(cw_settings)
+agent = create_agent(cw)
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    # The weekly digest goes out the first time David is running on or after Monday morning.
+    scheduler = digest.DigestScheduler(cw, store, cw_settings.ticket_url)
+    scheduler.start()
+    yield
+    scheduler.stop()
+
+
+app = FastAPI(title="DBS Autonomous Virtual Information Desk", lifespan=lifespan)
 
 # One question at a time per conversation, so two tabs can't interleave a chat's history.
 _conversation_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
