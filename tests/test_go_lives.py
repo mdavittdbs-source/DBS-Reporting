@@ -38,6 +38,12 @@ TICKETS = [
     # Open means nobody has picked it up yet: not a go-live, even with something on the calendar.
     {"id": 506, "summary": "Installation", "closedFlag": False, "company": {"id": 5, "name": "Pasta Place"},
      "project": {"id": 74, "name": "Pasta Place install"}, "status": {"name": "Open"}},
+    # Titled just "Go-Live": counts, as does "Live".
+    {"id": 508, "summary": "Go-Live", "closedFlag": False, "company": {"id": 6, "name": "Surf Shack"},
+     "project": {"id": 75, "name": "Surf Shack install"}, "status": {"name": "Scheduled"}},
+    # "live" inside another word: ConnectWise's filter returns it, but it's not a go-live.
+    {"id": 509, "summary": "Deliver hardware", "closedFlag": False, "company": {"id": 6, "name": "Surf Shack"},
+     "project": {"id": 75, "name": "Surf Shack install"}, "status": {"name": "Scheduled"}},
     # Scheduled, but not an installation or live support ticket.
     {"id": 507, "summary": "Menu build", "closedFlag": False, "company": {"id": 1, "name": "Big Owl's"},
      "project": {"id": 70, "name": "Big Owl's SkyTab install"}, "status": {"name": "Scheduled"},
@@ -53,6 +59,8 @@ ENTRIES = [
      "dateStart": stamp(SOON)},  # a CRM activity that shares the id: not a schedule on the ticket
     {"objectId": 506, "type": {"identifier": "S"}, "member": {"name": "Joe"}, "dateStart": stamp(SOON)},
     {"objectId": 507, "type": {"identifier": "S"}, "member": {"name": "Joe"}, "dateStart": stamp(SOON)},
+    {"objectId": 508, "type": {"identifier": "S"}, "member": {"name": "Kim"}, "dateStart": stamp(SOON + timedelta(days=1))},
+    {"objectId": 509, "type": {"identifier": "S"}, "member": {"name": "Joe"}, "dateStart": stamp(SOON)},
 ]
 SUPPORT = [
     {"id": 900, "summary": "Printer not printing", "company": {"id": 2},
@@ -73,7 +81,7 @@ def client(requests, reject_status=False):
         if path.endswith("/project/tickets"):
             if reject_status and "status/name" in conditions:
                 return httpx.Response(400, json={"message": "bad condition"})
-            named = [t for t in TICKETS if "installation" in t["summary"].lower() or "live support" in t["summary"].lower()]
+            named = [t for t in TICKETS if "installation" in t["summary"].lower() or "live" in t["summary"].lower()]
             if "status/name" in conditions:
                 found = [t for t in named if (not t["closedFlag"] and t["status"]["name"] == "Scheduled")
                          or (t["closedFlag"] and "closedDate" in conditions)]
@@ -95,16 +103,17 @@ def client(requests, reject_status=False):
 def test_upcoming_go_lives():
     requests = []
     result = json.loads(tools_by_name(client(requests))["get_go_lives"].call({"days_ahead": 14}))
-    assert result["go_live_count"] == 1 and result["upcoming"] == 1
+    assert result["go_live_count"] == 2 and result["upcoming"] == 2
+    assert [g["company"] for g in rows(result["go_lives"])] == ["Big Owl's", "Surf Shack"]  # not "Deliver hardware"
     g = rows(result["go_lives"])[0]
     assert g["company"] == "Big Owl's" and g["date"] == day(SOON) and g["installers"] == ["Ana", "Sam"]
     assert g["software"] == "SkyTab" and g["time"].endswith(" ET")
     # Kim's management training, Pasta Place's untouched (Open) installation and the menu build aren't go-lives.
-    assert result["by_installer"] == [["Ana", 1], ["Sam", 1]] and result["site_count"] == 1
+    assert sorted(result["by_installer"]) == [["Ana", 1], ["Kim", 1], ["Sam", 1]] and result["site_count"] == 2
     # Burger Barn's installation says Scheduled, but its only calendar item is a CRM activity.
     assert [u["company"] for u in rows(result["scheduled_but_not_on_calendar"])] == ["Burger Barn"]
     conditions = next(r for r in requests if r.url.path.endswith("/project/tickets")).url.params["conditions"]
-    assert 'summary like "%installation%"' in conditions and 'summary like "%live%"' in conditions
+    assert 'summary like "%installation%" or summary like "%live%"' in conditions
     assert 'closedFlag=false and status/name like "%Scheduled%"' in conditions
 
 
@@ -124,4 +133,4 @@ def test_software_filter_and_status_checked_here_when_server_refuses():
     tools = tools_by_name(client([], reject_status=True))
     result = json.loads(tools["get_go_lives"].call({"days_ahead": 90, "software": "sky tab"}))
     assert [g["company"] for g in rows(result["go_lives"])] == ["Big Owl's", "Taco Town"]  # not Pasta Place (Open)
-    assert result["site_count"] == 2
+    assert result["site_count"] == 2  # Surf Shack's software isn't SkyTab

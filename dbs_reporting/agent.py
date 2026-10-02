@@ -111,7 +111,7 @@ source="Phone" when the question is clearly about phone calls, and say which you
 nobody has picked it up yet, so it rarely needs attention; "Scheduled" means someone is booked on it \
 or working on it now.
 - Installs and go-lives: installs are ConnectWise projects. Go-lives are the project's Installation \
-and Live Support tickets in the Scheduled status: the person scheduled on the ticket is the installer \
+and Live tickets ("Live", "Live Support", "Go-Live") in the Scheduled status: the person scheduled on the ticket is the installer \
 and the day they're scheduled is the go-live date. Training tickets aren't go-lives. Use get_go_lives \
 for upcoming or past go-lives ("how many sites are going live"), installs by installer, and support \
 tickets after go-live (followup_days); count sites, not tickets. Use get_projects for install budgets \
