@@ -5,6 +5,7 @@ import httpx
 from test_tools import SETTINGS, tools_by_name
 
 from dbs_reporting.connectwise import ConnectWiseClient
+from tables import rows
 
 
 def ago(days: int) -> str:
@@ -38,8 +39,8 @@ def test_oldest_open_tickets_regardless_of_age():
     result = json.loads(tools["get_open_tickets"].call({}))
     assert result["open_count"] == 3
     # The two-year-old ticket comes first: a date-range lookup would have missed it.
-    assert [t["id"] for t in result["oldest"]] == [10, 20, 30]
-    oldest = result["oldest"][0]
+    assert [t["id"] for t in rows(result["oldest"])] == [10, 20, 30]
+    oldest = rows(result["oldest"])[0]
     assert oldest["age_days"] == 730 and oldest["days_since_update"] == 200 and oldest["owner"] == "sam"
     assert result["age_buckets"] == {"0-7 days": 1, "8-30 days": 0, "31-90 days": 1, "91-365 days": 0,
                                      "over 1 year": 1}
@@ -54,6 +55,6 @@ def test_open_tickets_for_one_client_and_board_with_field_fallback():
     requests = []
     tools = tools_by_name(open_client(requests, reject_fields=True))
     result = json.loads(tools["get_open_tickets"].call({"company_id": 42, "board_name": "Help Desk", "oldest": 1}))
-    assert len(result["oldest"]) == 1 and "by_company" not in result
+    assert len(rows(result["oldest"])) == 1 and "by_company" not in result
     assert requests[-1].url.params["conditions"] == 'closedFlag=false and company/id=42 and board/name="Help Desk"'
     assert "fields" not in requests[-1].url.params

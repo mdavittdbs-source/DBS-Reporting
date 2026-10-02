@@ -14,6 +14,11 @@ from .config import ConnectWiseSettings
 PAGE_SIZE = 1000  # ConnectWise maximum
 PARALLEL_PAGES = 4  # pages fetched at once after the first, for big results
 COMPANY_FIELDS_TTL = 3600  # seconds to reuse the list of companies' custom fields
+# ConnectWise answers "busy" (429) or a gateway error now and then, more so with pages fetched in
+# parallel. Those are tried again, twice, after a short wait; other errors are reported straight away.
+RETRY_STATUS = {429, 502, 503, 504}
+RETRIES = 2
+RETRY_WAIT = 1.0  # seconds before the first retry, doubled for the next (or what Retry-After asks, up to 10)
 
 # What SLA reporting needs from each ticket.
 TICKET_SLA_FIELDS = (
@@ -74,6 +79,14 @@ TICKET_SEARCH_FIELDS = (
 )
 
 
+def _retry_after(response: httpx.Response) -> float | None:
+    """The wait a 429 or 503 asks for in its Retry-After header (seconds), at most 10."""
+    try:
+        return min(10.0, max(0.0, float(response.headers.get("Retry-After", ""))))
+    except ValueError:
+        return None
+
+
 def cw_date(dt: datetime) -> str:
     """Format a datetime for a ConnectWise `conditions` clause, e.g. [2026-09-01T00:00:00Z]."""
     return "[" + dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") + "]"
@@ -126,9 +139,21 @@ class ConnectWiseClient:
         self._http.close()
 
     def get(self, path: str, **params: Any) -> Any:
-        response = self._http.get(path, params={k: v for k, v in params.items() if v is not None})
-        response.raise_for_status()
-        return response.json()
+        params = {k: v for k, v in params.items() if v is not None}
+        for attempt in range(RETRIES + 1):
+            last = attempt == RETRIES
+            try:
+                response = self._http.get(path, params=params)
+            except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError):
+                if last:
+                    raise
+                time.sleep(RETRY_WAIT * 2 ** attempt)
+                continue
+            if response.status_code in RETRY_STATUS and not last:
+                time.sleep(_retry_after(response) or RETRY_WAIT * 2 ** attempt)
+                continue
+            response.raise_for_status()
+            return response.json()
 
     def get_all(self, path: str, limit: int = 5000, **params: Any) -> Iterator[dict]:
         """Yield records across pages, stopping after `limit` records. When the first page is
@@ -348,21 +373,24 @@ class ConnectWiseClient:
         return self._fetch("/schedule/entries", conditions, 1000, MEMBER_SCHEDULE_FIELDS, order_by="dateStart asc")
 
     def tickets_by_id(self, ids: list[int]) -> dict[int, dict]:
-        """Service or project tickets by id (summary and client), for labelling schedule entries."""
+        """Service or project tickets by id (summary and client), for labelling schedule entries.
+        Both kinds are looked up at the same time."""
         wanted = sorted({int(i) for i in ids if i})
-        found: dict[int, dict] = {}
         if not wanted:
-            return found
-        for path, fields in (("/service/tickets", "id,summary,company/name"),
-                             ("/project/tickets", "id,summary,company/name,project/name")):
-            missing = [i for i in wanted if i not in found]
-            if not missing:
-                break
-            for i in range(0, len(missing), 100):
-                ids_clause = ",".join(map(str, missing[i:i + 100]))
+            return {}
+
+        def lookup(path: str, fields: str) -> dict[int, dict]:
+            found = {}
+            for i in range(0, len(wanted), 100):
+                ids_clause = ",".join(map(str, wanted[i:i + 100]))
                 for t in self._fetch(path, f"id in ({ids_clause})", 100, fields):
                     found[t["id"]] = t
-        return found
+            return found
+
+        with ThreadPoolExecutor(2) as pool:
+            service = pool.submit(lookup, "/service/tickets", "id,summary,company/name")
+            project = pool.submit(lookup, "/project/tickets", "id,summary,company/name,project/name")
+            return {**project.result(), **service.result()}
 
     def project_ticket(self, ticket_id: int) -> dict:
         return self.get(f"/project/tickets/{int(ticket_id)}")

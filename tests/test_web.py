@@ -478,6 +478,8 @@ def test_feedback_on_answers(web):
     assert data["down"] == 1 and data["up"] == 0
     assert item["display_name"] == "Bob B" and item["question"] == "Printer issues at Jimmy's?"
     assert item["comment"] == "Missed two tickets." and item["answer"].startswith("answer to")
+    assert alice.get("/api/feedback/recent").json() == {"down_this_week": 1}  # just the count, for the icon
+    assert bob.get("/api/feedback/recent").status_code == 403
 
     # Feedback stays readable after the chat is deleted, and can be taken back.
     bob.delete(f"/api/conversations/{chat_id}")
@@ -486,3 +488,10 @@ def test_feedback_on_answers(web):
     bob.post(f"/api/answers/{second}/feedback", json={"rating": 1})
     bob.post(f"/api/answers/{second}/feedback", json={"rating": 0})
     assert alice.get("/api/feedback").json()["up"] == 0
+
+
+def test_sign_in_page_skips_ahead_when_signed_in(web):
+    module, _ = web
+    assert module.app and TestClient(module.app).get("/login").status_code == 200
+    alice = login(module, "alice", "password-a")
+    assert alice.get("/login", follow_redirects=False).headers["location"] == "/"

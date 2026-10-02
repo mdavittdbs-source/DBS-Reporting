@@ -8,6 +8,7 @@ from test_tools import SETTINGS, tools_by_name
 
 from dbs_reporting import eastern
 from dbs_reporting.connectwise import ConnectWiseClient
+from tables import rows
 
 NOW = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
 SOON, LATER, PAST = NOW + timedelta(days=3), NOW + timedelta(days=60), NOW - timedelta(days=10)
@@ -83,12 +84,12 @@ def test_upcoming_go_lives():
     requests = []
     result = json.loads(tools_by_name(client(requests))["get_go_lives"].call({"days_ahead": 14}))
     assert result["go_live_count"] == 1 and result["upcoming"] == 1
-    g = result["go_lives"][0]
+    g = rows(result["go_lives"])[0]
     assert g["company"] == "Big Owl's" and g["date"] == day(SOON) and g["installers"] == ["Ana", "Sam"]
     assert g["software"] == "SkyTab" and g["time"].endswith(" ET")
     assert result["by_installer"] == [["Ana", 1], ["Sam", 1]]  # Kim's management training isn't a go-live
     # Burger Barn's only "schedule" is a CRM activity, so its deployment isn't scheduled yet.
-    assert [u["company"] for u in result["deployment_not_scheduled"]] == ["Burger Barn"]
+    assert [u["company"] for u in rows(result["deployment_not_scheduled"])] == ["Burger Barn"]
     project_query = next(r for r in requests if r.url.path.endswith("/project/tickets"))
     assert 'phase/name like "%Deployment%"' in project_query.url.params["conditions"]
     assert "closedFlag=false" in project_query.url.params["conditions"]
@@ -98,7 +99,7 @@ def test_past_go_lives_with_tickets_after():
     tools = tools_by_name(client([]))
     result = json.loads(tools["get_go_lives"].call({"days_ahead": 0, "days_back": 30, "followup_days": 30}))
     assert result["go_live_count"] == 1 and result["past"] == 1
-    g = result["go_lives"][0]
+    g = rows(result["go_lives"])[0]
     assert g["company"] == "Dock Bar" and g["tickets_after"] == 2  # not the one before go-live or other clients
     assert g["examples_after"] == ["#900 Printer not printing", "#901 Menu change"]
     assert result["followup"]["by_installer"] == [["Sam", 1, 2.0]]
@@ -109,5 +110,5 @@ def test_past_go_lives_with_tickets_after():
 def test_software_filter_and_phase_filtered_here_when_server_refuses():
     tools = tools_by_name(client([], reject_phase=True))
     result = json.loads(tools["get_go_lives"].call({"days_ahead": 90, "software": "sky tab"}))
-    assert [g["company"] for g in result["go_lives"]] == ["Big Owl's", "Taco Town"]
-    assert all(u.get("ticket_id") != 600 for u in result.get("deployment_not_scheduled", []))
+    assert [g["company"] for g in rows(result["go_lives"])] == ["Big Owl's", "Taco Town"]
+    assert all(u.get("ticket_id") != 600 for u in rows(result.get("deployment_not_scheduled", {"columns": [], "rows": []})))

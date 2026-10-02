@@ -133,6 +133,10 @@ Every answer records the tokens it used (across all of its steps) and an estimat
 - **Follow-ups stay cheap.** Once a question is answered, the raw ConnectWise data behind it (often
   thousands of tokens of ticket lists) is dropped from the chat; David's answer stays. A follow-up
   that needs the details again fetches them fresh. Small results such as company lookups are kept.
+- **ConnectWise data is sent compactly.** Long lists (tickets, projects, go-lives) go to Claude as
+  tables, with each field named once rather than on every ticket. Ticket notes leave out the earlier
+  emails quoted under a reply, since each of those is a note of its own. List-heavy questions use
+  roughly half the input tokens they used to.
 
 Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic console
 (Settings → Usage / Cost) has exact billing.

@@ -5,6 +5,7 @@ import httpx
 from dbs_reporting.config import ConnectWiseSettings
 from dbs_reporting.connectwise import ConnectWiseClient
 from dbs_reporting.tools import build_tools
+from tables import rows
 
 SETTINGS = ConnectWiseSettings(
     site="cw.example.com", company_id="acme", public_key="pub", private_key="priv", client_id="cid"
@@ -69,7 +70,7 @@ def test_ticket_breakdown():
     assert result["ticket_count"] == 3
     assert result["open_count"] == 1
     assert result["by_type"][0] == ["Hardware", 2]
-    assert result["tickets"][0]["entered"] == "09/20/2026 6:00 AM ET"  # Eastern, 12-hour
+    assert rows(result["tickets"])[0]["entered"] == "09/20/2026 6:00 AM ET"  # Eastern, 12-hour
     conditions = requests[0].url.params["conditions"]
     assert conditions.startswith("company/id=42 and dateEntered>=[")
 
@@ -202,10 +203,10 @@ def test_rejected_field_list_is_remembered():
 def test_ticket_list_leaves_out_blank_fields():
     tools = tools_by_name(make_client([]))
     result = json.loads(tools["get_company_tickets"].call({"company_id": 42}))
-    open_ticket = result["tickets"][0]
+    open_ticket = rows(result["tickets"])[0]
     assert open_ticket == {"id": 3, "summary": "Printer offline", "entered": "09/20/2026 6:00 AM ET",
                            "board": "Help Desk", "type": "Hardware"}
-    assert result["tickets"][1]["closed"] == "09/11/2026 6:00 AM ET"
+    assert rows(result["tickets"])[1]["closed"] == "09/11/2026 6:00 AM ET"
 
 
 def test_long_note_history_keeps_first_latest_and_resolution():

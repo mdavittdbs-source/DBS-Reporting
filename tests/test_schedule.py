@@ -69,3 +69,9 @@ def test_unknown_or_ambiguous_person():
     assert len(result["matches"]) == 2
     one = json.loads(tools_by_name(client([], members=two))["get_schedule"].call({"person": "Vanessa Duprey"}))
     assert one["person"] == "Vanessa Duprey"
+
+
+def test_blank_first_or_last_name():
+    two = ({**VANESSA, "lastName": None}, {**VANESSA, "identifier": "vsmith", "firstName": None, "lastName": "Smith"})
+    result = json.loads(tools_by_name(client([], members=two))["get_schedule"].call({"person": "V"}))
+    assert [m["name"] for m in result["matches"]] == ["Vanessa", "Smith"]  # never "Vanessa None"
