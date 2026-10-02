@@ -170,7 +170,10 @@ def export_xlsx(answer_id: int, user: dict = Depends(current_user)) -> Response:
 
 
 @app.get("/login")
-def login_page() -> HTMLResponse:
+def login_page(dbs_session: str | None = Cookie(default=None)):
+    users_file.refresh()
+    if dbs_session and store.session_user(dbs_session):  # already signed in
+        return RedirectResponse("/")
     return _page("login.html")
 
 
@@ -275,6 +278,14 @@ def all_feedback(user: dict = Depends(current_user)) -> dict:
     _require_admin(user)
     rows = store.list_feedback()
     return {"items": rows, "up": sum(r["rating"] > 0 for r in rows), "down": sum(r["rating"] < 0 for r in rows)}
+
+
+@app.get("/api/feedback/recent")
+def recent_feedback(user: dict = Depends(current_user)) -> dict:
+    """How many thumbs down came in over the last 7 days, for the admins' Feedback icon (counts only,
+    so the chat page doesn't download every rated answer to show one number)."""
+    _require_admin(user)
+    return {"down_this_week": store.feedback_count(rating=-1, days=7)}
 
 
 @app.get("/feedback")

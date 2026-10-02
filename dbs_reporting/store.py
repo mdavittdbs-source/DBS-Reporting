@@ -347,6 +347,13 @@ class Store:
                 " JOIN users u ON u.id = f.user_id ORDER BY f.updated_at DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
 
+    def feedback_count(self, rating: int, days: int) -> int:
+        """How many ratings of this kind (1 or -1) were given or changed in the last `days` days."""
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        with self._db() as db:
+            return db.execute("SELECT COUNT(*) FROM feedback WHERE rating = ? AND updated_at >= ?",
+                              (rating, since)).fetchone()[0]
+
     def save_turn(
         self, conversation_id: str, question: str, answer: str, history: list, model: str | None = None,
         usage: dict | None = None, charts: list | None = None,

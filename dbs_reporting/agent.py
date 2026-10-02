@@ -3,6 +3,7 @@
 import json
 import os
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 
 import anthropic
 
@@ -124,6 +125,8 @@ settle", "terminal offline"), and give a count for each group. Keep requests (me
 changes, new employees, training) separate from things that broke. Mention the ticket type/subtype \
 breakdown only when it adds something.
 - Pull ticket details for a few representative tickets when root causes or resolutions matter.
+- Long lists in tool results are tables: "columns" names the fields once, each entry in "rows" gives \
+the values in that order (null means blank), and "every_row" holds fields that are the same on every row.
 - Data from earlier questions in a chat is removed once they're answered; your earlier answers \
 remain. If a follow-up needs details you no longer have, call the tool again rather than guessing.
 - Dates and times: tool results give dates as month/day/year and times in Eastern Time (ET) with \
@@ -188,6 +191,38 @@ def compact_history(messages: list) -> list:
         compacted.append(message)
     return compacted
 
+# When Claude asks for several lookups in one step (say, the notes of four tickets), they run at the
+# same time. The SDK's tool runner runs a step's calls one after another, so they're run here first
+# and the runner picks up each finished result instead of running the call again.
+PARALLEL_TOOLS = 6
+
+def _call_key(name: str, args) -> str:
+    return name + json.dumps(args, sort_keys=True, default=str)
+
+def _reuse_results(tools: list, ready: dict) -> None:
+    """Make each tool hand back a result run_together already worked out, if there is one."""
+    for tool in tools:
+        def call(args, run=tool.call, name=tool.name):
+            found = ready.pop(_call_key(name, args), None)
+            return found if found is not None else run(args)
+        tool.call = call
+
+def run_together(tools: list, tool_uses: list, ready: dict) -> None:
+    """Run a step's tool calls at the same time, keeping each result in `ready` for the runner."""
+    by_name = {t.name: t for t in tools}
+    calls = [b for b in tool_uses if b.name in by_name]
+    if len(calls) < 2:
+        return
+
+    def run(block) -> None:
+        try:
+            ready[_call_key(block.name, block.input)] = by_name[block.name].call(block.input)
+        except Exception:
+            pass  # the runner runs it again and reports the error to Claude as usual
+
+    with ThreadPoolExecutor(min(len(calls), PARALLEL_TOOLS)) as pool:
+        list(pool.map(run, calls))
+
 def _to_json(block) -> dict:
     """SDK content blocks -> plain dicts, so a conversation can be saved and replayed later."""
     if hasattr(block, "model_dump"):
@@ -236,6 +271,8 @@ class ReportingAgent:
         json_retries = 0
         usage = usage_mod.empty()
         tools = build_tools(self._cw, charts_allowed=wants_chart(question))
+        ready: dict = {}
+        _reuse_results(tools, ready)
         while True:
             runner = self._client.beta.messages.tool_runner(
                 model=model,
@@ -274,6 +311,7 @@ class ReportingAgent:
                             {"type": "tool_result", "tool_use_id": b.id, "is_error": True,
                              "content": "Not run: the response was cut off."} for b in tool_uses]})
                         break
+                    run_together(tools, tool_uses, ready)
                     tool_response = runner.generate_tool_call_response()
                     if tool_response is not None:
                         messages.append(json.loads(json.dumps(tool_response, default=_to_json)))

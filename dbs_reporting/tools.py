@@ -3,6 +3,7 @@
 import json
 import re
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from statistics import median
 from typing import Any
@@ -21,8 +22,44 @@ TOTALS_LIMIT = 20000
 
 
 def _dumps(result) -> str:
-    """Tool results go to Claude as JSON, with ConnectWise's UTC times turned into Eastern Time."""
-    return eastern.localize(json.dumps(result))
+    """Tool results go to Claude as JSON, with ConnectWise's UTC times turned into Eastern Time.
+    No spaces after commas and colons, and letters like ’ and – as themselves rather than \\u2019
+    escapes: the same data in about a quarter fewer tokens."""
+    text = json.dumps(result, separators=(",", ":"), ensure_ascii=False)
+    # A broken character from ConnectWise (a lone surrogate) would stop the request being sent.
+    return eastern.localize(text.encode("utf-8", "replace").decode("utf-8"))
+
+
+def _table(rows: list[dict], columns: tuple[str, ...]) -> dict:
+    """A list of records as a table: the field names once ("columns") and each record as its values
+    in that order ("rows"), rather than every name repeated on every record, which costs about 40%
+    fewer tokens on a long list. Fields blank on every record are left out, and a field with the same
+    value on every record is given once, in "every_row"."""
+    keep, every_row = [], {}
+    for c in columns:
+        values = [r.get(c) for r in rows]
+        if all(v is None or v == "" for v in values):
+            continue
+        if len(rows) > 1 and all(v == values[0] for v in values):
+            every_row[c] = values[0]
+        else:
+            keep.append(c)
+    table: dict[str, Any] = {"columns": keep, "rows": [[r.get(c) for c in keep] for r in rows]}
+    if every_row:
+        table["every_row"] = every_row
+    return table
+
+
+def _together(*calls):
+    """Run independent ConnectWise lookups at the same time and return their results in order. Each
+    one mostly waits on ConnectWise, so together they take as long as the slowest, not the sum."""
+    with ThreadPoolExecutor(len(calls)) as pool:
+        futures = [pool.submit(call) for call in calls]
+        return [f.result() for f in futures]
+
+
+def _nothing():
+    return None
 
 
 def _name(record: dict, key: str) -> str | None:
@@ -39,7 +76,8 @@ def summarize_ticket(ticket: dict) -> dict:
         "id": ticket.get("id"),
         "summary": ticket.get("summary"),
         "entered": _date_entered(ticket),
-        "closed": ticket.get("closedDate") if ticket.get("closedFlag") else None,
+        # A closed ticket occasionally has no closed date; it's still closed.
+        "closed": (ticket.get("closedDate") or True) if ticket.get("closedFlag") else None,
         "board": _name(ticket, "board"),
         "status": _name(ticket, "status"),
         "type": _name(ticket, "type"),
@@ -52,29 +90,29 @@ def summarize_ticket(ticket: dict) -> dict:
     }
 
 
+TICKET_COLUMNS = ("id", "summary", "entered", "closed", "board", "status", "type", "subtype", "item", "priority",
+                  "source", "contact", "hours")
+OPEN_COLUMNS = ("id", "summary", "company", "site", "board", "status", "priority", "type", "owner", "resources",
+                "entered", "age_days", "days_since_update")
+GO_LIVE_COLUMNS = ("date", "weekday", "time", "company", "project", "project_id", "ticket_id", "ticket", "status",
+                   "software", "installers", "other_scheduled_days", "past", "tickets_after", "examples_after",
+                   "followup_days_so_far")
+SEARCH_COLUMNS = ("id", "kind", "summary", "company", "site", "board", "project", "phase", "status", "type",
+                  "entered", "closed")
+
+
 def ticket_breakdown(tickets: list[dict]) -> dict[str, Any]:
     rows = [summarize_ticket(t) for t in tickets]
-
-    def top(field: str, n: int = 15) -> list[list]:
+    result: dict[str, Any] = {"ticket_count": len(rows), "open_count": sum(1 for r in rows if not r["closed"])}
+    for name, field, n in (("by_type", "type", 15), ("by_subtype", "subtype", 15), ("by_item", "item", 15),
+                           ("by_board", "board", 15), ("by_priority", "priority", 15), ("by_source", "source", 15),
+                           ("by_contact", "contact", 10)):
         counts = Counter(r[field] or "(none)" for r in rows)
-        return [[k, v] for k, v in counts.most_common(n)]
-
-    # Blank fields are left out of the ticket list: up to 1000 rows go to Claude on every step
-    # of the answer and every follow-up, so empty values would cost tokens for nothing.
-    compact = [_compact(r) for r in rows]
-
-    return {
-        "ticket_count": len(rows),
-        "open_count": sum(1 for r in rows if not r["closed"]),
-        "by_type": top("type"),
-        "by_subtype": top("subtype"),
-        "by_item": top("item"),
-        "by_board": top("board"),
-        "by_priority": top("priority"),
-        "by_source": top("source"),
-        "by_contact": top("contact", 10),
-        "tickets": compact,
-    }
+        if set(counts) != {"(none)"}:  # a field nobody fills in tells Claude nothing
+            result[name] = [[k, v] for k, v in counts.most_common(n)]
+    # Up to 1000 tickets go to Claude on every step of the answer, so they go as a table.
+    result["tickets"] = _table(rows, TICKET_COLUMNS)
+    return result
 
 
 def _plain(text: str) -> str:
@@ -132,13 +170,20 @@ def summarize_project_ticket(t: dict) -> dict:
         "phase": _name(t, "phase"),
         "status": _name(t, "status"),
         "entered": _date_entered(t),
-        "closed": t.get("closedDate") if t.get("closedFlag") else None,
+        "closed": (t.get("closedDate") or True) if t.get("closedFlag") else None,
         "budget_hours": _hours(t.get("budgetHours")),
         "actual_hours": _hours(t.get("actualHours")),
         "resources": t.get("resources"),
         "priority": _name(t, "priority"),
         "type": _name(t, "type"),
     })
+
+
+PROJECT_COLUMNS = ("id", "name", "company", "status", "closed", "manager", "type", "board", "estimated_start",
+                   "estimated_end", "actual_start", "actual_end", "percent_complete", "budget_hours", "actual_hours",
+                   "scheduled_hours", "over_budget_hours")
+PROJECT_TICKET_COLUMNS = ("id", "summary", "project", "project_id", "phase", "status", "entered", "closed",
+                          "budget_hours", "actual_hours", "resources", "priority", "type")
 
 
 def _error(exc: Exception) -> str:
@@ -150,13 +195,33 @@ def _error(exc: Exception) -> str:
     return _dumps({"error": f"{type(exc).__name__}: {exc}"})
 
 
+# Where the earlier messages quoted under an email reply start: Outlook's From/Sent header block,
+# "-----Original Message-----", or Gmail's "On <date>, <name> wrote:".
+_QUOTED_EMAIL = re.compile(
+    r"^[ \t>]*(?:-{2,} ?Original Message ?-{2,}|On [^\n]{4,200} wrote:[ \t]*$"
+    r"|(?:From|De|Von): [^\n]+\n(?:[^\n]*\n){0,4}?[ \t>]*(?:Sent|Date|Envoy\u00e9|Gesendet): )",
+    re.IGNORECASE | re.MULTILINE)
+
+
+def clean_note_text(text: str) -> str:
+    """A note's text without the extra blank lines and spaces, or the earlier emails quoted under a
+    reply. Each of those emails is usually a note of its own, so the quotes only repeat them, and they
+    were often most of a ticket's tokens."""
+    text = re.sub(r"[ \t\u00a0]+", " ", text.replace("\r\n", "\n").replace("\r", "\n"))
+    text = re.sub(r"\n{3,}", "\n\n", re.sub(r" ?\n ?", "\n", text)).strip()
+    for m in _QUOTED_EMAIL.finditer(text):
+        if text[:m.start()].strip():  # a forwarded email starts with its own header: keep that one
+            return text[:m.start()].rstrip() + "\n[earlier emails in the thread left out]"
+    return text
+
+
 def _note(n: dict) -> dict:
     return {
         "created": n.get("dateCreated"),
         "by": n.get("createdBy"),
         "kind": "resolution" if n.get("resolutionFlag") else "internal" if n.get("internalAnalysisFlag")
         else "description",
-        "text": (n.get("text") or "")[:NOTE_CHARS],
+        "text": clean_note_text(n.get("text") or "")[:NOTE_CHARS],
     }
 
 
@@ -216,10 +281,15 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
     definition stays the same, so the prompt cache still matches)."""
 
     def software_by_company() -> dict[int, str]:
-        """Company id -> the POS software in the company's "Software" custom field."""
+        """Company id -> the POS software in the company's "Software" custom field. Worked out once per
+        copy of the company list (which ConnectWiseClient keeps for an hour)."""
+        companies = cw.company_custom_fields()
+        cached = getattr(cw, "_software_lookup", None)
+        if cached and cached[0] is companies:
+            return cached[1]
         caption = _plain(cw.software_field)
         found, captions = {}, Counter()
-        for c in cw.company_custom_fields():
+        for c in companies:
             for f in c["customFields"]:
                 captions[f.get("caption") or ""] += 1
                 if _plain(f.get("caption") or "") != caption:
@@ -238,7 +308,15 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             seen = ", ".join(f'"{k}"' for k, _ in captions.most_common(15) if k) or "none"
             raise ValueError(f'No client has a "{cw.software_field}" custom field filled in. Custom fields '
                              f"found on clients: {seen}. (CW_SOFTWARE_FIELD sets which field to use.)")
+        cw._software_lookup = (companies, found)
         return found
+
+    def software_if_readable() -> dict[int, str] | None:
+        """The software lookup when it's only an extra (a breakdown, not a filter): None if unreadable."""
+        try:
+            return software_by_company()
+        except Exception:
+            return None
 
     def ticket_software(lookup: dict[int, str]):
         return lambda t: lookup.get((t.get("company") or {}).get("id")) or "(software not set)"
@@ -264,8 +342,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
         """Get service tickets opened for a company in the last N days.
 
         Returns counts broken down by type, subtype, item, board, priority, source and contact,
-        plus a compact list of every ticket (id, summary, dates, status, classification; blank fields
-        are left out, so a ticket with no "closed" date is open). Use the ticket summaries, not
+        plus a table of every ticket (id, summary, dates, status, classification; a ticket with no
+        "closed" date is open). Use the ticket summaries, not
         just the type fields, to identify recurring issues, because technicians often leave the
         type fields blank or generic.
 
@@ -294,14 +372,15 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
         """
         try:
             try:
-                ticket = summarize_ticket(cw.ticket(ticket_id))
-                notes = cw.ticket_notes(ticket_id)
+                found, notes = _together(lambda: cw.ticket(ticket_id), lambda: cw.ticket_notes(ticket_id))
+                ticket = _compact(summarize_ticket(found))
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code != 404:
                     raise
                 # Not a service ticket: project tickets are kept separately.
-                ticket = {"kind": "project ticket", **summarize_project_ticket(cw.project_ticket(ticket_id))}
-                notes = cw.project_ticket_notes(ticket_id)
+                found, notes = _together(lambda: cw.project_ticket(ticket_id),
+                                         lambda: cw.project_ticket_notes(ticket_id))
+                ticket = {"kind": "project ticket", **summarize_project_ticket(found)}
             ticket["notes"], left_out = _key_notes(notes)
             if left_out:
                 ticket["notes_left_out"] = (f"{left_out} notes from the middle of this ticket were left out "
@@ -378,10 +457,12 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
         try:
             days = _clamp_days(days)
-            tickets = cw.tickets_since(days, board_name or None, limit=TOTALS_LIMIT)
+            by_software = group_by == "software" or bool(software)
+            tickets, lookup = _together(lambda: cw.tickets_since(days, board_name or None, limit=TOTALS_LIMIT),
+                                        software_by_company if by_software else _nothing)
             capped = len(tickets) >= TOTALS_LIMIT
-            if group_by == "software" or software:
-                of = ticket_software(software_by_company())
+            if by_software:
+                of = ticket_software(lookup)
                 keys["software"] = of
                 if software:
                     tickets = [t for t in tickets if software_matches(of(t), software)]
@@ -464,10 +545,13 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _dumps({"error": f"group_by must be one of: {', '.join(keys)}"})
         try:
             days = _clamp_days(days)
-            tickets = cw.tickets_with_times(days, company_id or None, board_name or None, limit=TOTALS_LIMIT)
+            by_software = group_by == "software" or bool(software)
+            tickets, lookup = _together(
+                lambda: cw.tickets_with_times(days, company_id or None, board_name or None, limit=TOTALS_LIMIT),
+                software_by_company if by_software else _nothing)
             capped = len(tickets) >= TOTALS_LIMIT
-            if group_by == "software" or software:
-                keys["software"] = of = ticket_software(software_by_company())
+            if by_software:
+                keys["software"] = of = ticket_software(lookup)
                 if software:
                     tickets = [t for t in tickets if software_matches(of(t), software)]
             if source:
@@ -634,15 +718,12 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             software: Optional: only clients whose POS software matches, e.g. "SkyTab".
         """
         try:
-            tickets = cw.open_tickets(company_id or None, board_name or None)
+            # The software filter needs the lookup; for all clients it's an extra breakdown, skipped if unreadable.
+            tickets, lookup = _together(lambda: cw.open_tickets(company_id or None, board_name or None),
+                                        software_by_company if software else
+                                        _nothing if company_id else software_if_readable)
             capped = len(tickets) >= 5000
-            of = None
-            if software or not company_id:
-                try:
-                    of = ticket_software(software_by_company())
-                except Exception:
-                    if software:
-                        raise  # only the optional breakdown by software is skipped when it can't be read
+            of = ticket_software(lookup) if lookup else None
             if software:
                 tickets = [t for t in tickets if software_matches(of(t), software)]
             now = datetime.now(timezone.utc)
@@ -654,7 +735,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             rows = []
             for t in tickets:
                 owner = t.get("owner") or {}
-                rows.append(_compact({
+                rows.append({
                     "id": t.get("id"),
                     "summary": t.get("summary"),
                     "company": _name(t, "company"),
@@ -668,7 +749,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                     "entered": _date_entered(t),
                     "age_days": days_since(_date_entered(t)),
                     "days_since_update": days_since((t.get("_info") or {}).get("lastUpdated")),
-                }))
+                })
             rows.sort(key=lambda r: -(r.get("age_days") if r.get("age_days") is not None else -1))
             ages = [r["age_days"] for r in rows if r.get("age_days") is not None]
 
@@ -688,7 +769,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 "by_board": top("board"),
                 "by_priority": top("priority"),
                 "by_owner": top("owner"),
-                "oldest": rows[:max(1, min(int(oldest), 200))],
+                "oldest": _table(rows[:max(1, min(int(oldest), 200))], OPEN_COLUMNS),
             }
             if not company_id:
                 result["by_company"] = top("company", 25)
@@ -728,13 +809,24 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             return _dumps({"error": "Give one or more keywords to search for."})
         try:
             days = _clamp_days(days) if days else 0
-            tickets = cw.search_tickets(phrases, days or None, company_id or None)
+
+            def project_matches():  # a failure here only leaves project tickets out
+                try:
+                    return cw.search_project_tickets(phrases, company_id or None)
+                except Exception as exc:
+                    return exc
+
+            tickets, found, lookup = _together(
+                lambda: cw.search_tickets(phrases, days or None, company_id or None),
+                project_matches if include_project_tickets else _nothing,
+                software_by_company if software else _nothing)
             capped = len(tickets) >= 500
-            of = ticket_software(software_by_company()) if software else None
+            of = ticket_software(lookup) if software else None
             if of:
                 tickets = [t for t in tickets if software_matches(of(t), software)]
-            rows = [_compact({
+            rows = [{
                 "id": t.get("id"),
+                "kind": "service",
                 "summary": t.get("summary"),
                 "company": _name(t, "company"),
                 "site": _name(t, "site"),
@@ -742,28 +834,24 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 "status": _name(t, "status"),
                 "type": _name(t, "type"),
                 "entered": _date_entered(t),
-                "closed": t.get("closedDate") if t.get("closedFlag") else None,
-            }) for t in tickets]
+                "closed": (t.get("closedDate") or True) if t.get("closedFlag") else None,
+            } for t in tickets]
             result = {"searched_for": [" ".join(p) for p in phrases], "match_count": len(rows)}
-            if include_project_tickets:
-                try:
-                    found = cw.search_project_tickets(phrases, company_id or None)
-                    if days:
-                        start = datetime.now(timezone.utc) - timedelta(days=days)
-                        found = [t for t in found if (d := parse_dt(_date_entered(t))) is None or d >= start]
-                    if of:
-                        found = [t for t in found if software_matches(of(t), software)]
-                    projects = [dict(summarize_project_ticket(t), company=_name(t, "company"), kind="project")
-                                for t in found]
-                    rows += [_compact(r) for r in projects]
-                    result["project_ticket_matches"] = len(projects)
-                    result["match_count"] = len(rows)
-                except Exception as exc:
-                    result["project_ticket_error"] = json.loads(_error(exc))["error"]
+            if isinstance(found, Exception):
+                result["project_ticket_error"] = json.loads(_error(found))["error"]
+            elif found is not None:
+                if days:
+                    start = datetime.now(timezone.utc) - timedelta(days=days)
+                    found = [t for t in found if (d := parse_dt(_date_entered(t))) is None or d >= start]
+                if of:
+                    found = [t for t in found if software_matches(of(t), software)]
+                rows += [dict(summarize_project_ticket(t), company=_name(t, "company"), kind="project") for t in found]
+                result["project_ticket_matches"] = len(found)
+                result["match_count"] = len(rows)
             rows.sort(key=lambda r: r.get("entered") or "", reverse=True)
             result["by_company"] = [[k, v] for k, v in
                                     Counter(r.get("company") or "(none)" for r in rows).most_common(25)]
-            result["tickets"] = rows[:max(1, min(int(max_results), 100))]
+            result["tickets"] = _table(rows[:max(1, min(int(max_results), 100))], SEARCH_COLUMNS)
             if software:
                 result["software"] = software
             if capped:
@@ -795,7 +883,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             if software:
                 matches = sorted(({"id": i, "name": names.get(i), "software": v} for i, v in lookup.items()
                                   if software_matches(v, software)), key=lambda c: c["name"] or "")
-                result.update(software=software, match_count=len(matches), matches=matches[:500])
+                result.update(software=software, match_count=len(matches),
+                              matches=_table(matches[:500], ("id", "name", "software")))
             return _dumps(result)
         except Exception as exc:
             return _error(exc)
@@ -830,7 +919,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 "by_status": top("status"),
                 "by_manager": top("manager"),
                 "by_company": top("company"),
-                "projects": projects,
+                "projects": _table(projects, PROJECT_COLUMNS),
             })
         except Exception as exc:
             return _error(exc)
@@ -842,8 +931,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
 
         Project tickets are separate from service tickets; use this for questions about project
         work, phases or tasks. Returns counts by project, phase and status, open count, budget vs
-        actual hours, and a compact list of every ticket (id, summary, project, phase, status,
-        dates, hours, resources; blank fields are left out).
+        actual hours, and a table of every ticket (id, summary, project, phase, status,
+        dates, hours, resources).
 
         Args:
             project_id: ConnectWise project id from get_projects. Give this or company_id.
@@ -872,7 +961,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                 "by_project": top("project"),
                 "by_phase": top("phase"),
                 "by_status": top("status"),
-                "tickets": rows,
+                "tickets": _table(rows, PROJECT_TICKET_COLUMNS),
             }
             if capped:
                 result["note"] = "Capped at the 1000 newest project tickets."
@@ -906,16 +995,16 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             today = eastern.now().date()
             first_day, last_day = today - timedelta(days=days_back), today + timedelta(days=days_ahead)
             closed_since = datetime.now(timezone.utc) - timedelta(days=days_back + 2) if days_back else None
-            tickets = cw.deployment_tickets(closed_since, company_id or None)
+            # Support tickets for the follow-up count are fetched alongside, from the start of the window
+            # (every past go-live is inside it), instead of after the go-lives are worked out.
+            tickets, lookup, support = _together(
+                lambda: cw.deployment_tickets(closed_since, company_id or None),
+                software_by_company if software else software_if_readable,  # only the filter needs it
+                (lambda: cw.tickets_with_times(_clamp_days(days_back + 1), company_id or None, limit=TOTALS_LIMIT))
+                if followup_days and days_back else _nothing)
             # Other work in the Deployment phase, like management training, isn't a go-live.
             tickets = [t for t in tickets
                        if not any(w in (t.get("summary") or "").lower() for w in cw.golive_exclude)]
-            lookup = None
-            try:
-                lookup = software_by_company()
-            except Exception:
-                if software:
-                    raise  # only needed for the filter; otherwise just leave software out
             of = ticket_software(lookup) if lookup else None
             if software:
                 tickets = [t for t in tickets if software_matches(of(t), software)]
@@ -972,12 +1061,9 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             if of:
                 result["by_software"] = [[k, v] for k, v in Counter(g.get("software") for g in go_lives).most_common(15)]
 
-            if followup_days:
+            if followup_days and support is not None:
                 past = [g for g in go_lives if g.get("past")]
                 if past:
-                    start = min(g["_when"] for g in past).astimezone(timezone.utc)
-                    span = (datetime.now(timezone.utc) - start).days + 1
-                    support = cw.tickets_with_times(_clamp_days(span), company_id or None, limit=TOTALS_LIMIT)
                     by_company: dict[int, list[tuple[datetime, dict]]] = {}
                     for s_ in support:
                         entered = parse_dt(_date_entered(s_))
@@ -1013,11 +1099,11 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                     if of:
                         result["followup"]["by_software"] = average(brands)
 
-            result["go_lives"] = [{k: v for k, v in g.items() if not k.startswith("_")} for g in go_lives[:150]]
+            result["go_lives"] = _table(go_lives[:150], GO_LIVE_COLUMNS)
             if len(go_lives) > 150:
                 result["note"] = f"Listing the first 150 of {len(go_lives)} go-lives; counts include all of them."
             if days_ahead and unscheduled:
-                result["deployment_not_scheduled"] = unscheduled[:50]
+                result["deployment_not_scheduled"] = _table(unscheduled[:50], GO_LIVE_COLUMNS)
                 result["deployment_not_scheduled_count"] = len(unscheduled)
             if software:
                 result["software"] = software
@@ -1043,13 +1129,15 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
             members = cw.find_members(person)
             if not members:
                 return _dumps({"error": f'No active staff member matches "{person}".'})
+            def full_name(m: dict) -> str:  # either name can be blank in ConnectWise
+                return f"{m.get('firstName') or ''} {m.get('lastName') or ''}".strip() or m.get("identifier") or ""
+
             if len(members) > 1:
-                exact = [m for m in members if _plain(f"{m.get('firstName', '')}{m.get('lastName', '')}") == _plain(person)
+                exact = [m for m in members if _plain(full_name(m)) == _plain(person)
                          or _plain(m.get("firstName") or "") == _plain(person)]
                 if len(exact) != 1:
-                    return _dumps({"matches": [{"name": f"{m.get('firstName', '')} {m.get('lastName', '')}".strip(),
-                                                "username": m.get("identifier"), "title": m.get("title")}
-                                               for m in members],
+                    return _dumps({"matches": [_compact({"name": full_name(m), "username": m.get("identifier"),
+                                                         "title": m.get("title")}) for m in members],
                                    "note": "Several people match; ask which one, or call again with the full name."})
                 members = exact
             member = members[0]
@@ -1086,9 +1174,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
                     row.update(ticket=f"#{e['objectId']}", summary=t.get("summary"), client=_name(t, "company"),
                                project=(t.get("project") or {}).get("name"))
                 by_day.setdefault(f"{local:%a} {eastern.day(local.date())}", []).append(_compact(row))
-            name = f"{member.get('firstName', '')} {member.get('lastName', '')}".strip()
             return _dumps({
-                "person": name, "title": member.get("title"),
+                "person": full_name(member), "title": member.get("title"),
                 "from": eastern.day(first), "to": eastern.day(first + timedelta(days=days - 1)),
                 "entry_count": sum(len(v) for v in by_day.values()),
                 "hours_scheduled": round(sum(float(e.get("hoursScheduled") or 0) for e in entries), 2),

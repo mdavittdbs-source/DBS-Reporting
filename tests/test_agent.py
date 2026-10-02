@@ -217,3 +217,40 @@ def test_follow_ups_dont_resend_earlier_data(monkeypatch):
     agent.respond(history, "and last week?")
     follow_up = json.dumps(sent[-1][1]["messages"])
     assert "Printer offline" not in follow_up and "3 tickets, mostly printers." in follow_up
+
+
+def test_lookups_asked_for_together_run_at_the_same_time(monkeypatch):
+    import threading
+    import time
+
+    from dbs_reporting import tools as tools_mod
+
+    monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+    monkeypatch.delenv("CLAUDE_MODELS", raising=False)
+    calls, lock = [], threading.Lock()
+    real = tools_mod.build_tools
+
+    def slow_tools(cw, charts_allowed=True):
+        built = real(cw, charts_allowed)
+        for t in built:
+            if t.name == "find_company":
+                def call(args, run=t.call):
+                    with lock:
+                        calls.append(args["name"])
+                    time.sleep(0.3)
+                    return run(args)
+                t.call = call
+        return built
+
+    monkeypatch.setattr("dbs_reporting.agent.build_tools", slow_tools)
+    turns = [([{"type": "tool_use", "id": f"tu_{i}", "name": "find_company", "input": {"name": n}}
+               for i, n in enumerate(["Joe's Pizza", "Taco Town", "Big Owl's"])], "tool_use"),
+             ([{"type": "text", "text": "Done."}], "end_turn")]
+    sent = []
+    agent = ReportingAgent(make_client([]), fake_claude(sent, turns))
+    started = time.monotonic()
+    answer, history = agent.respond([], "compare three clients")
+    assert time.monotonic() - started < 0.75  # three 0.3 s lookups side by side, not 0.9 s in a row
+    assert sorted(calls) == ["Big Owl's", "Joe's Pizza", "Taco Town"]  # each ran once
+    results = history[2]["content"]
+    assert [r["tool_use_id"] for r in results] == ["tu_0", "tu_1", "tu_2"]  # results stay in Claude's order

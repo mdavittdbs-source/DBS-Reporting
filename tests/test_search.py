@@ -5,6 +5,7 @@ import httpx
 from test_tools import SETTINGS, tools_by_name
 
 from dbs_reporting.connectwise import ConnectWiseClient, summary_matches
+from tables import rows
 
 
 def ago(days: int) -> str:
@@ -42,7 +43,7 @@ def test_search_across_all_clients_with_project_tickets():
     requests = []
     result = json.loads(tools_by_name(client(requests))["search_tickets"].call({"text": "handheld, hand held"}))
     assert result["match_count"] == 3 and result["project_ticket_matches"] == 1
-    assert [t["id"] for t in result["tickets"]] == [104900, 5001, 104780]  # newest first
+    assert [t["id"] for t in rows(result["tickets"])] == [104900, 5001, 104780]  # newest first
     assert {c for c, _ in result["by_company"]} == {"Dock Bar", "Big Owl's", "Taco Town"}
     service = requests[0].url.params["conditions"]
     assert "company/id" not in service and "dateEntered" not in service  # every client, any time

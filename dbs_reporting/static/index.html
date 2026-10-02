@@ -498,7 +498,7 @@
   let isAdmin = false;
   let firstName = "";  // for the greeting on the start screen
   let ticketUrl = "";  // opens a ticket in ConnectWise; {id} is replaced with the number
-  let busy = false;
+  let busy = false;  // an answer is on its way in the chat on screen
   let view = 0;  // changes whenever another chat is shown, so a finishing answer can't land in the wrong one
 
   const EXAMPLES = [
@@ -547,6 +547,32 @@
     }
     tagTicketNumbers(el);
     alignNumberColumns(el);
+  }
+
+  // While an answer streams in, finished blocks (paragraphs, lists, tables) are drawn once and only the
+  // block still being written is redrawn. Redrawing a long answer from scratch each frame took 15 ms or
+  // more a time, which made the page stutter on slower PCs.
+  function streamDrawer(el) {
+    let done = 0;   // characters drawn for good
+    let tail = [];  // what the block still being written is drawn as
+    const draw = (md) => { const box = document.createElement("div"); renderMarkdown(box, md); return [...box.childNodes]; };
+    return (shown) => {
+      const text = shown.replace(/\r\n?/g, "\n");
+      for (const node of tail) node.remove();
+      const rest = text.slice(done);
+      const blocks = marked.lexer(rest);
+      if (blocks.reduce((n, b) => n + b.raw.length, 0) !== rest.length) {
+        // Something that can't be split safely (link definitions, say): draw it all.
+        el.replaceChildren(); done = 0; tail = draw(text); el.append(...tail);
+        return;
+      }
+      let last = blocks.length - 1;  // the block being written; trailing blank lines don't count
+      while (last > 0 && blocks[last].type === "space") last--;
+      const finished = blocks.slice(0, last).reduce((n, b) => n + b.raw.length, 0);
+      if (finished) { el.append(...draw(rest.slice(0, finished))); done += finished; }
+      tail = draw(rest.slice(finished));
+      el.append(...tail);
+    };
   }
 
   // Right-align columns that hold numbers (counts, hours, %, $, ticket numbers); text stays left.
@@ -1375,6 +1401,10 @@
   // Empty the conversation view, freeing its charts.
   function clearMessages() {
     view++;
+    // An answer still on its way in the chat being left keeps going in the background (it's saved and a
+    // note says where), so questions can be asked here meanwhile.
+    busy = false;
+    updateSend();
     for (const entry of liveCharts) entry.chart?.destroy();
     liveCharts.length = 0;
     messages.innerHTML = "";
@@ -1442,20 +1472,25 @@
     const thinking = addThinking();
     const askedAt = Date.now();
     let streamed = null;   // the answer element while text is arriving
+    let drawStreamed = null;
     let text = "";         // everything received so far
     let shownLen = 0;      // how much of it is on screen
     let frame = 0;
     let drained = null;
+    let restUntil = 0;     // after a slow redraw, the next waits a little so the page stays responsive
     // Text arrives in bursts. Show it at a steady pace instead, a few words each frame, going faster
     // the further behind it is so it never lags much.
-    const render = () => {
+    const render = (now) => {
       frame = 0;
       if (!streamed) return;
-      if (shownLen < text.length) {
+      if (shownLen < text.length && !(now < restUntil)) {
         const next = shownLen + Math.max(3, Math.ceil((text.length - shownLen) / 12));
         const wordEnd = text.slice(next).search(/\s/);
         shownLen = wordEnd < 0 ? text.length : next + wordEnd;
-        renderMarkdown(streamed, text.slice(0, shownLen));
+        const began = performance.now();
+        drawStreamed(text.slice(0, shownLen));
+        const took = performance.now() - began;
+        restUntil = took > 8 ? began + took * 3 : 0;  // a big table still being written: redraw less often
       }
       if (shownLen < text.length) frame = requestAnimationFrame(render);
       else if (drained) drained();
@@ -1501,6 +1536,7 @@
             wrap.appendChild(byline(modelSelect.value));
             streamed = document.createElement("div");
             streamed.className = "answer streaming";
+            drawStreamed = streamDrawer(streamed);
             wrap.appendChild(streamed);
             messages.insertBefore(wrap, thinking.el);
             thinking.el.hidden = true;
@@ -1546,9 +1582,11 @@
       thinking.el.appendChild(document.createElement("br"));
       thinking.el.appendChild(retry);
     } finally {
-      busy = false;
-      updateSend();
-      q.focus();
+      if (shown()) {
+        busy = false;
+        updateSend();
+        q.focus();
+      }
     }
   }
 
@@ -1598,13 +1636,12 @@
 
 
   (async () => {
-    const me = await api("/api/me");
+    const [me, models] = await Promise.all([api("/api/me"), api("/api/models")]);
     $("me").textContent = me.display_name;
     isAdmin = me.is_admin;
     if (isAdmin) {
       $("feedback-link").hidden = false;
-      api("/api/feedback").then((f) => {
-        const recent = f.items.filter((i) => i.rating < 0 && Date.now() - Date.parse(i.updated_at) < 7 * 86400000).length;
+      api("/api/feedback/recent").then(({ down_this_week: recent }) => {
         if (recent) {
           const label = `Feedback from users: ${recent} thumbs down this week`;
           $("feedback-link").title = label;
@@ -1615,7 +1652,7 @@
     firstName = me.display_name.trim().split(/\s+/)[0] || "";
     ticketUrl = me.ticket_url || "";
     $("avatar").textContent = me.display_name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-    modelInfo = await api("/api/models");
+    modelInfo = models;
     for (const m of modelInfo.models) modelSelect.add(new Option(m.label, m.id));
     fitToScreen();
     narrowQuery.addEventListener("change", fitToScreen);

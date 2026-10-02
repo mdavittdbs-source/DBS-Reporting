@@ -6,6 +6,7 @@ import httpx
 from test_tools import SETTINGS, tools_by_name
 
 from dbs_reporting.connectwise import ConnectWiseClient
+from tables import rows
 
 
 def field(value, caption="Software"):
@@ -47,7 +48,7 @@ def test_clients_by_software_and_spelling_variants():
     tools = tools_by_name(client(requests))
     result = json.loads(tools["get_clients_by_software"].call({"software": "skytab"}))
     assert result["clients"] == 4 and result["with_software_set"] == 3
-    assert [m["name"] for m in result["matches"]] == ["Big Owl's", "Taco Town"]  # "Sky Tab" counts too
+    assert [m["name"] for m in rows(result["matches"])] == ["Big Owl's", "Taco Town"]  # "Sky Tab" counts too
     assert company_calls(requests)[0].url.params["fields"] == "id,name,customFields"
     # The company list is reused, not fetched again for each question.
     tools["get_clients_by_software"].call({})
@@ -66,11 +67,11 @@ def test_ticket_totals_by_and_for_software():
 def test_open_tickets_and_search_filter_by_software():
     tools = tools_by_name(client([]))
     opened = json.loads(tools["get_open_tickets"].call({"software": "shift4"}))
-    assert [t["id"] for t in opened["oldest"]] == [11]
+    assert [t["id"] for t in rows(opened["oldest"])] == [11]
     everyone = json.loads(tools["get_open_tickets"].call({}))
     assert dict(map(tuple, everyone["by_software"]))["(software not set)"] == 1
     found = json.loads(tools["search_tickets"].call({"text": "handheld", "software": "Sky Tab"}))
-    assert [t["id"] for t in found["tickets"]] == [10, 12]  # the fake returns every ticket; filter keeps SkyTab
+    assert [t["id"] for t in rows(found["tickets"])] == [10, 12]  # the fake returns every ticket; filter keeps SkyTab
 
 
 def test_missing_field_is_explained_and_optional_breakdown_skipped():
