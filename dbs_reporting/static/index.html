@@ -102,13 +102,18 @@
   .theme-switch .t-tab { transition: color var(--tabs-dur) var(--tabs-ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .theme-switch .t-tabs-pill { height: 26px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
   .theme-switch svg { width: 15px; height: 15px; }
-  .admin-link { margin: 0 10px; padding: 10px 6px 0; font-size: 12.5px; color: var(--muted); text-decoration: none;
-                display: flex; align-items: center; justify-content: space-between; }
-  .admin-link[hidden] { display: none; }
-  .admin-link:hover { color: var(--text); }
-  .admin-link span { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--danger);
-                     font-variant-numeric: tabular-nums; }
-  .admin-link span svg { width: 12px; height: 12px; fill: none; transform: scaleY(-1); }
+  /* Admins: Feedback from users, an icon beside Sign out; the dot means thumbs down this week. */
+  .icon-link { position: relative; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center;
+               color: var(--muted); flex-shrink: 0; transition: transform var(--duration-quick) var(--ease-smooth-out); }
+  .icon-link[hidden] { display: none; }
+  .icon-link:hover { color: var(--text); background: var(--hover); }
+  .icon-link:active { transform: scale(.96); }
+  .icon-link:focus-visible { outline: none; box-shadow: var(--ring); }
+  .icon-link::after { content: ""; position: absolute; inset: -4px; }
+  .icon-link svg { width: 16px; height: 16px; }
+  .icon-link .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%;
+                    background: var(--danger); box-shadow: 0 0 0 2px var(--panel); }
+  .icon-link .dot[hidden] { display: none; }
   .me { margin: 0 10px; padding: 12px 6px 14px; display: flex; align-items: center; gap: 10px; }
   .avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--pill); color: var(--text);
             box-shadow: inset 0 0 0 1px var(--hair); display: grid; place-items: center; font-size: 11.5px;
@@ -435,10 +440,13 @@
         </button>
       </div>
     </div>
-    <a class="admin-link" id="feedback-link" href="/feedback" hidden>Feedback from users<span id="feedback-count"></span></a>
     <div class="me">
       <span class="avatar" id="avatar" aria-hidden="true"></span>
       <span id="me"></span>
+      <a class="icon-link" id="feedback-link" href="/feedback" hidden aria-label="Feedback from users" title="Feedback from users">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 6.5h6M5 8.8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="dot" id="feedback-dot" hidden></span>
+      </a>
       <button id="logout" type="button">Sign out</button>
     </div>
   </aside>
@@ -1597,7 +1605,12 @@
       $("feedback-link").hidden = false;
       api("/api/feedback").then((f) => {
         const recent = f.items.filter((i) => i.rating < 0 && Date.now() - Date.parse(i.updated_at) < 7 * 86400000).length;
-        if (recent) $("feedback-count").innerHTML = THUMB + `${recent} this week`;
+        if (recent) {
+          $("feedback-dot").hidden = false;
+          const label = `Feedback from users: ${recent} thumbs down this week`;
+          $("feedback-link").title = label;
+          $("feedback-link").setAttribute("aria-label", label);
+        }
       }).catch(() => {});
     }
     firstName = me.display_name.trim().split(/\s+/)[0] || "";
