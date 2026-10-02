@@ -43,9 +43,11 @@ class ConnectWiseSettings:
     codebase: str = "v4_6_release"
     # The company custom field that says which POS software a client uses
     software_field: str = "Software"
-    # The project phase whose scheduled day is a site's go-live
-    golive_phase: str = "Deployment"
-    # Deployment-phase tickets that aren't go-lives (comma-separated words in the ticket summary)
+    # Go-lives are project tickets with these names (comma-separated; every word must be in the summary)
+    golive_tickets: str = "installation, live support"
+    # ...in this status, meaning someone is booked on them. Open project tickets haven't been picked up yet.
+    golive_status: str = "Scheduled"
+    # Matching tickets that aren't go-lives, by words in the ticket summary (comma-separated)
     golive_exclude: str = "training"
 
     @classmethod
@@ -58,7 +60,8 @@ class ConnectWiseSettings:
             client_id=_required("CW_CLIENT_ID"),
             codebase=os.environ.get("CW_CODEBASE", "v4_6_release").strip() or "v4_6_release",
             software_field=os.environ.get("CW_SOFTWARE_FIELD", "Software").strip().rstrip(":") or "Software",
-            golive_phase=os.environ.get("CW_GOLIVE_PHASE", "Deployment").strip() or "Deployment",
+            golive_tickets=os.environ.get("CW_GOLIVE_TICKETS", "").strip() or "installation, live support",
+            golive_status=os.environ.get("CW_GOLIVE_STATUS", "").strip() or "Scheduled",
             golive_exclude=os.environ.get("CW_GOLIVE_EXCLUDE", "training").strip(),
         )
 

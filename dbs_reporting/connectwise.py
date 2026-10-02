@@ -130,7 +130,8 @@ class ConnectWiseClient:
         # full records instead of failing first every time.
         self._rejected_fields: set[str] = set()
         self.software_field = settings.software_field
-        self.golive_phase = settings.golive_phase
+        self.golive_names = [p.split() for p in settings.golive_tickets.split(",") if p.split()]
+        self.golive_status = settings.golive_status
         self.golive_exclude = [w.strip().lower() for w in settings.golive_exclude.split(",") if w.strip()]
         self._company_fields: tuple[float, list[dict]] | None = None
         self._company_fields_lock = threading.Lock()
@@ -323,27 +324,27 @@ class ConnectWiseClient:
             conditions += f" and company/id={int(company_id)}"
         return self._fetch("/project/tickets", conditions, limit, PROJECT_TICKET_FIELDS)
 
-    def deployment_tickets(self, closed_since: datetime | None = None, company_id: int | None = None,
-                           limit: int = 5000) -> list[dict]:
-        """Project tickets whose phase is the go-live phase ("Deployment" unless CW_GOLIVE_PHASE says otherwise):
-        open ones, plus ones closed since `closed_since`. If this server won't filter on the phase
-        name, project tickets are fetched and filtered here instead."""
-        conditions = []
-        if closed_since:
-            conditions.append(f"(closedFlag=false or closedDate>={cw_date(closed_since)})")
-        else:
-            conditions.append("closedFlag=false")
-        if company_id:
-            conditions.append(f"company/id={int(company_id)}")
-        phase = f"phase/name like {quote('%' + self.golive_phase + '%')}"
+    def golive_tickets(self, closed_since: datetime | None = None, company_id: int | None = None,
+                       limit: int = 5000) -> list[dict]:
+        """Installation and live support project tickets (CW_GOLIVE_TICKETS) that are open in the Scheduled
+        status (CW_GOLIVE_STATUS), plus ones closed since `closed_since`. Project tickets have no "in
+        progress": an open one in any other status (e.g. Open) hasn't been picked up yet. If this server
+        won't filter on the status name, the status is checked here instead."""
+        names = summary_matches(self.golive_names)
+        company = [f"company/id={int(company_id)}"] if company_id else []
+        closed = f" or closedDate>={cw_date(closed_since)}" if closed_since else ""
+        status = f"status/name like {quote('%' + self.golive_status + '%')}"
         try:
-            return self._fetch("/project/tickets", " and ".join([phase] + conditions), limit, PROJECT_TICKET_FIELDS)
+            return self._fetch("/project/tickets", " and ".join([names, f"((closedFlag=false and {status}){closed})"]
+                                                                + company), limit, PROJECT_TICKET_FIELDS)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 400:
                 raise
-        wanted = self.golive_phase.lower()
-        return [t for t in self._fetch("/project/tickets", " and ".join(conditions), 20000, PROJECT_TICKET_FIELDS)
-                if wanted in ((t.get("phase") or {}).get("name") or "").lower()][:limit]
+        wanted = self.golive_status.lower()
+        found = self._fetch("/project/tickets", " and ".join([names, f"(closedFlag=false{closed})"] + company),
+                            20000, PROJECT_TICKET_FIELDS)
+        return [t for t in found if t.get("closedFlag")
+                or wanted in ((t.get("status") or {}).get("name") or "").lower()][:limit]
 
     def schedule_entries(self, ticket_ids: list[int]) -> list[dict]:
         """Everyone scheduled on these tickets, in batches of 100 ids, a few batches at a time."""

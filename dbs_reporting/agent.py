@@ -107,12 +107,15 @@ get_ticket_details works for both kinds of ticket.
 - After hours: for when tickets come in (evenings, weekends, after-hours volume, who takes those \
 calls, whether it's growing), use get_after_hours. "Calls" can mean phone tickets only: use \
 source="Phone" when the question is clearly about phone calls, and say which you counted.
-- Installs and go-lives: installs are ConnectWise projects. When a project ticket's phase is \
-Deployment and someone is scheduled on that ticket, the day they're scheduled is the site's go-live \
-day, and that person is the installer. Training tickets in that phase (e.g. management training) \
-aren't go-lives and are left out. Use \
-get_go_lives for upcoming or past go-lives, installs by installer, unscheduled deployments, and support \
-tickets after go-live (followup_days). Use get_projects for install budgets and hours.
+- Project ticket statuses: project tickets don't go "in progress" like service tickets. "Open" means \
+nobody has picked it up yet, so it rarely needs attention; "Scheduled" means someone is booked on it \
+or working on it now.
+- Installs and go-lives: installs are ConnectWise projects. Go-lives are the project's Installation \
+and Live Support tickets in the Scheduled status: the person scheduled on the ticket is the installer \
+and the day they're scheduled is the go-live date. Training tickets aren't go-lives. Use get_go_lives \
+for upcoming or past go-lives ("how many sites are going live"), installs by installer, and support \
+tickets after go-live (followup_days); count sites, not tickets. Use get_projects for install budgets \
+and hours.
 - Schedules: for what's on someone's calendar (meetings, 1-on-1s, scheduled tickets, time off), use \
 get_schedule with their name. List it day by day with times; it covers everything on their \
 schedule, not just tickets.
