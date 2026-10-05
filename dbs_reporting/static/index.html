@@ -124,8 +124,6 @@
   #me-button:hover, #me-button[aria-expanded="true"] { background: var(--hover); }
   #me-button:active { transform: scale(.98); }
   #me-button .who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
-  #me-sub { font-family: var(--mono); font-size: 11px; color: var(--faint);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Settings mark on the right: it balances the row and says the row opens a menu. */
   #me-button .gear { width: 28px; height: 28px; flex-shrink: 0; display: grid; place-items: center; border-radius: 8px;
                      color: var(--faint); box-shadow: inset 0 0 0 1px var(--hair);
@@ -523,7 +521,7 @@
     <div class="me">
       <button id="me-button" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="me-menu" title="Settings">
         <span class="avatar" id="avatar" aria-hidden="true"></span>
-        <span class="who"><span id="me"></span><span id="me-sub"></span></span>
+        <span class="who"><span id="me"></span></span>
         <span class="gear" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="4.5" r="1.5" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="11.5" r="1.5" stroke="currentColor" stroke-width="1.5"/></svg></span>
       </button>
       <div class="popover t-dropdown" id="me-menu" data-origin="bottom-left" hidden>
@@ -1950,7 +1948,6 @@
   (async () => {
     const [me, models] = await Promise.all([api("/api/me"), api("/api/models")]);
     $("me").textContent = me.display_name;
-    $("me-sub").textContent = me.username + (me.is_admin ? " · admin" : "");
     isAdmin = me.is_admin;
     if (isAdmin) {
       $("feedback-link").hidden = false;
