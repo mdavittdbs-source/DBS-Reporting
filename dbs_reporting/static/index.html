@@ -334,6 +334,11 @@
   .done-item .tick { background: var(--tag-ink); box-shadow: none; margin-top: 0; }
   .done-item .tick svg { opacity: 1; transform: none; filter: none; }
   .done-item .tick:focus-visible { box-shadow: var(--ring); }
+  /* It's the way back from a tick, so it reacts like a button: a deeper fill and a softer check on hover. */
+  .done-item .tick:hover { background: color-mix(in srgb, var(--tag-ink) 80%, var(--text));
+                          box-shadow: 0 0 0 4px color-mix(in srgb, var(--tag-ink) 18%, transparent); }
+  .done-item .tick svg { transition: opacity .2s var(--ease); }
+  .done-item .tick:hover svg { opacity: .85; }
   .todo-removed { margin: 22px 8px 8px; box-shadow: 0 -1px 0 var(--hair); }
   .todo-removed[hidden] { display: none; }
   .removed-toggle { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 6px;
