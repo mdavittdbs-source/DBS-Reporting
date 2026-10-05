@@ -323,6 +323,9 @@
   .todo-item.arriving { animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
   .todo-item.finishing { opacity: 0; transform: translateX(24px);
                          transition: opacity 260ms var(--ease-smooth-out), transform 260ms var(--ease-smooth-out); }
+  @media (prefers-reduced-motion: reduce) {
+    .todo-item.finishing { transform: none; transition: opacity 260ms ease-out; }
+  }
   .todo-done { margin: 22px 8px 0; box-shadow: 0 -1px 0 var(--hair); }
   .todo-done[hidden] { display: none; }
   .todo-done + .todo-removed { margin-top: 0; }
@@ -2077,6 +2080,7 @@
         if (!isDone(id) || !row.isConnected) return;  // unticked again in the meantime
         const next = row.nextElementSibling?.querySelector(".tick") || row.closest(".todo-group").querySelector(".todo-add");
         const hadFocus = row.contains(document.activeElement);
+        row.classList.remove("arriving");  // a finished entrance animation would hold it in place
         row.classList.add("finishing");
         setTimeout(() => {
           if (!isDone(id) || !row.isConnected) { row.classList.remove("finishing"); return; }
@@ -2084,9 +2088,10 @@
           refreshTodo();
           drawDone();
           if (hadFocus) next?.focus({ preventScroll: true });
-        }, reducedMotion() ? 0 : 260);
+        }, 260);
       };
-      setTimeout(leave, reducedMotion() ? 0 : FINISH_PAUSE);
+      // Reduced motion still shows the check first, then fades out in place (see .finishing) instead of sliding.
+      setTimeout(leave, FINISH_PAUSE);
     } else if (!done && !row) {
       const item = todoById(id);
       if (item) placeRow(item);
@@ -2528,6 +2533,9 @@
   }
 
   todoTab.onclick = showTodo;
+  // Entrance animations are one-off: clear them once played, or their final frame keeps overriding the row's
+  // later transitions (sliding away when ticked, fading when removed).
+  todoBox.addEventListener("animationend", (e) => { if (e.target.classList?.contains("arriving")) e.target.classList.remove("arriving"); });
   addEventListener("hashchange", () => { if (location.hash === "#todo") showTodo(); else if (inTodo()) newChat(); });
 
   // Phones get a shorter hint and short model names, so neither gets cut off.
