@@ -290,9 +290,9 @@
   @media (hover: none) { .todo-item .grip, .todo-actions { opacity: 1; } }
   .mine-tag { font-size: 11.5px; font-weight: 500; padding: 1px 8px; border-radius: 999px; background: var(--tag-bg); color: var(--tag-ink); }
   .todo-group.empty h3 { margin-bottom: 2px; }
-  .todo-none { display: none; margin: 0 14px; padding: 6px 0; font-size: 13px; color: var(--faint); }
+  .todo-none { display: none; margin: 0 14px 0 64px; padding: 6px 0; font-size: 13px; color: var(--faint); }
   .todo-group.empty .todo-none { display: block; }
-  .todo-add { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 2px; padding: 9px 14px; border: 0;
+  .todo-add { display: flex; align-items: center; gap: 18px; width: 100%; margin-top: 2px; padding: 9px 14px 9px 32px; border: 0;
               border-radius: 12px; background: none; color: var(--faint); font-size: 13.5px; text-align: left;
               transition: background .2s var(--ease), color .2s var(--ease); }
   .todo-add svg { width: 14px; height: 14px; }
@@ -319,34 +319,38 @@
   .todo-item.leaving { opacity: 0; transform: translateY(4px);
                        transition: opacity var(--duration-quick) var(--ease-smooth-out), transform var(--duration-quick) var(--ease-smooth-out); }
   .todo-item.arriving { animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
-  .todo-hint { margin: -12px 0 22px; font-size: 13px; color: var(--faint); text-wrap: pretty; }
+  .todo-hint { flex-basis: 100%; margin: -4px 0 0; font-size: 13px; color: var(--faint); text-wrap: pretty; }
   .link-btn { border: 0; padding: 0; background: none; color: var(--tag-ink); font: inherit; font-weight: 500;
               text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
               text-underline-offset: 3px; }
   .link-btn:hover { text-decoration-color: currentColor; }
-  .todo-removed { margin: 4px 0 8px; }
+  .todo-removed { margin: 22px 8px 8px; box-shadow: 0 -1px 0 var(--hair); }
   .todo-removed[hidden] { display: none; }
-  .removed-toggle { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px 8px 14px;
-                    border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 13.5px; font-weight: 500;
-                    transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .removed-toggle { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 6px;
+                    padding: 10px 14px; border: 0; border-radius: 12px; background: none; color: var(--muted);
+                    font-size: 13.5px; font-weight: 500; text-align: left;
+                    transition: background .2s var(--ease), color .2s var(--ease); }
   .removed-toggle:hover { background: var(--hover); color: var(--text); }
-  .removed-toggle:active { transform: scale(.96); }
-  .removed-toggle::after { content: ""; position: absolute; inset: -3px 0; }
+  .removed-toggle .label { flex: 0 0 auto; }
   .removed-toggle .n { font-size: 11.5px; font-variant-numeric: tabular-nums; min-width: 20px; padding: 1px 7px;
                        border-radius: 999px; background: var(--pill); text-align: center; }
-  .removed-toggle .chev { width: 14px; height: 14px; transition: transform var(--duration-fast) var(--ease-smooth-out); }
-  .removed-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
-  .removed-list { margin-top: 6px; padding: 6px 8px; border-radius: 20px; box-shadow: inset 0 0 0 1px var(--hair);
-                  animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
-  .removed-note { margin: 8px 14px 6px; font-size: 13px; color: var(--faint); text-wrap: pretty; }
-  .removed-item { display: flex; align-items: center; gap: 14px; padding: 10px 6px 10px 14px; border-radius: 14px; }
+  .removed-toggle svg { width: 14px; height: 14px; margin-left: auto; color: var(--faint); }
+  .removed-toggle:hover svg { color: var(--text); }
+  .removed-list { padding: 0 0 4px; animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
+  .removed-note { margin: 2px 14px 6px; font-size: 13px; color: var(--faint); text-wrap: pretty; }
+  .removed-item { display: flex; align-items: center; gap: 14px; padding: 12px 6px 12px 14px; }
   .removed-item + .removed-item { box-shadow: 0 -1px 0 var(--hair); }
   .removed-item .what { min-width: 0; flex: 1; }
   .removed-item .title { color: var(--muted); font-weight: 500; line-height: 1.4; text-wrap: pretty; }
   .removed-item .tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 5px;
                         font-size: 12.5px; color: var(--faint); }
-  .put-back { flex-shrink: 0; position: relative; box-shadow: inset 0 0 0 1px var(--hair); }
-  .put-back::after { content: ""; position: absolute; inset: -3px 0; }
+  .put-back { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px;
+              border: 0; border-radius: 10px; background: none; color: var(--muted); font-size: 13px; font-weight: 500;
+              transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .put-back svg { width: 14px; height: 14px; }
+  .put-back:hover { background: var(--pill); color: var(--text); }
+  .put-back:active { transform: scale(.96); }
+  .put-back::after { content: ""; position: absolute; inset: -6px 0; }
   .todo-empty { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 6vh; }
   .todo-note { padding: 16px 20px; border-radius: 18px; background: var(--danger-soft); color: var(--danger);
                margin-bottom: 18px; }
@@ -1820,7 +1824,8 @@
   const REFRESH = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const TICK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const GRIP = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="6" cy="3.5" r="1.2"/><circle cx="10" cy="3.5" r="1.2"/><circle cx="6" cy="8" r="1.2"/><circle cx="10" cy="8" r="1.2"/><circle cx="6" cy="12.5" r="1.2"/><circle cx="10" cy="12.5" r="1.2"/></svg>';
-  const CHEVRON = '<svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const MINUS = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  const RESTORE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4.5 3.5 7 6 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 7h6a3 3 0 0 1 0 6H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const PLUS = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const EDIT = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 3 13 5.5 6 12.5H3.5V10L10.5 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
   const REMOVE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
@@ -1910,7 +1915,7 @@
       see.type = "button";
       see.onclick = () => { removedOpen = true; drawRemoved(); todoBox.querySelector(".todo-removed").scrollIntoView({ behavior: "smooth", block: "start" }); };
       hint.append(see);
-      head.append(hint);
+      bar.append(hint);
     }
     if (problem) head.append(make("p", "todo-note", problem));
     todoBox.append(head);
@@ -2067,14 +2072,14 @@
     const toggle = make("button", "removed-toggle");
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", String(removedOpen));
-    toggle.innerHTML = CHEVRON;
-    toggle.prepend(make("span", null, "Removed"), make("span", "n", String(removed.length)));
+    toggle.innerHTML = removedOpen ? MINUS : PLUS;
+    toggle.prepend(make("span", "label", "Removed"), make("span", "n", String(removed.length)));
     toggle.onclick = () => { removedOpen = !removedOpen; drawRemoved(); box.querySelector(".removed-toggle").focus(); };
     box.append(toggle);
     if (!removedOpen) return;
     const panel = make("div", "removed-list");
-    panel.append(make("p", "removed-note", "Tickets you removed stay off new lists for 30 days, unless they're updated " +
-      "in ConnectWise. Put one back to add it to your list again."));
+    panel.append(make("p", "removed-note", "Kept for 30 days. Tickets here stay off new lists unless they're updated " +
+      "in ConnectWise."));
     for (const item of removed) {
       const row = make("div", "removed-item");
       const what = make("div", "what");
@@ -2089,8 +2094,10 @@
       if (item.mine) tags.append(make("span", "mine-tag", "Added by you"));
       tags.append(make("span", null, `Was in ${groupName(item.priority)} · removed ${eastern(item.removed_at)}`));
       what.append(tags);
-      const back = make("button", "ghost-btn put-back", "Put back");
+      const back = make("button", "put-back");
       back.type = "button";
+      back.innerHTML = RESTORE;
+      back.append("Put back");
       back.setAttribute("aria-label", `Put back: ${item.title}`);
       back.onclick = () => putBack(item);
       row.append(what, back);
