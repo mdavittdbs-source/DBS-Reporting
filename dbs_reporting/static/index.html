@@ -95,8 +95,7 @@
   .popover .row button { text-align: center; }
   .empty-list { color: var(--faint); font-size: 13px; padding: 10px 12px; line-height: 1.5; }
 
-  .appearance { padding: 4px 4px 4px 10px; display: flex; align-items: center;
-                justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--muted); }
+  .appearance { padding: 4px; display: flex; justify-content: center; }
   /* The highlight slides between the three choices (tabs sliding). */
   .theme-switch { position: relative; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pill);
                   box-shadow: inset 0 0 0 1px var(--hair); }
@@ -133,7 +132,7 @@
             box-shadow: inset 0 0 0 1px var(--hair); display: grid; place-items: center; font-size: 11.5px;
             font-weight: 600; flex-shrink: 0; }
   #me { min-width: 0; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #logout { display: block; width: 100%; margin-top: 2px; text-align: left; background: none; border: 0; color: var(--muted);
+  #logout { display: block; width: 100%; margin-top: 2px; text-align: center; background: none; border: 0; color: var(--muted);
             font-size: 12.5px; padding: 9px 10px; border-radius: 11px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
   #logout:hover { color: var(--text); background: var(--hover); }
 
@@ -519,8 +518,7 @@
       </button>
       <div class="popover t-dropdown" id="me-menu" data-origin="bottom-left" hidden>
         <div class="appearance">
-          <span id="theme-label">Theme</span>
-          <div class="theme-switch" role="radiogroup" aria-labelledby="theme-label">
+          <div class="theme-switch" role="radiogroup" aria-label="Theme">
             <span class="t-tabs-pill" aria-hidden="true"></span>
             <button type="button" class="t-tab" role="radio" data-choice="light" aria-label="Light" title="Light">
               <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
