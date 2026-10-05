@@ -95,14 +95,14 @@
   .popover .row button { text-align: center; }
   .empty-list { color: var(--faint); font-size: 13px; padding: 10px 12px; line-height: 1.5; }
 
-  .appearance { padding: 4px; display: flex; justify-content: center; }
-  /* The highlight slides between the three choices (tabs sliding). */
-  .theme-switch { position: relative; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pill);
-                  box-shadow: inset 0 0 0 1px var(--hair); }
-  .theme-switch button { position: relative; width: 36px; height: 26px; border: 0; border-radius: 999px; background: none;
+  .appearance { padding: 0; }
+  /* The highlight slides between the three choices (tabs sliding). Full width, square-ish corners. */
+  .theme-switch { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px;
+                  border-radius: 9px; background: var(--pill); box-shadow: inset 0 0 0 1px var(--hair); }
+  .theme-switch button { position: relative; height: 30px; border: 0; border-radius: 6px; background: none;
                          display: grid; place-items: center; }
   .theme-switch .t-tab { transition: color var(--tabs-dur) var(--tabs-ease), transform var(--duration-quick) var(--ease-smooth-out); }
-  .theme-switch .t-tabs-pill { height: 26px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+  .theme-switch .t-tabs-pill { height: 30px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 0 0 1px var(--hair); }
   .theme-switch svg { width: 15px; height: 15px; }
   /* Admins: Feedback from users, an icon at the right of the David name. Hovering shows this week's thumbs down. */
   .icon-link { position: relative; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center;
@@ -119,7 +119,7 @@
   .icon-link svg { width: 16px; height: 16px; }
   .me { position: relative; margin: 0 10px; padding: 10px 0 12px; display: flex; align-items: center; gap: 6px; }
   #me-button { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 8px 4px 6px; border: 0;
-               border-radius: 12px; background: none; color: var(--text); text-align: left;
+               border-radius: 10px; background: none; color: var(--text); text-align: left;
                transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   #me-button:hover, #me-button[aria-expanded="true"] { background: var(--hover); }
   #me-button:active { transform: scale(.96); }
@@ -127,13 +127,17 @@
                      transition: transform var(--duration-fast) var(--ease-smooth-out); }
   #me-button[aria-expanded="true"] .chev { transform: rotate(180deg); }
   /* The settings menu opens upward from your name. */
-  #me-menu { left: 0; right: 0; top: auto; bottom: calc(100% - 4px); min-width: 0; }
+  #me-menu { left: 0; right: 0; top: auto; bottom: calc(100% + 2px); min-width: 0; padding: 6px; border-radius: 13px;
+             border-color: var(--glass-ring); box-shadow: 0 12px 32px -16px rgba(15, 23, 42, .16); }
+  #me-menu .rule { height: 1px; margin: 6px 2px; background: var(--hair); }
   .avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--pill); color: var(--text);
             box-shadow: inset 0 0 0 1px var(--hair); display: grid; place-items: center; font-size: 11.5px;
             font-weight: 600; flex-shrink: 0; }
   #me { min-width: 0; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #logout { display: block; width: 100%; margin-top: 2px; text-align: center; background: none; border: 0; color: var(--muted);
-            font-size: 12.5px; padding: 9px 10px; border-radius: 11px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
+  #logout { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 34px; margin: 0;
+            background: none; border: 0; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 500;
+            transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  #logout svg { width: 14px; height: 14px; }
   #logout:hover { color: var(--text); background: var(--hover); }
 
   /* ---------- Main ---------- */
@@ -531,7 +535,11 @@
             </button>
           </div>
         </div>
-        <button id="logout" type="button">Sign out</button>
+        <div class="rule" aria-hidden="true"></div>
+        <button id="logout" type="button">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.5 13.5H4a1.5 1.5 0 0 1-1.5-1.5V4A1.5 1.5 0 0 1 4 2.5h2.5M10.5 11l3-3-3-3M13.5 8H6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Sign out
+        </button>
       </div>
     </div>
   </aside>
