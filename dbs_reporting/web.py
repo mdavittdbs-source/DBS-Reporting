@@ -384,6 +384,20 @@ def arrange_todo(body: TodoItems, user: dict = Depends(current_user)) -> dict:
     return {"items": saved}
 
 
+class TodoDelete(BaseModel):
+    ids: list[str] | None = Field(default=None, max_length=100)  # None: everything in Removed
+    undo: bool = False
+
+
+@app.post("/api/todo/removed/delete")
+def delete_removed(body: TodoDelete, user: dict = Depends(current_user)) -> dict:
+    """Delete items from Removed for good (or undo that). Deleted tickets still stay off new lists."""
+    removed = store.delete_removed(user["id"], body.ids, body.undo)
+    if removed is None:
+        raise HTTPException(404, "Make a list first.")
+    return {"removed": removed}
+
+
 @app.get("/todo")
 def todo_page():
     return RedirectResponse("/#todo")

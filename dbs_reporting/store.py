@@ -397,7 +397,7 @@ class Store:
             return None
         data = json.loads(row["data"])
         data["items"], done = _with_ids(data.get("items", []), json.loads(row["done"]))
-        removed = _removed(data, row["created_at"])
+        removed = [item for item in _removed(data, row["created_at"]) if not item.get("deleted")]
         data.pop("removed", None), data.pop("dismissed", None)
         return {"data": data, "done": done, "removed": removed, "model": row["model"],
                 "usage": json.loads(row["usage"]) if row["usage"] else None, "created_at": row["created_at"]}
@@ -441,7 +441,7 @@ class Store:
                                   "when": None, "mine": True})
                 elif item["id"] in davids:
                     saved.append({k: v for k, v in {**davids[item["id"]], "priority": item["priority"]}.items()
-                                  if k != "removed_at"})
+                                  if k not in ("removed_at", "deleted")})
                 else:
                     continue  # not one of David's, and not marked as theirs: ignore it
                 seen.add(item["id"])
@@ -452,6 +452,22 @@ class Store:
             db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
                        (json.dumps(data), json.dumps([i for i in ticked if i in seen]), user_id))
             return saved
+
+    def delete_removed(self, user_id: int, ids: list[str] | None, undo: bool = False) -> list[dict] | None:
+        """Delete items from Removed (all of them when `ids` is None), or bring them back with undo=True.
+        Deleted tickets still stay off new lists until they change or REMOVED_DAYS pass; they just aren't
+        listed. Returns what Removed now shows, or None if there's no list."""
+        with self._db() as db:
+            row = db.execute("SELECT data, created_at FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+            if row is None:
+                return None
+            data = json.loads(row["data"])
+            removed = _removed(data, row["created_at"])
+            pick = set(ids) if ids is not None else {item["id"] for item in removed}
+            data["removed"] = [{**item, "deleted": not undo} if item["id"] in pick else item for item in removed]
+            data.pop("dismissed", None)
+            db.execute("UPDATE todo_lists SET data = ? WHERE user_id = ?", (json.dumps(data), user_id))
+            return [item for item in data["removed"] if not item.get("deleted")]
 
     # --- App state ---------------------------------------------------------
 
