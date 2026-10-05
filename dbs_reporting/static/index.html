@@ -519,10 +519,6 @@
         <span class="who"><span id="me"></span></span>
         <svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 6.5 8 3.5l3 3M5 9.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <button id="todo-tab" type="button" class="nav-tab">
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="label">To Do</span>
-      </button>
       <div class="popover t-dropdown" id="me-menu" data-origin="bottom-left" hidden>
         <div class="appearance">
           <div class="theme-switch" role="radiogroup" aria-label="Theme">
@@ -544,6 +540,10 @@
           Sign out
         </button>
       </div>
+      <button id="todo-tab" type="button" class="nav-tab">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="label">To Do</span>
+      </button>
     </div>
   </aside>
   <div class="backdrop" id="backdrop"></div>
@@ -1427,6 +1427,7 @@
   function chatMenu(li, menuButton, c) {
     const wasOpen = menuButton.getAttribute("aria-expanded") === "true";
     closePopovers();
+    closeMeMenu();
     if (wasOpen) return;
     menuButton.setAttribute("aria-expanded", "true");
     const pop = document.createElement("div");
@@ -1799,6 +1800,7 @@
       const inGroup = items.map((item, i) => [item, i]).filter(([item]) => item.priority === key);
       if (!inGroup.length) continue;
       const card = make("section", `shell todo-group ${key}`);
+      card.dataset.key = key;
       card.style.animationDelay = `${n++ * 60}ms`;
       const core = make("div", "core");
       const h3 = make("h3"); h3.append(make("span", "eyebrow", label));
@@ -1815,6 +1817,7 @@
   function todoItem(item, index) {
     const done = todoState.done.includes(index);
     const row = make("div", "todo-item" + (done ? " done" : ""));
+    row.dataset.i = index;
     const tick = make("button", "tick");
     tick.type = "button";
     tick.innerHTML = TICK;
@@ -1837,15 +1840,37 @@
     return row;
   }
 
+  // A tick updates the list in place: the row, the counts and the bar. Redrawing would replay every
+  // card's entrance, jump the scroll and drop keyboard focus.
+  function showTodoDone(index) {
+    const items = todoState.list.items || [];
+    const done = todoState.done.includes(index);
+    const row = todoBox.querySelector(`.todo-item[data-i="${index}"]`);
+    if (row) {
+      row.classList.toggle("done", done);
+      row.querySelector(".tick").setAttribute("aria-pressed", String(done));
+    }
+    const doneCount = items.filter((_, i) => todoState.done.includes(i)).length;
+    const meta = todoBox.querySelector(".todo-bar .meta");
+    if (meta) meta.textContent = `Made ${eastern(todoState.created_at)} · ${doneCount} of ${items.length} done`;
+    const fill = todoBox.querySelector(".progress i");
+    if (fill) fill.style.width = items.length ? `${(100 * doneCount) / items.length}%` : "0";
+    const group = todoBox.querySelector(`.todo-group[data-key="${items[index]?.priority}"] h3 .n`);
+    if (group) {
+      const left = items.filter((item, i) => item.priority === items[index].priority && !todoState.done.includes(i)).length;
+      group.textContent = left ? `${left} to do` : "All done";
+    }
+  }
+
   async function setTodoDone(index, done) {
     const before = [...todoState.done];
     todoState.done = done ? [...new Set([...before, index])] : before.filter((i) => i !== index);
-    drawTodo();
+    showTodoDone(index);
     try {
       await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: index, done }) });
     } catch (err) {
       todoState.done = before;
-      drawTodo();
+      showTodoDone(index);
       toast("Couldn't save that: " + err.message);
     }
   }
@@ -1921,6 +1946,7 @@
   function openMeMenu() {
     closePopovers();
     meMenu.hidden = false;
+    meMenu.inert = false;
     meMenu.classList.remove("is-closing");
     showThemeChoice(false);  // the pill can only be measured once the menu is showing
     void meMenu.offsetWidth;
@@ -1931,13 +1957,18 @@
     if (!meMenu.classList.contains("is-open")) return;
     const closeMs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
     meMenu.classList.replace("is-open", "is-closing");
+    meMenu.inert = true;  // nothing in it can take focus while it fades out
     meButton.setAttribute("aria-expanded", "false");
     setTimeout(() => { if (!meMenu.classList.contains("is-open")) { meMenu.hidden = true; meMenu.classList.remove("is-closing"); } }, closeMs);
   }
-  meButton.onclick = (e) => { e.stopPropagation(); meMenu.classList.contains("is-open") ? closeMeMenu() : openMeMenu(); };
+  meButton.onclick = (e) => { e.stopPropagation(); closePopovers(); meMenu.classList.contains("is-open") ? closeMeMenu() : openMeMenu(); };
   meMenu.onclick = (e) => e.stopPropagation();
   document.addEventListener("click", () => { closePopovers(); closeMeMenu(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closePopovers(); closeMeMenu(); closeDrawer(); } });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (meMenu.contains(document.activeElement)) meButton.focus();
+    closePopovers(); closeMeMenu(); closeDrawer();
+  });
   $("logout").onclick = async () => {
     await api("/api/logout", { method: "POST" }).catch(() => {});
     location.href = "/login";
