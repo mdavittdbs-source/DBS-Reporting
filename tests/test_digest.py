@@ -20,38 +20,45 @@ def store(tmp_path):
 
 def at(day: int, hour: int, minute: int = 0) -> datetime:
     """An Eastern time on a weekday of the week of Monday 10/05/2026 (0 = Monday)."""
-    utc = datetime(2026, 10, 5 + day, hour + 4, minute, tzinfo=timezone.utc)  # EDT
+    utc = datetime(2026, 10, 5, hour + 4, minute, tzinfo=timezone.utc) + timedelta(days=day)  # EDT
     return eastern.to_eastern(utc)
 
 
 def test_digest_content(store):
     data = digest.gather(golive_client([]), store)
     subject, page, text = digest.render(data, URL, today=at(0, 8).date())
-    assert subject == "David weekly digest: week of 10/05/2026"
-    assert "Go-lives in the next 7 days" in page and "Big Owl&#x27;s" in page and "Ana, Sam" in page
+    assert subject == "David weekly digest: week of 09/28/2026"  # sent Monday 10/05, about last week
+    assert "Week of 09/28/2026" in page and "Go-lives coming up (10/05–10/11)" in page
+    assert "Big Owl&#x27;s" in page and "Ana, Sam" in page
     assert 'href="https://cw.example.com/ticket?recid=501"' in page  # ticket numbers open in ConnectWise
     assert "Marked Scheduled, but nobody is on the calendar" in page and "Burger Barn" in page
-    assert "Last 7 days" in page and "Oldest open tickets" in page
+    assert "Last week, 09/28–10/04" in page and "Oldest open tickets" in page
     assert "Big Owl's" in text  # a plain-text copy for mail apps that don't show HTML
 
 
 def test_a_section_that_fails_says_so(store):
     data = {"go_lives": {"error": "ConnectWise returned HTTP 503"}, "week": {"ticket_count": 3, "open_count": 1,
-            "groups": []}, "two_weeks": {"ticket_count": 5}, "after_hours": {"error": "x"},
+            "prior_count": 2, "groups": []},
             "open": {"open_count": 0, "oldest": {"columns": [], "rows": []}}, "feedback": []}
     _, page, _ = digest.render(data, "")
     assert "Couldn't load this: ConnectWise returned HTTP 503" in page
-    assert "+50% vs the 7 days before (2)" in page
+    assert "+50% vs the week before (2)" in page
 
 
 def test_thumbs_down_notes_are_included(store, monkeypatch):
+    today = eastern.now().date()
+    last_wed = datetime.combine(today - timedelta(days=today.weekday() + 5), datetime.min.time(),
+                                tzinfo=timezone.utc) + timedelta(hours=16)
+    stamp = lambda dt: dt.isoformat(timespec="seconds")
     monkeypatch.setattr(store, "list_feedback", lambda: [
-        {"rating": -1, "updated_at": datetime.now(timezone.utc).isoformat(), "display_name": "Bob",
+        {"rating": -1, "updated_at": stamp(last_wed), "display_name": "Bob",
          "question": "Printer issues?", "comment": "Missed two tickets"},
-        {"rating": 1, "updated_at": datetime.now(timezone.utc).isoformat(), "display_name": "Ann",
-         "question": "Fine", "comment": ""}])
+        {"rating": -1, "updated_at": stamp(last_wed - timedelta(days=7)), "display_name": "Cal",
+         "question": "Two weeks ago", "comment": ""},
+        {"rating": 1, "updated_at": stamp(last_wed), "display_name": "Ann", "question": "Fine", "comment": ""}])
     _, page, _ = digest.render(digest.gather(golive_client([]), store), URL)
-    assert "Missed two tickets" in page and "1 in the last 7 days" in page and "Fine" not in page
+    assert "Missed two tickets" in page and "1 last week" in page
+    assert "Fine" not in page and "Two weeks ago" not in page
 
 
 def test_due_from_monday_morning_once_a_week(store):
@@ -157,3 +164,30 @@ def test_logo_is_inside_the_email(store, monkeypatch, tmp_path):
     logo = [p for p in msg.walk() if p.get_content_type() == "image/png"]
     assert len(logo) == 1 and logo[0]["Content-ID"] == "<david-logo>"
     assert logo[0].get_payload(decode=True)[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_last_week_is_monday_to_sunday():
+    import httpx
+    from test_tools import SETTINGS
+    from dbs_reporting.connectwise import ConnectWiseClient
+
+    today = at(0, 9).date()  # Monday 10/05/2026
+
+    def et(day, hour, minute=0):  # Eastern time `day` days from Monday 10/05 (EDT: UTC-4)
+        return (datetime(2026, 10, 5, hour, minute, tzinfo=timezone.utc) + timedelta(days=day, hours=4)
+                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    tickets = [
+        {"id": 1, "company": {"name": "Taco Town"}, "closedFlag": False, "_info": {"dateEntered": et(-7, 0, 30)}},  # Mon 12:30 AM
+        {"id": 2, "company": {"name": "Taco Town"}, "closedFlag": True, "_info": {"dateEntered": et(-5, 10)}},      # Wed office hours
+        {"id": 3, "company": {"name": "Dock Bar"}, "closedFlag": True, "_info": {"dateEntered": et(-1, 23, 30)}},   # Sun 11:30 PM
+        {"id": 4, "company": {"name": "Dock Bar"}, "closedFlag": False, "_info": {"dateEntered": et(0, 8)}},        # this Monday: no
+        {"id": 5, "company": {"name": "Dock Bar"}, "closedFlag": True, "_info": {"dateEntered": et(-8, 12)}},       # week before
+        {"id": 6, "company": {"name": "Dock Bar"}, "closedFlag": True, "_info": {"dateEntered": et(-14, 12)}},      # week before
+    ]
+    cw = ConnectWiseClient(SETTINGS, transport=httpx.MockTransport(lambda r: httpx.Response(200, json=tickets)))
+    week = digest.last_week(cw, today)
+    assert (week["start"], week["end"]) == (at(-7, 9).date(), at(-1, 9).date())
+    assert (week["ticket_count"], week["open_count"], week["prior_count"]) == (3, 1, 2)
+    assert (week["evening"], week["weekend"], week["after_hours"]) == (1, 1, 2)  # Mon 12:30 AM; Sunday night
+    assert week["groups"] == [{"name": "Taco Town", "tickets": 2, "open": 1}, {"name": "Dock Bar", "tickets": 1, "open": 0}]
