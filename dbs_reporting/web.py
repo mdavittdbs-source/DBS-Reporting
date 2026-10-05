@@ -304,8 +304,8 @@ _todo_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
 def _todo_view(user: dict, saved: dict | None) -> dict:
     if saved is None:
         return {"list": None}
-    listed = {k: v for k, v in saved["data"].items() if k not in ("removed", "dismissed")}  # server-side only
-    view = {"list": listed, "done": saved["done"], "created_at": saved["created_at"], "model": saved["model"]}
+    view = {"list": saved["data"], "done": saved["done"], "removed": saved["removed"], "created_at": saved["created_at"],
+            "model": saved["model"]}
     if user["is_admin"]:
         view["usage"] = saved["usage"]
     return view

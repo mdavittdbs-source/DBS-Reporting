@@ -260,16 +260,26 @@ def test_a_removed_item_without_a_ticket_stays_off():
     assert [i["title"] for i in data["items"]] == ["Fix Taco Town's kitchen printer"]
 
 
+def _honest_make(seen):
+    """Like todo.make: leaves out the tickets it's told were removed."""
+    def make(cw_, client, model, user, dismissed=None):
+        seen.append(dismissed)
+        gone = {d["ticket"] for d in dismissed or []}
+        items = [dict(i) for i in REPLY["items"] if i["ticket"] not in gone]
+        return {"member": "Bob B", "username": "bbee", "summary": REPLY["summary"], "items": items, "counts": {},
+                "left_out": len(gone), "usage": None}
+    return make
+
+
 def test_removals_follow_you_to_the_next_list(web, monkeypatch):  # noqa: F811
     module, _ = web
     seen = []
-    monkeypatch.setattr(module.todo, "make", lambda cw_, client, model, user, dismissed=None: (
-        seen.append(dismissed), {"member": "Bob B", "username": "bbee", **REPLY, "counts": {}, "usage": None})[1])
+    monkeypatch.setattr(module.todo, "make", _honest_make(seen))
     bob = login(module, "bob", "password-b")
     items = bob.post("/api/todo").json()["list"]["items"]
     assert seen == [[]]
     bob.put("/api/todo/items", json={"items": [i for i in items if i["ticket"] != 1]})  # remove Taco Town (#1)
-    assert "removed" not in bob.get("/api/todo").json()["list"]  # bookkeeping stays on the server
+    assert "removed" not in bob.get("/api/todo").json()["list"]  # bookkeeping isn't mixed into the list
     bob.post("/api/todo")
     assert [(d["ticket"], d["title"]) for d in seen[1]] == [(1, "Fix Taco Town's kitchen printer")]
     bob.post("/api/todo")  # still remembered a list later
@@ -277,7 +287,59 @@ def test_removals_follow_you_to_the_next_list(web, monkeypatch):  # noqa: F811
     # Older than 30 days: forgotten
     with module.store._db() as db:
         data = json.loads(db.execute("SELECT data FROM todo_lists").fetchone()[0])
-        data["dismissed"][0]["at"] = stamp(NOW - timedelta(days=31)).replace("Z", "+00:00")
+        data["removed"][0]["removed_at"] = (NOW - timedelta(days=31)).isoformat(timespec="seconds")
         db.execute("UPDATE todo_lists SET data = ?", (json.dumps(data),))
     bob.post("/api/todo")
     assert seen[3] == []
+
+
+def test_seeing_and_putting_back_removed_items(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    seen = []
+    monkeypatch.setattr(module.todo, "make", _honest_make(seen))
+    bob = login(module, "bob", "password-b")
+    blue_fin, taco, dock = bob.post("/api/todo").json()["list"]["items"]
+    mine = {"id": "m-paper", "priority": "later", "mine": True, "title": "Order paper", "ticket": 77}
+    bob.put("/api/todo/items", json={"items": [blue_fin, taco, dock, mine]})
+    bob.put("/api/todo/items", json={"items": [blue_fin, dock]})  # remove Taco Town and my own item
+    got = bob.get("/api/todo").json()
+    removed = got["removed"]
+    assert [r["title"] for r in removed] == ["Fix Taco Town's kitchen printer", "Order paper"]
+    assert all(r["removed_at"] for r in removed) and removed[1]["mine"] and removed[1]["ticket"] == 77
+    # Put my own item back (into Now this time); it leaves Removed, and its removal time doesn't stick to it
+    back = bob.put("/api/todo/items", json={"items": [{**mine, "priority": "now"}, blue_fin, dock]}).json()["items"]
+    assert back[0]["title"] == "Order paper" and back[0]["priority"] == "now" and "removed_at" not in back[0]
+    assert [r["title"] for r in bob.get("/api/todo").json()["removed"]] == ["Fix Taco Town's kitchen printer"]
+    # A new list: Taco Town is left out and still listed under Removed, ready to put back
+    fresh = bob.post("/api/todo").json()
+    assert "Fix Taco Town's kitchen printer" not in [i["title"] for i in fresh["list"]["items"]]
+    assert [r["ticket"] for r in fresh["removed"]] == [1]
+    put_back = bob.put("/api/todo/items", json={"items": [*fresh["list"]["items"], {"id": fresh["removed"][0]["id"],
+                                                                                    "priority": "now"}]})
+    assert put_back.json()["items"][-1]["title"] == "Fix Taco Town's kitchen printer"  # David's wording
+    assert bob.get("/api/todo").json()["removed"] == []
+    bob.post("/api/todo")
+    assert seen[-1] == []  # put back, so no longer left out
+
+
+def test_a_ticket_back_on_a_new_list_leaves_removed(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    monkeypatch.setattr(module.todo, "make", lambda *a: {"member": "Bob B", **REPLY, "usage": None})  # ignores removals,
+    bob = login(module, "bob", "password-b")                                                        # as if #1 changed
+    items = bob.post("/api/todo").json()["list"]["items"]
+    bob.put("/api/todo/items", json={"items": [i for i in items if i["ticket"] != 1]})
+    assert len(bob.get("/api/todo").json()["removed"]) == 1
+    assert bob.post("/api/todo").json()["removed"] == []  # #1 is on the new list again, so it isn't "removed"
+
+
+def test_removals_saved_the_older_way_still_show(tmp_path):
+    from dbs_reporting.store import Store
+    store = Store(tmp_path / "old.db")
+    user_id = store.add_user("sam", "a-long-password", "Sam O")
+    data = {**REPLY, "dismissed": [{"ticket": 5, "title": "Swap the card reader", "at": NOW.isoformat(timespec="seconds")}]}
+    with store._db() as db:
+        db.execute("INSERT INTO todo_lists (user_id, data, done, created_at) VALUES (?, ?, '[]', ?)",
+                   (user_id, json.dumps(data), NOW.isoformat(timespec="seconds")))
+    removed = store.get_todo(user_id)["removed"]
+    assert [(r["ticket"], r["title"]) for r in removed] == [(5, "Swap the card reader")]
+    assert [d["ticket"] for d in store.todo_dismissed(user_id)] == [5]
