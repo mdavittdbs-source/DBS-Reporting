@@ -96,7 +96,8 @@ def _removed(data: dict, made_at: str) -> list[dict]:
     """Items the person removed in the last REMOVED_DAYS, newest first, each with "removed_at". Lists saved by
     an earlier version kept only {ticket, title, at} under "dismissed"; those become plain removed items."""
     stash = data.get("removed", []) + [
-        {"id": _todo_id("d"), "title": e.get("title") or f"Ticket #{e.get('ticket')}", "why": "", "priority": "later",
+        {"id": "x" + hashlib.sha1(f"{e.get('ticket')}|{e.get('title')}|{e.get('at')}".encode()).hexdigest()[:10],
+         "title": e.get("title") or f"Ticket #{e.get('ticket')}", "why": "", "priority": "later",
          "ticket": e.get("ticket"), "client": None, "when": None, "removed_at": e.get("at")}
         for e in data.get("dismissed", [])]
     cutoff = (datetime.now(timezone.utc) - timedelta(days=REMOVED_DAYS)).isoformat(timespec="seconds")
@@ -159,12 +160,16 @@ class Store:
                 db.execute("ALTER TABLE turns ADD COLUMN charts TEXT")
 
     @contextmanager
-    def _db(self):
+    def _db(self, write: bool = False):
+        """A connection, committed on success. write=True takes the write lock before the first read, so a
+        read-then-write (e.g. a tick and a list save arriving together) can't interleave and lose one."""
         db = sqlite3.connect(self.path, timeout=30)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
         try:
             with db:
+                if write:
+                    db.execute("BEGIN IMMEDIATE")
                 yield db
         finally:
             db.close()
@@ -203,7 +208,7 @@ class Store:
         display_name, password_hash and is_admin. Anyone not listed is deactivated (signed out,
         can't sign in) but their chats are kept, so adding them back restores everything.
         Usernames in `keep` (lines with a typo) are left exactly as they are."""
-        with self._db() as db:
+        with self._db(write=True) as db:
             listed = {k.lower() for k in keep}
             for u in users:
                 listed.add(u["username"].lower())
@@ -363,7 +368,7 @@ class Store:
     def save_todo(self, user_id: int, data: dict, model: str, usage: dict | None) -> None:
         """Replace this person's list with a new one from David. Items they added and haven't ticked carry over."""
         data = {**data, "items": [{**item, "id": _todo_id("d")} for item in data.get("items", [])]}
-        with self._db() as db:
+        with self._db(write=True) as db:
             old = db.execute("SELECT data, done, created_at FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
             if old is not None:
                 old_data = json.loads(old["data"])
@@ -404,7 +409,7 @@ class Store:
 
     def set_todo_done(self, user_id: int, item_id: str, done: bool) -> bool:
         """Tick or untick one item. False if there's no list or no such item."""
-        with self._db() as db:
+        with self._db(write=True) as db:
             row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
             if row is None:
                 return False
@@ -423,7 +428,7 @@ class Store:
         An item that's on the list but not in `items` stays (at the end of its group): the page that sent
         this may not have seen it yet, e.g. one added just before a reload or in another tab. Returns the
         saved items, or None if there's no list."""
-        with self._db() as db:
+        with self._db(write=True) as db:
             row = db.execute("SELECT data, done, created_at FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
             if row is None:
                 return None
@@ -462,7 +467,7 @@ class Store:
         """Delete items from Removed (all of them when `ids` is None), or bring them back with undo=True.
         Deleted tickets still stay off new lists until they change or REMOVED_DAYS pass; they just aren't
         listed. Returns what Removed now shows, or None if there's no list."""
-        with self._db() as db:
+        with self._db(write=True) as db:
             row = db.execute("SELECT data, created_at FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
             if row is None:
                 return None

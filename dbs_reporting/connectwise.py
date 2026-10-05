@@ -142,6 +142,7 @@ class ConnectWiseClient:
         self._staff: tuple[float, list[dict]] | None = None
         self._company_fields: tuple[float, list[dict]] | None = None
         self._company_fields_lock = threading.Lock()
+        self._staff_lock = threading.Lock()
 
     def close(self) -> None:
         self._http.close()
@@ -380,14 +381,15 @@ class ConnectWiseClient:
 
     def staff(self) -> list[dict]:
         """Everyone on staff: active members, minus API logins and CW_STAFF_EXCLUDE. Kept for an hour."""
-        if self._staff and time.monotonic() - self._staff[0] < COMPANY_FIELDS_TTL:
-            return self._staff[1]
-        members = self._fetch("/system/members", "inactiveFlag=false", 2000,
-                              "id,identifier,firstName,lastName,title,licenseClass", order_by="firstName asc")
-        people = [m for m in members if (m.get("licenseClass") or "").upper() != "A"  # A: API member
-                  and (m.get("identifier") or "").lower() not in self.staff_exclude]
-        self._staff = (time.monotonic(), people)
-        return people
+        with self._staff_lock:  # schedule and workload can ask at the same time; fetch it once
+            if self._staff and time.monotonic() - self._staff[0] < COMPANY_FIELDS_TTL:
+                return self._staff[1]
+            members = self._fetch("/system/members", "inactiveFlag=false", 2000,
+                                  "id,identifier,firstName,lastName,title,licenseClass", order_by="firstName asc")
+            people = [m for m in members if (m.get("licenseClass") or "").upper() != "A"  # A: API member
+                      and (m.get("identifier") or "").lower() not in self.staff_exclude]
+            self._staff = (time.monotonic(), people)
+            return people
 
     def member_open_tickets(self, identifier: str, limit: int = 300) -> tuple[list[dict], list[dict]]:
         """One person's open work: (service tickets they own or are a resource on, project tickets
