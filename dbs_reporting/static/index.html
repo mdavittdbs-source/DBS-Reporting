@@ -225,20 +225,23 @@
           -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
                   mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
   .todo-head h2 { font-size: clamp(30px, 4vw, 44px); font-weight: 600; letter-spacing: -.05em; line-height: 1.04;
-                  margin: 16px 0 10px; text-wrap: balance;
+                  margin: 16px 0 6px; text-wrap: balance;
                   background: linear-gradient(180deg, var(--text) 30%, var(--muted)); -webkit-background-clip: text;
                   background-clip: text; -webkit-text-fill-color: transparent; }
-  .todo-head p { margin: 0 0 18px; color: var(--muted); max-width: 60ch; text-wrap: pretty; }
-  .todo-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+  .todo-head p { margin: 0 0 14px; color: var(--muted); max-width: 60ch; text-wrap: pretty; }
+  .todo-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+  .todo-bar .meta { white-space: nowrap; }
   .todo-bar .meta { color: var(--faint); font-size: 13px; font-variant-numeric: tabular-nums; }
   .todo-bar .cta { border: 0; transition: transform var(--duration-quick) var(--ease-smooth-out), opacity .2s; }
   .todo-bar .cta:active { transform: scale(.96); }
   .todo-bar .cta:disabled { opacity: .5; }
-  .progress { flex-basis: 100%; height: 4px; border-radius: 999px; background: var(--pill); overflow: hidden; }
+  .progress { flex: 1 1 80px; height: 4px; border-radius: 999px; background: var(--pill); overflow: hidden; }
   .progress i { display: block; height: 100%; border-radius: inherit; background: var(--tag-ink);
                 transition: width var(--duration-slow) var(--ease-smooth-out); }
-  .todo-group { margin-bottom: 16px; animation: rise var(--duration-slow) var(--ease-smooth-out) both; }
-  .todo-group > .core { padding: 18px 8px 8px; }
+  .todo-sheet { margin-bottom: 16px; animation: rise var(--duration-slow) var(--ease-smooth-out) both; }
+  .todo-sheet > .core { padding: 2px 8px 8px; }
+  .todo-group-body { padding: 16px 0 6px; }
+  .todo-group + .todo-group > .todo-group-body { box-shadow: 0 -1px 0 var(--hair); }
   .todo-group h3 { margin: 0 14px 6px; display: flex; align-items: center; gap: 10px; }
   .todo-group h3 .n { font-size: 12px; color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
   .todo-group.now .eyebrow { color: var(--danger); background: var(--danger-soft); }
@@ -269,7 +272,7 @@
   .todo-item.done .title { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--faint); }
   .todo-item.done .why, .todo-item.done .tags { opacity: .6; }
   /* Editing: drag handle, remove/edit buttons, your own items, the add form. */
-  .quiet .todo-group { animation: none; }
+  .quiet .todo-sheet { animation: none; }
   .todo-item { position: relative; }
   .todo-item .grip { flex-shrink: 0; width: 16px; height: 24px; margin: 0 -8px 0 -8px; padding: 0; border: 0; border-radius: 6px;
                      background: none; color: var(--faint); display: grid; place-items: center; cursor: grab; touch-action: none;
@@ -288,6 +291,9 @@
   .icon-btn:active { transform: scale(.96); }
   .icon-btn::after { content: ""; position: absolute; inset: -6px -1px; }
   @media (hover: none) { .todo-item .grip, .todo-actions { opacity: 1; } }
+  .when-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+               background: var(--pill); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .when-pill svg { width: 12px; height: 12px; }
   .mine-tag { font-size: 11.5px; font-weight: 500; padding: 1px 8px; border-radius: 999px; background: var(--tag-bg); color: var(--tag-ink); }
   .todo-group.empty h3 { margin-bottom: 2px; }
   .todo-none { display: none; margin: 0 14px 0 64px; padding: 6px 0; font-size: 13px; color: var(--faint); }
@@ -298,6 +304,11 @@
   .todo-add:active { transform: scale(.96); }
   .todo-add svg { width: 14px; height: 14px; }
   .todo-add:hover { background: var(--hover); color: var(--text); }
+  /* Faint until you're in the group, so four of them don't crowd the list. */
+  .todo-group .todo-add { opacity: .45; transition: opacity .2s var(--ease), background .2s var(--ease), color .2s var(--ease),
+                                                 transform var(--duration-quick) var(--ease-smooth-out); }
+  .todo-group:hover .todo-add, .todo-group:focus-within .todo-add, .todo-group.empty .todo-add { opacity: 1; }
+  @media (hover: none) { .todo-group .todo-add { opacity: 1; } }
   .todo-add[hidden] { display: none; }
   .todo-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 6px 6px; animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
   .todo-form input { min-width: 0; padding: 8px 12px; border: 1px solid var(--glass-ring); border-radius: 10px; background: var(--core);
@@ -379,7 +390,7 @@
   #todo .usage { display: block; margin: 10px 4px 0; }
   @media (max-width: 760px) {
     #todo { padding: 18px 14px 32px; }
-    .todo-group > .core { padding: 14px 4px 4px; }
+    .todo-sheet > .core { padding: 2px 4px 4px; }
     .todo-item { padding: 11px 10px; gap: 12px; }
   }
 
@@ -1848,6 +1859,7 @@
   const REFRESH = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const TICK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const GRIP = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="6" cy="3.5" r="1.2"/><circle cx="10" cy="3.5" r="1.2"/><circle cx="6" cy="8" r="1.2"/><circle cx="10" cy="8" r="1.2"/><circle cx="6" cy="12.5" r="1.2"/><circle cx="10" cy="12.5" r="1.2"/></svg>';
+  const CLOCK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const TRASH = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const TOGGLE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="v" d="M8 3.5v9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const RESTORE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4.5 3.5 7 6 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 7h6a3 3 0 0 1 0 6H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
@@ -1888,6 +1900,14 @@
     if (inTodo()) drawTodo(null, quiet);
   }
 
+  // The 7 days a list covers, from the day it was made: "Mon 10/05 – Sun 10/11".
+  function listDates(iso) {
+    const day = (d) => d.toLocaleDateString("en-US", { weekday: "short", month: "2-digit", day: "2-digit",
+      timeZone: "America/New_York" }).replace(",", "");
+    const start = new Date(iso);
+    return `${day(start)} – ${day(new Date(start.getTime() + 6 * 864e5))}`;
+  }
+
   function eastern(iso) {
     return new Date(iso).toLocaleString("en-US", { weekday: "short", month: "2-digit", day: "2-digit",
       hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).replace(",", "") + " ET";
@@ -1924,7 +1944,7 @@
       return;
     }
     const head = make("section", "todo-head");
-    const pill = make("div"); pill.append(make("span", "eyebrow", `To Do · ${list.member}`));
+    const pill = make("div"); pill.append(make("span", "eyebrow", listDates(todoState.created_at)));
     head.append(pill, make("h2", null, firstName ? `${firstName}, here's your week` : "Your to-do list"),
                 make("p", null, list.summary));
     const bar = make("div", "todo-bar");
@@ -1934,19 +1954,21 @@
     head.append(bar);
     if (problem) head.append(make("p", "todo-note", problem));
     todoBox.append(head);
-    let n = 0;
+    // One card for the whole list; the groups are sections in it, split by hairlines.
+    const sheet = make("div", "shell todo-sheet"), sheetCore = make("div", "core");
+    sheet.append(sheetCore);
+    todoBox.append(sheet);
     for (const [key, label] of TODO_GROUPS) {
-      const card = make("section", `shell todo-group ${key}`);
+      const card = make("section", `todo-group ${key}`);
       card.dataset.key = key;
-      card.style.animationDelay = `${n++ * 60}ms`;
-      const core = make("div", "core");
+      const core = make("div", "todo-group-body");
       const h3 = make("h3"); h3.append(make("span", "eyebrow", label), make("span", "n"));
       const rows = make("div", "todo-rows");
       for (const item of list.items.filter((it) => it.priority === key && !isDone(it.id))) rows.append(todoItem(item));
       const none = make("p", "todo-none");
       core.append(h3, rows, none, addButton(key));
       card.append(core);
-      todoBox.append(card);
+      sheetCore.append(card);
     }
     todoBox.append(make("section", "todo-done"), make("section", "todo-removed"));
     drawDone();
@@ -1988,7 +2010,7 @@
       tags.append(ref);
     }
     if (item.client) tags.append(make("span", null, item.client));
-    if (item.when) tags.append(make("span", null, item.when));
+    if (item.when) tags.append(whenPill(item.when));
     if (item.mine) tags.append(make("span", "mine-tag", "Added by you"));
     if (tags.childNodes.length) what.append(tags);
     const actions = make("div", "todo-actions");
@@ -1996,6 +2018,16 @@
     actions.append(iconButton(REMOVE, `Remove: ${item.title}`, () => removeTodo(row)));
     row.append(grip, tick, what, actions);
     return row;
+  }
+
+  // "Tue 10/06/2026 8:30 AM" -> "Tue 8:30 AM": a list only covers 7 days, so the weekday is enough.
+  function whenPill(when) {
+    const pill = make("span", "when-pill");
+    pill.innerHTML = CLOCK;
+    const short = when.match(/^(\w{3}) \d{1,2}\/\d{1,2}\/\d{4} (.+)$/);
+    pill.append(short ? `${short[1]} ${short[2]}` : when);
+    pill.title = when;
+    return pill;
   }
 
   function iconButton(svg, label, onclick) {
