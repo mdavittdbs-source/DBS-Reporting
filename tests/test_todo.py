@@ -343,3 +343,31 @@ def test_removals_saved_the_older_way_still_show(tmp_path):
     removed = store.get_todo(user_id)["removed"]
     assert [(r["ticket"], r["title"]) for r in removed] == [(5, "Swap the card reader")]
     assert [d["ticket"] for d in store.todo_dismissed(user_id)] == [5]
+
+
+def test_deleting_from_removed(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    seen = []
+    monkeypatch.setattr(module.todo, "make", _honest_make(seen))
+    bob = login(module, "bob", "password-b")
+    blue_fin, taco, dock = bob.post("/api/todo").json()["list"]["items"]
+    mine = {"id": "m-paper", "priority": "later", "mine": True, "title": "Order paper"}
+    bob.put("/api/todo/items", json={"items": [blue_fin, taco, dock, mine]})
+    bob.put("/api/todo/items", json={"items": [blue_fin]})  # remove Taco, Dock and my own
+    assert len(bob.get("/api/todo").json()["removed"]) == 3
+    left = bob.post("/api/todo/removed/delete", json={"ids": [taco["id"]]}).json()["removed"]
+    assert sorted(r["title"] for r in left) == ["Follow up with Dock Bar", "Order paper"]
+    assert len(bob.get("/api/todo").json()["removed"]) == 2
+    # Undo brings it back to Removed
+    back = bob.post("/api/todo/removed/delete", json={"ids": [taco["id"]], "undo": True}).json()["removed"]
+    assert taco["title"] in [r["title"] for r in back]
+    # Delete all
+    assert bob.post("/api/todo/removed/delete", json={}).json()["removed"] == []
+    assert bob.get("/api/todo").json()["removed"] == []
+    # Deleted tickets still stay off the next list, and still aren't listed under Removed
+    fresh = bob.post("/api/todo").json()
+    assert sorted(d["ticket"] for d in seen[-1]) == [1, 2]
+    assert [i["title"] for i in fresh["list"]["items"]] == ["Prep for Blue Fin install"]
+    assert fresh["removed"] == []
+    assert bob.post("/api/todo/removed/delete", json={"ids": ["x" * 41]}).status_code == 200  # unknown id: no-op
+    assert login(module, "alice", "password-a").post("/api/todo/removed/delete", json={}).status_code == 404
