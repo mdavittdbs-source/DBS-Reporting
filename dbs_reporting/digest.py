@@ -23,6 +23,7 @@ import socket
 import ssl
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -31,7 +32,8 @@ from pathlib import Path
 
 from . import eastern
 from .store import PROJECT_ROOT, Store
-from .tools import build_tools
+from .tools import TOTALS_LIMIT, _date_entered, build_tools, eastern_window, parse_dt
+from .tools import _error as tools_error
 
 log = logging.getLogger(__name__)
 DIGEST_DIR = PROJECT_ROOT / "data" / "digests"
@@ -98,15 +100,48 @@ def _rows(table: dict | None) -> list[dict]:
     return [{**every_row, **dict(zip(table.get("columns", []), row))} for row in table.get("rows", [])]
 
 
-def gather(cw, store: Store) -> dict:
+def last_week(cw, today) -> dict:
+    """Last week's tickets, Monday to Sunday (Eastern): count, still open, after hours and the busiest
+    clients, plus the week before's count to compare. One ConnectWise query covers both weeks."""
+    week_start = today - timedelta(days=today.weekday() + 7)
+    prior_start = week_start - timedelta(days=7)
+    since_start, _ = eastern_window(prior_start, 1)
+    days = (datetime.now(timezone.utc) - since_start).days + 1
+    tickets = cw.tickets_with_times(days, limit=TOTALS_LIMIT)
+    week, prior = [], 0
+    for t in tickets:
+        entered = parse_dt(_date_entered(t))
+        if not entered:
+            continue
+        day = eastern.to_eastern(entered).date()
+        if week_start <= day < week_start + timedelta(days=7):
+            week.append((t, entered))
+        elif prior_start <= day < week_start:
+            prior += 1
+    periods = Counter(eastern.period(entered) for _, entered in week)
+    totals, still_open = Counter(), Counter()
+    for t, _ in week:
+        name = (t.get("company") or {}).get("name") or "(no company)"
+        totals[name] += 1
+        still_open[name] += 0 if t.get("closedFlag") else 1
+    after = periods["evening"] + periods["weekend"]
+    return {
+        "start": week_start, "end": week_start + timedelta(days=6),
+        "ticket_count": len(week), "open_count": sum(still_open.values()), "prior_count": prior,
+        "after_hours": after, "after_hours_pct": round(100 * after / len(week), 1) if week else 0,
+        "evening": periods["evening"], "weekend": periods["weekend"],
+        "groups": [{"name": k, "tickets": v, "open": still_open[k]} for k, v in totals.most_common(5)],
+        "capped": len(tickets) >= TOTALS_LIMIT,
+    }
+
+
+def gather(cw, store: Store, today=None) -> dict:
     """Everything the digest shows. Each section is fetched at the same time; one that fails says so
     in the digest rather than stopping it."""
+    today = today or eastern.now().date()
     tools = {t.name: t for t in build_tools(cw, charts_allowed=False)}
     calls = {
-        "go_lives": ("get_go_lives", {"days_ahead": 7}),
-        "week": ("get_ticket_totals", {"days": 7, "top": 5}),
-        "two_weeks": ("get_ticket_totals", {"days": 14, "top": 1}),
-        "after_hours": ("get_after_hours", {"days": 7, "top": 5}),
+        "go_lives": ("get_go_lives", {"days_ahead": 6}),
         "open": ("get_open_tickets", {"oldest": 10}),
     }
 
@@ -117,10 +152,19 @@ def gather(cw, store: Store) -> dict:
         except Exception as exc:  # the tools return their own errors; this is a last resort
             return key, {"error": f"{type(exc).__name__}: {exc}"}
 
-    with ThreadPoolExecutor(len(calls)) as pool:
-        data = dict(pool.map(run, calls.items()))
-    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
-    data["feedback"] = [f for f in store.list_feedback() if f["rating"] < 0 and f["updated_at"] >= since]
+    def week():
+        try:
+            return "week", last_week(cw, today)
+        except Exception as exc:
+            return "week", {"error": json.loads(tools_error(exc))["error"]}
+
+    with ThreadPoolExecutor(len(calls) + 1) as pool:
+        jobs = [pool.submit(run, item) for item in calls.items()] + [pool.submit(week)]
+        data = dict(j.result() for j in jobs)
+    # Thumbs down given last week, Monday to Sunday.
+    start, end = eastern_window(today - timedelta(days=today.weekday() + 7), 7)
+    data["feedback"] = [f for f in store.list_feedback() if f["rating"] < 0
+                        and start.isoformat(timespec="seconds") <= f["updated_at"] < end.isoformat(timespec="seconds")]
     return data
 
 
@@ -219,28 +263,26 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
     """(subject, html, plain text) for the digest. `logo_src` is the logo image's address: "cid:..."
     in the email, a data: URI in the saved copy, or None for no logo."""
     today = today or eastern.now().date()
-    monday = today - timedelta(days=today.weekday())
-    subject = f"David weekly digest: week of {eastern.day(monday)}"
+    # The digest is about last week, Monday to Sunday; go-lives look ahead from today.
+    week_start = today - timedelta(days=today.weekday() + 7)
+    week_label = f"{eastern.day(week_start)[:5]}–{eastern.day(week_start + timedelta(days=6))[:5]}"
+    ahead_label = f"{eastern.day(today)[:5]}–{eastern.day(today + timedelta(days=6))[:5]}"
+    subject = f"David weekly digest: week of {eastern.day(week_start)}"
     parts, text = [], [subject, ""]
 
     # Last week in numbers: three cards side by side
-    week, two, after = data["week"], data["two_weeks"], data["after_hours"]
+    week = data["week"]
     if _failed(week):
-        parts.append(_section("Last 7 days", _problem(_failed(week))))
+        parts.append(_section(f"Last week ({week_label})", _problem(_failed(week))))
     else:
-        count = week.get("ticket_count", 0)
+        count, before = week.get("ticket_count", 0), week.get("prior_count", 0)
         change = ""
-        if not _failed(two):
-            before = two.get("ticket_count", 0) - count
-            if before:
-                pct = round(100 * (count - before) / before)
-                change = f"{'+' if pct >= 0 else ''}{pct}% vs the 7 days before ({before})"
-        after_txt, after_detail = "–", ""
-        if not _failed(after):
-            p = after.get("by_period", {})
-            after_txt = f"{p.get('after_hours', 0)}"
-            after_detail = (f"{p.get('after_hours_pct', 0)}% · {p.get('evening', 0)} evening, "
-                            f"{p.get('weekend', 0)} weekend")
+        if before:
+            pct = round(100 * (count - before) / before)
+            change = f"{'+' if pct >= 0 else ''}{pct}% vs the week before ({before})"
+        after_txt = f"{week.get('after_hours', 0):,}"
+        after_detail = (f"{week.get('after_hours_pct', 0)}% · {week.get('evening', 0)} evening, "
+                        f"{week.get('weekend', 0)} weekend")
         parts.append(
             '<tr><td style="padding:0 0 14px"><table role="presentation" cellpadding="0" cellspacing="0" width="100%">'
             # The outer cards' edges line up with the cards below; 10px gaps between.
@@ -250,14 +292,15 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
         top = [[_esc(g["name"]), f"{g['tickets']:,}", f"{g['open']:,}"] for g in week.get("groups", [])]
         if top:
             parts.append(_section("Busiest clients", _table(["Client", "Tickets", "Open"], top, {1, 2}),
-                                  "Last 7 days"))
-        text += [f"Last 7 days: {count} tickets in{f' ({change})' if change else ''}; {after_txt} after hours."]
+                                  f"Last week, {week_label}"))
+        text += [f"Last week ({week_label}): {count} tickets in{f' ({change})' if change else ''}; "
+                 f"{after_txt} after hours."]
         text += [f"  {g['name']}: {g['tickets']}" for g in week.get("groups", [])]
 
     # Go-lives coming up
     go = data["go_lives"]
     if _failed(go):
-        parts.append(_section("Go-lives in the next 7 days", _problem(_failed(go))))
+        parts.append(_section(f"Go-lives coming up ({ahead_label})", _problem(_failed(go))))
     else:
         rows = _rows(go.get("go_lives"))
         if rows:
@@ -276,8 +319,8 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
                       + "<br>".join(f"{_ticket(w.get('ticket_id'), ticket_url)} {_esc(w.get('company'))}: "
                                     f"{_esc(w.get('ticket'))}" for w in waiting[:10]))
         sites = go.get("site_count", len(rows))
-        parts.append(_section("Go-lives in the next 7 days", inner, f"{sites} site{'s' if sites != 1 else ''}"))
-        text += ["", f"Go-lives in the next 7 days: {sites} sites"]
+        parts.append(_section(f"Go-lives coming up ({ahead_label})", inner, f"{sites} site{'s' if sites != 1 else ''}"))
+        text += ["", f"Go-lives coming up ({ahead_label}): {sites} sites"]
         text += [f"  {r.get('date')} {r.get('company')} – {', '.join(r.get('installers') or [])}" for r in rows]
 
     # Oldest open tickets
@@ -304,7 +347,7 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
             + (f'<div style="color:{MUTED};margin-top:2px">{_esc(f["comment"])}</div>' if f.get("comment") else "")
             + "</div>" for i, f in enumerate(fb))
         total = len(data["feedback"])
-        parts.append(_section("Thumbs down on David's answers", inner, f"{total} in the last 7 days"))
+        parts.append(_section("Thumbs down on David's answers", inner, f"{total} last week"))
         text += ["", f"Thumbs down on David's answers: {total}"]
         text += [f"  {f['display_name']}: {f['question']}" + (f" – {f['comment']}" if f.get("comment") else "")
                  for f in fb]
@@ -316,9 +359,9 @@ def render(data: dict, ticket_url: str, today=None, logo_src: str | None = None)
         f'<tr><td style="padding:6px 6px 24px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>{mark}'
         f'<td style="vertical-align:middle">{_pill("David · Weekly digest")}</td></tr></table>'
         f'<div style="font-size:38px;font-weight:600;letter-spacing:-.05em;line-height:1.05;color:{TEXT};'
-        f'margin:18px 0 8px">Week of {eastern.day(monday)}</div>'
-        f'<div style="font-size:15px;color:{MUTED};line-height:1.55">Go-lives, last week\'s tickets and the oldest '
-        f"open tickets, from live ConnectWise data.</div></td></tr>")
+        f'margin:18px 0 8px">Week of {eastern.day(week_start)}</div>'
+        f'<div style="font-size:15px;color:{MUTED};line-height:1.55">Last week\'s tickets ({_esc(week_label)}), '
+        f"go-lives coming up and the oldest open tickets, from live ConnectWise data.</div></td></tr>")
     footer = (f'<tr><td style="padding:10px 6px 0;color:{FAINT};font-size:12px">From live ConnectWise data on '
               f"{_esc(eastern.stamp(datetime.now(timezone.utc)))}. Times are Eastern.</td></tr>")
     page = (
