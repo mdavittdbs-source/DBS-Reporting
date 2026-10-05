@@ -564,12 +564,17 @@
            box-shadow: 0 8px 24px -12px rgba(15, 23, 42, .45); pointer-events: none; }
   #toast svg { width: 13px; height: 13px; flex-shrink: 0; }
   #toast.has-action { pointer-events: auto; padding-right: 5px; }
-  .toast-action { margin-left: 6px; border: 0; border-radius: 999px; padding: 3px 11px; font-weight: 600; font-size: 12.5px;
+  #toast .toast-label { font-weight: 600; flex-shrink: 0; }
+  #toast .toast-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .72; }
+  .toast-action { margin-left: 10px; border: 0; border-radius: 999px; padding: 3px 11px; font-weight: 600; font-size: 12.5px;
                   background: color-mix(in srgb, currentColor 16%, transparent); color: inherit;
                   transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .toast-action:hover { background: color-mix(in srgb, currentColor 26%, transparent); }
   .toast-action:active { transform: scale(.96); }
-  .toast-action { position: relative; }
+  .toast-action { position: relative; flex-shrink: 0; }
+  /* A hairline between what happened and Undo */
+  .toast-action::before { content: ""; position: absolute; left: -6px; top: 3px; bottom: 3px; width: 1px;
+                          background: color-mix(in srgb, currentColor 24%, transparent); }
   .toast-action::after { content: ""; position: absolute; inset: -8px -4px; }  /* 40px tall to click */
   .backdrop { display: none; }
 
@@ -767,15 +772,25 @@
 
   let toastTimer;
   // action: {label, run}, a button on the toast (e.g. Undo), which then stays up a little longer.
-  function toast(text, action = null) {
+  // detail: a quieter second part on the same line, e.g. the to-do's title after "Done". It's cut short
+  // with an ellipsis rather than wrapping; the whole thing is in the tooltip.
+  function toast(text, action = null, detail = "") {
     const t = $("toast");
     // A check for confirmations ("Answer copied"), nothing for problems ("Couldn't …").
-    const ok = !action && !/^(couldn|allow|that didn|error)/i.test(text);
+    const ok = !/^(couldn|allow|that didn|error)/i.test(text);
     t.innerHTML = ok ? '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" ' +
       'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' : "";
     const words = document.createElement("span");
+    words.className = detail ? "toast-label" : "";
     words.textContent = text;
     t.append(words);
+    t.title = detail ? `${text}: ${detail}` : "";
+    if (detail) {
+      const more = document.createElement("span");
+      more.className = "toast-detail";
+      more.textContent = detail;
+      t.append(more);
+    }
     if (action) {
       const b = document.createElement("button");
       b.className = "toast-action"; b.type = "button"; b.textContent = action.label;
@@ -1875,7 +1890,7 @@
     document.body.classList.add("todo-view");
     $("todo").hidden = false;
     todoTab.setAttribute("aria-current", "page");
-    chatTitle.textContent = "To Do";
+    chatTitle.textContent = "";  // the page says what it is; no title in the corner
     chatList.querySelectorAll("li.chat.active").forEach((li) => li.classList.remove("active"));
     if (location.hash !== "#todo") history.replaceState(null, "", "#todo");
     closeDrawer();
@@ -2161,7 +2176,7 @@
     todoState.done = done ? [...new Set([...before, id])] : before.filter((i) => i !== id);
     showTodoDone(id);
     const item = todoById(id);
-    if (done && item) toast(`Done: ${item.title}`, { label: "Undo", run: () => setTodoDone(id, false) });
+    if (done && item) toast("Done", { label: "Undo", run: () => setTodoDone(id, false) }, item.title);
     try {
       await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: id, done }), keepalive: true });
     } catch (err) {
@@ -2305,7 +2320,7 @@
       toast("Couldn't delete that: " + err.message);
       return;
     }
-    toast(gone.length === 1 ? `Deleted "${gone[0].title}"` : `Deleted ${gone.length} items`, { label: "Undo", run: async () => {
+    toast(gone.length === 1 ? "Deleted" : `Deleted ${gone.length} items`, { label: "Undo", run: async () => {
       try {
         const answer = await api("/api/todo/removed/delete", { method: "POST", body: JSON.stringify({ ids: goneIds, undo: true }) });
         todoState.removed = answer.removed;
@@ -2314,7 +2329,7 @@
       } catch (err) {
         toast("Couldn't undo that: " + err.message);
       }
-    } });
+    } }, gone.length === 1 ? gone[0].title : "");
   }
 
   function putBack(entry) {
@@ -2352,7 +2367,7 @@
     }, reducedMotion() ? 0 : 150);
     todoState.removed = [{ ...item, removed_at: new Date().toISOString() }, ...(todoState.removed || [])];
     drawRemoved();
-    toast(`Removed "${item.title}"`, { label: "Undo", run: () => {
+    toast("Removed", { label: "Undo", run: () => {
       todoState.removed = todoState.removed.filter((r) => r.id !== item.id);
       toRemove.delete(item.id);  // if the removal hasn't been sent yet, it never will be
       todoState.list.items.splice(Math.min(index, todoState.list.items.length), 0, item);
@@ -2360,7 +2375,7 @@
       saveTodo(true);
       if (wasDone) setTodoDone(item.id, true);
       todoBox.querySelector(`.todo-item[data-id="${item.id}"] .grip`)?.focus({ preventScroll: true });
-    } });
+    } }, item.title);
   }
 
   // ----- Add and edit your own -----
