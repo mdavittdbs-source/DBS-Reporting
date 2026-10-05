@@ -495,3 +495,15 @@ def test_sign_in_page_skips_ahead_when_signed_in(web):
     assert module.app and TestClient(module.app).get("/login").status_code == 200
     alice = login(module, "alice", "password-a")
     assert alice.get("/login", follow_redirects=False).headers["location"] == "/"
+
+
+def test_overlong_questions_are_refused_before_reaching_claude(web, monkeypatch):
+    module, _ = web
+    client = login(module, "bob", "password-b")
+    asked = []
+    monkeypatch.setattr(module.agent, "respond_stream", lambda *a, **k: asked.append(a) or iter(()))
+    for path in ("/api/chat", "/api/chat/stream"):
+        too_long = client.post(path, json={"question": "x" * (module.MAX_QUESTION + 1)})
+        assert too_long.status_code == 400 and "too long" in too_long.json()["detail"]
+        assert client.post(path, json={"question": "   "}).status_code == 400
+    assert asked == []

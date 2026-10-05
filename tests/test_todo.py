@@ -389,3 +389,47 @@ def test_a_page_that_missed_an_item_doesnt_wipe_it(web, monkeypatch):  # noqa: F
     assert bob.get("/api/todo").json()["removed"] == []
     bob.put("/api/todo/items", json={"items": stale, "remove": ["m-new"]})
     assert [r["id"] for r in bob.get("/api/todo").json()["removed"]] == ["m-new"]
+
+
+def test_a_tick_and_a_save_at_the_same_moment_both_stick(tmp_path):
+    # Both read the list, then both write it. Without the write lock taken before the read, the second
+    # write undid the first and ticks were lost (every run of this lost some).
+    import threading
+    from dbs_reporting.store import Store
+    store = Store(tmp_path / "race.db")
+    user_id = store.add_user("sam", "a-long-password", "Sam O")
+    store.save_todo(user_id, {"items": [{"title": f"Item {n}", "priority": "today", "ticket": n + 1}
+                                        for n in range(10)]}, "m", None)
+    items = store.get_todo(user_id)["data"]["items"]
+    arranged = [{"id": i["id"], "priority": i["priority"]} for i in items]
+    threads = []
+    for item in items:
+        threads.append(threading.Thread(target=store.set_todo_done, args=(user_id, item["id"], True)))
+        threads.append(threading.Thread(target=store.set_todo_items, args=(user_id, arranged)))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(store.get_todo(user_id)["done"]) == sorted(i["id"] for i in items)
+
+
+def test_older_removed_entries_keep_the_same_id(tmp_path):
+    # Entries saved in the earlier format got a new random id every time they were read, so the first
+    # Put back or Delete after upgrading couldn't find them.
+    from dbs_reporting.store import Store
+    store = Store(tmp_path / "old.db")
+    user_id = store.add_user("sam", "a-long-password", "Sam O")
+    data = {**REPLY, "dismissed": [{"ticket": 5, "title": "Swap the card reader", "at": NOW.isoformat(timespec="seconds")}]}
+    with store._db() as db:
+        db.execute("INSERT INTO todo_lists (user_id, data, done, created_at) VALUES (?, ?, '[]', ?)",
+                   (user_id, json.dumps(data), NOW.isoformat(timespec="seconds")))
+    first = store.get_todo(user_id)["removed"][0]["id"]
+    assert store.get_todo(user_id)["removed"][0]["id"] == first
+    assert store.delete_removed(user_id, [first]) == []
+
+
+def test_a_nine_digit_ticket_number_is_accepted(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    bob, items = _list(module, monkeypatch)
+    mine = {"id": "m-big", "priority": "now", "mine": True, "title": "Big ticket", "ticket": 123456789}
+    assert bob.put("/api/todo/items", json={"items": [*items, mine]}).status_code == 200

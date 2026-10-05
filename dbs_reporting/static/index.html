@@ -754,11 +754,22 @@
     return err instanceof TypeError && /fetch|network|load failed|input stream/i.test(err.message);
   }
 
+  // The server's explanation. A rejected field comes back as a list ({loc, msg}), not a sentence.
+  function errorText(data, fallback) {
+    const detail = data && data.detail;
+    if (Array.isArray(detail)) return detail.map((d) => d.msg || String(d)).join("; ") || fallback;
+    return (typeof detail === "string" && detail) || fallback;
+  }
+
   async function api(path, options = {}) {
     let res;
     try {
+      // keepalive (finish even if the page closes) only works for small bodies: browsers refuse
+      // keepalive requests over 64 KB, which would turn a big save into a "can't reach David" error.
+      const keepalive = options.keepalive && (options.body || "").length < 60000;
       res = await fetch(path, {
         ...options,
+        keepalive,
         headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       });
     } catch (err) {
@@ -766,7 +777,7 @@
     }
     if (res.status === 401) { location.href = "/login"; throw new Error("Signed out"); }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || res.statusText);
+    if (!res.ok) throw new Error(errorText(data, res.statusText));
     return data;
   }
 
@@ -1793,7 +1804,7 @@
       reached = true;
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || response.statusText);
+        throw new Error(errorText(data, response.statusText));
       }
       let result = null;
       await readEvents(response, (event) => {
@@ -2104,7 +2115,8 @@
     const body = JSON.stringify({ items, remove: [...toRemove] });
     toRemove.clear();
     if (leaving) {  // the page is going away: keepalive lets the save finish after it's gone
-      fetch("/api/todo/items", { method: "PUT", body, keepalive: true, headers: { "Content-Type": "application/json" } });
+      fetch("/api/todo/items", { method: "PUT", body, keepalive: body.length < 60000,
+                                 headers: { "Content-Type": "application/json" } }).catch(() => {});
       return Promise.resolve();
     }
     // keepalive: the save still reaches David if the page is reloaded or closed right after.

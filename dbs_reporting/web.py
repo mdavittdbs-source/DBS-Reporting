@@ -364,7 +364,7 @@ class TodoItem(BaseModel):
     mine: bool = False
     title: str = Field(default="", max_length=200)
     why: str = Field(default="", max_length=500)
-    ticket: int | None = Field(default=None, ge=1, le=99_999_999)
+    ticket: int | None = Field(default=None, ge=1, le=999_999_999)  # the page allows 9 digits
 
 
 class TodoItems(BaseModel):
@@ -455,6 +455,20 @@ class ChatResponse(BaseModel):
     answer_id: int | None = None
     charts: list[dict] = []
     usage: dict | None = None  # token usage and estimated cost; admins only
+
+
+# A question goes to Claude in full, and again with every follow-up in that chat, so an accidental paste of
+# a whole spreadsheet would cost a lot. 20,000 characters is plenty for a long email thread.
+MAX_QUESTION = 20_000
+
+
+def _check_question(request: ChatRequest) -> None:
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(400, "Question is empty")
+    if len(question) > MAX_QUESTION:
+        raise HTTPException(400, f"That question is too long ({len(question):,} characters). Keep it under "
+                                 f"{MAX_QUESTION:,}: paste just the part David needs.")
 
 
 def _resolve(user: dict, request: ChatRequest) -> tuple[str | None, str, str]:
@@ -553,8 +567,7 @@ def _answer(user: dict, request: ChatRequest) -> ChatResponse:
 @app.post("/api/chat")
 async def chat(request: ChatRequest, user: dict = Depends(current_user)) -> ChatResponse:
     """Ask a question and get the whole answer at once."""
-    if not request.question.strip():
-        raise HTTPException(400, "Question is empty")
+    _check_question(request)
     try:
         return await run_in_threadpool(_answer, user, request)
     except HTTPException:
@@ -568,8 +581,7 @@ async def chat(request: ChatRequest, user: dict = Depends(current_user)) -> Chat
 async def chat_stream(request: ChatRequest, user: dict = Depends(current_user)) -> StreamingResponse:
     """Ask a question and receive the answer as it's written: one JSON event per line
     (status / reset / text, then done, or error)."""
-    if not request.question.strip():
-        raise HTTPException(400, "Question is empty")
+    _check_question(request)
     conversation_id, title, model = await run_in_threadpool(_resolve, user, request)
     events: queue.Queue = queue.Queue()
 

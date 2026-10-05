@@ -210,6 +210,8 @@ The chat sidebar tells people their questions and answers are logged for admins.
   (one JSON event per line); `POST /api/chat` still returns the whole answer at once.
 - **Limits.** A single ticket query is capped at 1000 tickets. Claude is told when this
   happens so it can suggest a narrower date range.
+  Questions are capped at 20,000 characters (an accidental paste of a whole spreadsheet would
+  otherwise be sent to Claude with every follow-up).
 - **Adding questions.** To support a new kind of question (agreements, configurations,
   projects, etc.), add a method to `connectwise.py` and a `@beta_tool` function in `tools.py`.
   Claude picks it up automatically.

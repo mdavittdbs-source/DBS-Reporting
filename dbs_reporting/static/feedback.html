@@ -127,6 +127,7 @@
       li.append(more);
       list.append(li);
     });
+    if (shown.length > 200) list.append(el("li", "empty", `Showing the newest 200 of ${shown.length}.`));
   }
   document.querySelectorAll(".filters button").forEach((b) => b.onclick = () => {
     filter = b.dataset.filter;
