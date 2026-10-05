@@ -417,10 +417,12 @@ class Store:
                        (json.dumps(data), json.dumps(ticked), user_id))
             return True
 
-    def set_todo_items(self, user_id: int, items: list[dict]) -> list[dict] | None:
-        """Save the list as the person arranged it: their order and groups, items removed, their own items
-        added or edited. David's items keep their own wording; only their group can change. Returns the saved
-        items, or None if there's no list."""
+    def set_todo_items(self, user_id: int, items: list[dict], remove: list[str] = ()) -> list[dict] | None:
+        """Save the list as the person arranged it: their order and groups, their own items added or edited, and
+        the items in `remove` taken off. David's items keep their own wording; only their group can change.
+        An item that's on the list but not in `items` stays (at the end of its group): the page that sent
+        this may not have seen it yet, e.g. one added just before a reload or in another tab. Returns the
+        saved items, or None if there's no list."""
         with self._db() as db:
             row = db.execute("SELECT data, done, created_at FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
             if row is None:
@@ -445,6 +447,9 @@ class Store:
                 else:
                     continue  # not one of David's, and not marked as theirs: ignore it
                 seen.add(item["id"])
+            remove = set(remove) - seen
+            saved += [item for item in stored if item["id"] not in seen and item["id"] not in remove]
+            seen |= {item["id"] for item in saved}
             data["items"] = saved
             gone = [{**item, "removed_at": _now()} for item in stored if item["id"] not in seen]
             data["removed"] = (gone + [item for item in removed if item["id"] not in seen])[:REMOVED_MAX]

@@ -178,7 +178,7 @@ def test_arranging_the_list(web, monkeypatch):  # noqa: F811
     bob.post("/api/todo/done", json={"item": taco["id"], "done": True})
     mine = {"id": "m-call-joe", "priority": "now", "mine": True, "title": "  Call Joe back  ", "ticket": 4821}
     arranged = [mine, {**blue_fin, "priority": "today", "title": "Renamed by hand", "why": "edited"}, dock]
-    saved = bob.put("/api/todo/items", json={"items": arranged})
+    saved = bob.put("/api/todo/items", json={"items": arranged, "remove": [taco["id"]]})
     assert saved.status_code == 200
     got = bob.get("/api/todo").json()
     titles = [(i["title"], i["priority"]) for i in got["list"]["items"]]
@@ -204,9 +204,10 @@ def test_arranging_rejects_bad_input(web, monkeypatch):  # noqa: F811
     assert put([{"id": "bad id!", "priority": "now", "mine": True, "title": "x"}]) == 422
     assert put([{"id": "m1", "priority": "now", "mine": True, "title": "x" * 201}]) == 422
     assert put([{"id": f"m{n}", "priority": "now", "mine": True, "title": "x"} for n in range(101)]) == 422
-    # An item that's neither David's nor marked as yours is dropped, not invented
+    # An item that's neither David's nor marked as yours is dropped, not invented; ones not sent stay
     assert put([{"id": "made-up", "priority": "now", "title": "Sneaky"}, items[0]]) == 200
-    assert [i["id"] for i in bob.get("/api/todo").json()["list"]["items"]] == [items[0]["id"]]
+    assert [i["id"] for i in bob.get("/api/todo").json()["list"]["items"]] == [i["id"] for i in items]
+    assert bob.put("/api/todo/items", json={"items": [], "remove": ["y" * 41]}).status_code == 200
     alice = login(module, "alice", "password-a")
     assert alice.put("/api/todo/items", json={"items": []}).status_code == 404  # no list yet
 
@@ -278,7 +279,8 @@ def test_removals_follow_you_to_the_next_list(web, monkeypatch):  # noqa: F811
     bob = login(module, "bob", "password-b")
     items = bob.post("/api/todo").json()["list"]["items"]
     assert seen == [[]]
-    bob.put("/api/todo/items", json={"items": [i for i in items if i["ticket"] != 1]})  # remove Taco Town (#1)
+    bob.put("/api/todo/items", json={"items": [i for i in items if i["ticket"] != 1],
+                                     "remove": [i["id"] for i in items if i["ticket"] == 1]})  # remove Taco Town (#1)
     assert "removed" not in bob.get("/api/todo").json()["list"]  # bookkeeping isn't mixed into the list
     bob.post("/api/todo")
     assert [(d["ticket"], d["title"]) for d in seen[1]] == [(1, "Fix Taco Town's kitchen printer")]
@@ -301,7 +303,7 @@ def test_seeing_and_putting_back_removed_items(web, monkeypatch):  # noqa: F811
     blue_fin, taco, dock = bob.post("/api/todo").json()["list"]["items"]
     mine = {"id": "m-paper", "priority": "later", "mine": True, "title": "Order paper", "ticket": 77}
     bob.put("/api/todo/items", json={"items": [blue_fin, taco, dock, mine]})
-    bob.put("/api/todo/items", json={"items": [blue_fin, dock]})  # remove Taco Town and my own item
+    bob.put("/api/todo/items", json={"items": [blue_fin, dock], "remove": [taco["id"], mine["id"]]})  # remove Taco, mine
     got = bob.get("/api/todo").json()
     removed = got["removed"]
     assert [r["title"] for r in removed] == ["Fix Taco Town's kitchen printer", "Order paper"]
@@ -327,7 +329,8 @@ def test_a_ticket_back_on_a_new_list_leaves_removed(web, monkeypatch):  # noqa: 
     monkeypatch.setattr(module.todo, "make", lambda *a: {"member": "Bob B", **REPLY, "usage": None})  # ignores removals,
     bob = login(module, "bob", "password-b")                                                        # as if #1 changed
     items = bob.post("/api/todo").json()["list"]["items"]
-    bob.put("/api/todo/items", json={"items": [i for i in items if i["ticket"] != 1]})
+    bob.put("/api/todo/items", json={"items": [i for i in items if i["ticket"] != 1],
+                                     "remove": [i["id"] for i in items if i["ticket"] == 1]})
     assert len(bob.get("/api/todo").json()["removed"]) == 1
     assert bob.post("/api/todo").json()["removed"] == []  # #1 is on the new list again, so it isn't "removed"
 
@@ -353,7 +356,7 @@ def test_deleting_from_removed(web, monkeypatch):  # noqa: F811
     blue_fin, taco, dock = bob.post("/api/todo").json()["list"]["items"]
     mine = {"id": "m-paper", "priority": "later", "mine": True, "title": "Order paper"}
     bob.put("/api/todo/items", json={"items": [blue_fin, taco, dock, mine]})
-    bob.put("/api/todo/items", json={"items": [blue_fin]})  # remove Taco, Dock and my own
+    bob.put("/api/todo/items", json={"items": [blue_fin], "remove": [taco["id"], dock["id"], mine["id"]]})
     assert len(bob.get("/api/todo").json()["removed"]) == 3
     left = bob.post("/api/todo/removed/delete", json={"ids": [taco["id"]]}).json()["removed"]
     assert sorted(r["title"] for r in left) == ["Follow up with Dock Bar", "Order paper"]
@@ -371,3 +374,18 @@ def test_deleting_from_removed(web, monkeypatch):  # noqa: F811
     assert fresh["removed"] == []
     assert bob.post("/api/todo/removed/delete", json={"ids": ["x" * 41]}).status_code == 200  # unknown id: no-op
     assert login(module, "alice", "password-a").post("/api/todo/removed/delete", json={}).status_code == 404
+
+
+def test_a_page_that_missed_an_item_doesnt_wipe_it(web, monkeypatch):  # noqa: F811
+    # One tab (or a page reloaded mid-save) adds an item; another, still showing the older list, then saves a
+    # reorder. The item it never saw must survive; only an explicit "remove" takes an item off.
+    module, _ = web
+    bob, items = _list(module, monkeypatch)
+    new = {"id": "m-new", "priority": "today", "mine": True, "title": "Added in the other tab"}
+    bob.put("/api/todo/items", json={"items": [*items, new]})
+    stale = list(reversed(items))  # the other page's view: no "m-new"
+    saved = bob.put("/api/todo/items", json={"items": stale}).json()["items"]
+    assert [i["id"] for i in saved] == [i["id"] for i in stale] + ["m-new"]
+    assert bob.get("/api/todo").json()["removed"] == []
+    bob.put("/api/todo/items", json={"items": stale, "remove": ["m-new"]})
+    assert [r["id"] for r in bob.get("/api/todo").json()["removed"]] == ["m-new"]

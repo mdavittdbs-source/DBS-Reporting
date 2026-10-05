@@ -2016,21 +2016,39 @@
       }
     todoState.list.items = items;
   }
-  function saveTodo() {
+  // now: add, edit, remove and put back save at once; moves (a burst of arrow keys or drags) wait 300ms.
+  function saveTodo(now = false) {
     readOrder();
     refreshTodo();
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      const items = todoState.list.items.map(({ id, priority, mine, title, why, ticket }) =>
-        ({ id, priority, mine: !!mine, title, why: why || "", ticket: ticket || null }));
-      try {
-        await api("/api/todo/items", { method: "PUT", body: JSON.stringify({ items }) });
-      } catch (err) {
-        toast("Couldn't save that: " + err.message);
-        await loadTodo(true);
-      }
-    }, 300);
+    if (now) sendTodo(); else saveTimer = setTimeout(() => sendTodo(), 300);
   }
+  let saving = null;  // the save in flight, so Make a new list can wait for it
+  // Items taken off since the last save. Only these are removed: an item the server has that this page
+  // never saw (added just before a reload, or in another tab) is kept.
+  const toRemove = new Set();
+  function sendTodo(leaving = false) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    const items = todoState.list.items.map(({ id, priority, mine, title, why, ticket }) =>
+      ({ id, priority, mine: !!mine, title, why: why || "", ticket: ticket || null }));
+    const body = JSON.stringify({ items, remove: [...toRemove] });
+    toRemove.clear();
+    if (leaving) {  // the page is going away: keepalive lets the save finish after it's gone
+      fetch("/api/todo/items", { method: "PUT", body, keepalive: true, headers: { "Content-Type": "application/json" } });
+      return Promise.resolve();
+    }
+    // keepalive: the save still reaches David if the page is reloaded or closed right after.
+    saving = api("/api/todo/items", { method: "PUT", body, keepalive: true }).catch(async (err) => {
+      toast("Couldn't save that: " + err.message);
+      await loadTodo(true);
+    });
+    return saving;
+  }
+  // Anything not yet sent goes now: before a new list is made, and when the page is closed, reloaded or hidden.
+  function flushTodo() { return saveTimer ? sendTodo() : (saving || Promise.resolve()); }
+  addEventListener("pagehide", () => { if (saveTimer) sendTodo(true); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && saveTimer) sendTodo(true); });
 
   function showTodoDone(id) {
     const done = isDone(id);
@@ -2047,7 +2065,7 @@
     todoState.done = done ? [...new Set([...before, id])] : before.filter((i) => i !== id);
     showTodoDone(id);
     try {
-      await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: id, done }) });
+      await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: id, done }), keepalive: true });
     } catch (err) {
       todoState.done = before;
       showTodoDone(id);
@@ -2157,7 +2175,7 @@
     const row = todoItem(item);
     row.classList.add("arriving");
     card.querySelector(".todo-rows").append(row);
-    saveTodo();
+    saveTodo(true);
     drawRemoved();
     const next = todoBox.querySelector(".removed-item .put-back") || todoBox.querySelector(".removed-toggle");
     next?.focus({ preventScroll: true });
@@ -2174,16 +2192,18 @@
     setTimeout(() => {
       row.remove();
       todoState.done = todoState.done.filter((i) => i !== item.id);
-      saveTodo();
+      toRemove.add(item.id);
+      saveTodo(true);
       (next?.querySelector(".grip") || todoBox.querySelector(`.todo-group[data-key="${item.priority}"] .todo-add`))?.focus({ preventScroll: true });
     }, reducedMotion() ? 0 : 150);
     todoState.removed = [{ ...item, removed_at: new Date().toISOString() }, ...(todoState.removed || [])];
     drawRemoved();
     toast(`Removed "${item.title}"`, { label: "Undo", run: () => {
       todoState.removed = todoState.removed.filter((r) => r.id !== item.id);
+      toRemove.delete(item.id);  // if the removal hasn't been sent yet, it never will be
       todoState.list.items.splice(Math.min(index, todoState.list.items.length), 0, item);
       drawTodo(null, true);
-      saveTodo();
+      saveTodo(true);
       if (wasDone) setTodoDone(item.id, true);
       todoBox.querySelector(`.todo-item[data-id="${item.id}"] .grip`)?.focus({ preventScroll: true });
     } });
@@ -2223,7 +2243,7 @@
         const fresh = todoItem(item);
         row.replaceWith(fresh);
         closeTodoForm();
-        saveTodo();
+        saveTodo(true);
         fresh.querySelector(".grip").focus({ preventScroll: true });
         return;
       }
@@ -2233,7 +2253,7 @@
       const fresh = todoItem(added);
       fresh.classList.add("arriving");
       card.querySelector(".todo-rows").append(fresh);
-      saveTodo();
+      saveTodo(true);
       announce(`Added "${text}"`);
       title.value = ""; ticket.value = "";
       title.focus();  // ready for the next one
@@ -2377,6 +2397,7 @@
   async function makeTodo() {
     if (todoMaking) return;
     todoMaking = true;
+    await flushTodo();  // your latest changes are saved first, so they carry over
     todoBox.querySelectorAll(".todo-bar .cta").forEach((b) => { b.disabled = true; });
     todoBox.querySelector(".todo-note")?.remove();
     const holder = make("div");

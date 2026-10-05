@@ -369,6 +369,7 @@ class TodoItem(BaseModel):
 
 class TodoItems(BaseModel):
     items: list[TodoItem] = Field(max_length=100)
+    remove: list[str] = Field(default=[], max_length=100)  # ids taken off; anything else not listed stays
 
 
 @app.put("/api/todo/items")
@@ -378,7 +379,7 @@ def arrange_todo(body: TodoItems, user: dict = Depends(current_user)) -> dict:
         if item.mine and not item.title.strip():
             raise HTTPException(422, "Give the to-do a title.")
     items = [{**item.model_dump(), "title": item.title.strip(), "why": item.why.strip()} for item in body.items]
-    saved = store.set_todo_items(user["id"], items)
+    saved = store.set_todo_items(user["id"], items, body.remove)
     if saved is None:
         raise HTTPException(404, "Make a list first.")
     return {"items": saved}
