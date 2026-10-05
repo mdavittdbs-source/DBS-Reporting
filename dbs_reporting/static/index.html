@@ -56,6 +56,9 @@
   #new:active { transform: scale(.96); }
 
   #chats { list-style: none; margin: 0; padding: 4px 10px 12px; overflow-y: auto; flex: 1; }
+  /* Thin scrollbar that only shows while the pointer is over the chat list (or it has focus). */
+  #chats { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color .2s; }
+  #chats:hover, #chats:focus-within { scrollbar-color: color-mix(in srgb, var(--faint) 60%, transparent) transparent; }
   #chats .group { font-size: 10px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase; color: var(--faint);
                   padding: 16px 12px 6px; }
   #chats .group:first-child { padding-top: 4px; }
@@ -92,15 +95,14 @@
   .popover .row button { text-align: center; }
   .empty-list { color: var(--faint); font-size: 13px; padding: 10px 12px; line-height: 1.5; }
 
-  .appearance { border-top: 1px solid var(--hair); margin: 0 10px; padding: 12px 6px 2px; display: flex; align-items: center;
-                justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--muted); }
-  /* The highlight slides between the three choices (tabs sliding). */
-  .theme-switch { position: relative; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pill);
-                  box-shadow: inset 0 0 0 1px var(--hair); }
-  .theme-switch button { position: relative; width: 36px; height: 26px; border: 0; border-radius: 999px; background: none;
+  .appearance { padding: 0; }
+  /* The highlight slides between the three choices (tabs sliding). Full width, square-ish corners. */
+  .theme-switch { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px;
+                  border-radius: 9px; background: var(--pill); box-shadow: inset 0 0 0 1px var(--hair); }
+  .theme-switch button { position: relative; height: 30px; border: 0; border-radius: 6px; background: none;
                          display: grid; place-items: center; }
   .theme-switch .t-tab { transition: color var(--tabs-dur) var(--tabs-ease), transform var(--duration-quick) var(--ease-smooth-out); }
-  .theme-switch .t-tabs-pill { height: 26px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+  .theme-switch .t-tabs-pill { height: 30px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 0 0 1px var(--hair); }
   .theme-switch svg { width: 15px; height: 15px; }
   /* Admins: Feedback from users, an icon at the right of the David name. Hovering shows this week's thumbs down. */
   .icon-link { position: relative; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center;
@@ -115,13 +117,27 @@
   .icon-link:focus-visible { outline: none; box-shadow: var(--ring); }
   .icon-link::after { content: ""; position: absolute; inset: -4px; }
   .icon-link svg { width: 16px; height: 16px; }
-  .me { margin: 0 10px; padding: 12px 6px 14px; display: flex; align-items: center; gap: 10px; }
+  .me { position: relative; margin: 0 10px; padding: 10px 0 12px; display: flex; align-items: center; gap: 6px; }
+  #me-button { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 8px 4px 6px; border: 0;
+               border-radius: 10px; background: none; color: var(--text); text-align: left;
+               transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  #me-button:hover, #me-button[aria-expanded="true"] { background: var(--hover); }
+  #me-button:active { transform: scale(.96); }
+  #me-button .chev { width: 14px; height: 14px; flex-shrink: 0; color: var(--faint);
+                     transition: transform var(--duration-fast) var(--ease-smooth-out); }
+  #me-button[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  /* The settings menu opens upward from your name. */
+  #me-menu { left: 0; right: 0; top: auto; bottom: calc(100% + 2px); min-width: 0; padding: 6px; border-radius: 13px;
+             border-color: var(--glass-ring); box-shadow: 0 12px 32px -16px rgba(15, 23, 42, .16); }
+  #me-menu .rule { height: 1px; margin: 6px 2px; background: var(--hair); }
   .avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--pill); color: var(--text);
             box-shadow: inset 0 0 0 1px var(--hair); display: grid; place-items: center; font-size: 11.5px;
             font-weight: 600; flex-shrink: 0; }
-  #me { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #logout { position: relative; background: none; border: 0; color: var(--muted); font-size: 13px; padding: 5px 10px;
-            border-radius: 999px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
+  #me { min-width: 0; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #logout { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 34px; margin: 0;
+            background: none; border: 0; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 500;
+            transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  #logout svg { width: 14px; height: 14px; }
   #logout:hover { color: var(--text); background: var(--hover); }
 
   /* ---------- Main ---------- */
@@ -186,17 +202,13 @@
   .cta.ghost .ico { background: var(--pill); }
 
   /* To Do tab: a sidebar entry, and a view that takes the chat's place. */
-  .nav-tab { margin: 0 10px 6px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 0;
-             border-radius: 14px; background: none; color: var(--muted); font-size: 13.5px; text-align: left;
-             transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .side-foot { border-top: 1px solid var(--hair); margin: 0 10px; padding: 8px 0 0; }
+  .nav-tab { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 0; border-radius: 12px;
+             background: none; color: var(--muted); font-size: 13px; text-align: left;
+             transition: background .2s var(--ease), color .2s var(--ease); }
   .nav-tab:hover { background: var(--hover); color: var(--text); }
-  .nav-tab:active { transform: scale(.96); }
-  .nav-tab[aria-current="page"] { background: var(--pill); color: var(--text); font-weight: 500;
-                                  box-shadow: inset 0 0 0 1px var(--hair); }
-  .nav-tab svg { width: 16px; height: 16px; flex-shrink: 0; }
-  .nav-tab .label { flex: 1; }
-  .nav-tab .count { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 20px;
-                    padding: 1px 7px; border-radius: 999px; text-align: center; background: var(--tag-bg); color: var(--tag-ink); }
+  .nav-tab[aria-current="page"] { background: var(--pill); color: var(--text); font-weight: 500; }
+  .nav-tab svg { width: 15px; height: 15px; flex-shrink: 0; }
   body.todo-view #log, body.todo-view #form { display: none; }
   #todo .inner { min-height: 100%; display: flex; flex-direction: column; }
   #todo { flex: 1; overflow-y: auto; padding: 28px 24px 40px;
@@ -314,7 +326,6 @@
      neighbours), so they're easy to click; nothing looks different. */
   #chats button.menu::after { content: ""; position: absolute; inset: -3px 0; }
   .theme-switch button::after { content: ""; position: absolute; inset: -8px -1px; }
-  #logout::after { content: ""; position: absolute; inset: -5px 0; }
   .chart-tools button::after { content: ""; position: absolute; inset: -6px 0; }
   .actions button::after { content: ""; position: absolute; inset: -4px 0; }
   /* Press feedback: buttons dip to 96% while held. */
@@ -496,31 +507,40 @@
       New chat
       <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
     </button>
-    <button id="todo-tab" type="button" class="nav-tab">
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="label">To Do</span>
-      <span class="count" id="todo-count" hidden></span>
-    </button>
     <ul id="chats"></ul>
-    <div class="appearance">
-      <span id="theme-label">Theme</span>
-      <div class="theme-switch" role="radiogroup" aria-labelledby="theme-label">
-        <span class="t-tabs-pill" aria-hidden="true"></span>
-        <button type="button" class="t-tab" role="radio" data-choice="light" aria-label="Light" title="Light">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
-        <button type="button" class="t-tab" role="radio" data-choice="system" aria-label="Match system" title="Match system">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 14h4M8 11.5V14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
-        <button type="button" class="t-tab" role="radio" data-choice="dark" aria-label="Dark" title="Dark">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
+    <div class="side-foot">
+      <button id="todo-tab" type="button" class="nav-tab">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="label">To Do</span>
+      </button>
     </div>
     <div class="me">
-      <span class="avatar" id="avatar" aria-hidden="true"></span>
-      <span id="me"></span>
-      <button id="logout" type="button">Sign out</button>
+      <button id="me-button" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="me-menu" title="Settings">
+        <span class="avatar" id="avatar" aria-hidden="true"></span>
+        <span id="me"></span>
+        <svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 9.5 8 6l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="popover t-dropdown" id="me-menu" data-origin="bottom-left" hidden>
+        <div class="appearance">
+          <div class="theme-switch" role="radiogroup" aria-label="Theme">
+            <span class="t-tabs-pill" aria-hidden="true"></span>
+            <button type="button" class="t-tab" role="radio" data-choice="light" aria-label="Light" title="Light">
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <button type="button" class="t-tab" role="radio" data-choice="system" aria-label="Match system" title="Match system">
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 14h4M8 11.5V14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <button type="button" class="t-tab" role="radio" data-choice="dark" aria-label="Dark" title="Dark">
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="rule" aria-hidden="true"></div>
+        <button id="logout" type="button">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.5 13.5H4a1.5 1.5 0 0 1-1.5-1.5V4A1.5 1.5 0 0 1 4 2.5h2.5M10.5 11l3-3-3-3M13.5 8H6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Sign out
+        </button>
+      </div>
     </div>
   </aside>
   <div class="backdrop" id="backdrop"></div>
@@ -982,7 +1002,7 @@
   }
   davidTheme.onChange(() => liveCharts.forEach((e) => e.canvas.isConnected && drawChart(e)));
 
-  // Theme switch at the bottom of the sidebar: Light / Match system / Dark.
+  // Theme switch in the menu under your name: Light / Match system / Dark.
   const themeButtons = document.querySelectorAll(".theme-switch button");
   const themePill = document.querySelector(".theme-switch .t-tabs-pill");
   function showThemeChoice(animate) {
@@ -1714,16 +1734,6 @@
     todoTab.removeAttribute("aria-current");
     history.replaceState(null, "", location.pathname);
   }
-  function todoLeft() {
-    const items = todoState?.list?.items || [];
-    return items.length - items.filter((_, i) => todoState.done.includes(i)).length;
-  }
-  function updateTodoCount() {
-    const left = todoState?.list ? todoLeft() : 0;
-    $("todo-count").hidden = !left;
-    $("todo-count").textContent = left;
-    todoTab.setAttribute("aria-label", left ? `To Do, ${left} left` : "To Do");
-  }
   async function loadTodo() {
     try {
       todoState = await api("/api/todo");
@@ -1732,7 +1742,6 @@
       if (inTodo()) { todoBox.replaceChildren(make("p", "todo-note", "Couldn't load your list: " + err.message)); }
       return;
     }
-    updateTodoCount();
     if (inTodo()) drawTodo();
   }
 
@@ -1828,12 +1837,12 @@
   async function setTodoDone(index, done) {
     const before = [...todoState.done];
     todoState.done = done ? [...new Set([...before, index])] : before.filter((i) => i !== index);
-    drawTodo(); updateTodoCount();
+    drawTodo();
     try {
       await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: index, done }) });
     } catch (err) {
       todoState.done = before;
-      drawTodo(); updateTodoCount();
+      drawTodo();
       toast("Couldn't save that: " + err.message);
     }
   }
@@ -1853,7 +1862,6 @@
     let problem = null;
     try {
       todoState = await api("/api/todo", { method: "POST" });
-      updateTodoCount();
     } catch (err) {
       problem = "Couldn't make your list: " + err.message;
     } finally {
@@ -1905,8 +1913,28 @@
   $("new").onclick = newChat;
   $("toggle").onclick = openDrawer;
   $("backdrop").onclick = closeDrawer;
-  document.addEventListener("click", closePopovers);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closePopovers(); closeDrawer(); } });
+  // Your name opens a small settings menu (the theme), like the chat menus.
+  const meButton = $("me-button"), meMenu = $("me-menu");
+  function openMeMenu() {
+    closePopovers();
+    meMenu.hidden = false;
+    meMenu.classList.remove("is-closing");
+    showThemeChoice(false);  // the pill can only be measured once the menu is showing
+    void meMenu.offsetWidth;
+    meMenu.classList.add("is-open");
+    meButton.setAttribute("aria-expanded", "true");
+  }
+  function closeMeMenu() {
+    if (!meMenu.classList.contains("is-open")) return;
+    const closeMs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
+    meMenu.classList.replace("is-open", "is-closing");
+    meButton.setAttribute("aria-expanded", "false");
+    setTimeout(() => { if (!meMenu.classList.contains("is-open")) { meMenu.hidden = true; meMenu.classList.remove("is-closing"); } }, closeMs);
+  }
+  meButton.onclick = (e) => { e.stopPropagation(); meMenu.classList.contains("is-open") ? closeMeMenu() : openMeMenu(); };
+  meMenu.onclick = (e) => e.stopPropagation();
+  document.addEventListener("click", () => { closePopovers(); closeMeMenu(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closePopovers(); closeMeMenu(); closeDrawer(); } });
   $("logout").onclick = async () => {
     await api("/api/logout", { method: "POST" }).catch(() => {});
     location.href = "/login";
@@ -1936,7 +1964,6 @@
     narrowQuery.addEventListener("change", fitToScreen);
     updateSend();
     newChat();
-    await loadTodo();  // the sidebar shows how many items are left
     if (location.hash === "#todo") showTodo();
   })();
 </script>

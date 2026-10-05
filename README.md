@@ -143,11 +143,11 @@ Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic 
 
 ## To Do tab
 
-Anyone can open **To Do** in the sidebar and click **Make my list**. David pulls their open service
+Anyone can click **To Do** at the bottom of the sidebar and click **Make my list**. David pulls their open service
 tickets (as owner or resource), the project tickets they're a resource on, and their calendar for the
 next 7 days, and one Claude request puts them in order: **Now**, **Today**, **This week** and
 **Later**, each with the reason and the ticket number (which opens in ConnectWise). Ticked items are
-saved, and the sidebar shows how many are left. **Make a new list** starts over from fresh data.
+saved. **Make a new list** starts over from fresh data.
 
 Each login is matched to its ConnectWise member by display name. When that doesn't work (two people
 with the same name, or a nickname), add the person's ConnectWise username as the last column of their
