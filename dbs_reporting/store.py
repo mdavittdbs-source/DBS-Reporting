@@ -84,6 +84,37 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _todo_id(prefix: str) -> str:
+    return prefix + secrets.token_hex(5)
+
+
+DISMISS_DAYS = 30
+
+
+def _dismissed(data: dict, made_at: str) -> list[dict]:
+    """Removals kept from earlier lists plus the ones from this list, newest per ticket (or per title for items
+    without one), dropping any older than DISMISS_DAYS."""
+    entries = data.get("dismissed", []) + [
+        {"ticket": item.get("ticket"), "title": item.get("title") or "", "at": item.get("removed_at") or made_at}
+        for item in data.get("removed", [])]
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=DISMISS_DAYS)).isoformat(timespec="seconds")
+    newest: dict = {}
+    for entry in entries:
+        key = entry["ticket"] or (entry["title"] or "").strip().lower()
+        if key and entry["at"] >= cutoff and (key not in newest or entry["at"] > newest[key]["at"]):
+            newest[key] = entry
+    return sorted(newest.values(), key=lambda e: e["at"], reverse=True)[:200]
+
+
+def _with_ids(items: list[dict], done: list) -> tuple[list[dict], list[str]]:
+    """Lists saved before items had ids: number David's items d0, d1… and turn ticked positions into ids."""
+    if all("id" in item for item in items):
+        return items, [i for i in done if isinstance(i, str)]
+    items = [item if "id" in item else {**item, "id": f"d{n}"} for n, item in enumerate(items)]
+    return items, [items[i]["id"] if isinstance(i, int) and 0 <= i < len(items) else i for i in done
+                   if isinstance(i, str) or (isinstance(i, int) and 0 <= i < len(items))]
+
+
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
@@ -323,34 +354,90 @@ class Store:
         return answer
 
     # --- To-do lists ------------------------------------------------------
+    # data holds {member, username, summary, counts, items}; every item has a lasting "id" so ticks, edits and
+    # the order people drag things into survive changes to the list. Items people add themselves carry
+    # "mine": true. done is the list of ticked item ids.
 
     def save_todo(self, user_id: int, data: dict, model: str, usage: dict | None) -> None:
-        """Replace this person's to-do list with a new one (nothing ticked yet)."""
+        """Replace this person's list with a new one from David. Items they added and haven't ticked carry over."""
+        data = {**data, "items": [{**item, "id": _todo_id("d")} for item in data.get("items", [])]}
         with self._db() as db:
+            old = db.execute("SELECT data, done, created_at FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+            if old is not None:
+                old_data = json.loads(old["data"])
+                items, done = _with_ids(old_data.get("items", []), json.loads(old["done"]))
+                data["items"] += [item for item in items if item.get("mine") and item["id"] not in done]
+                data["dismissed"] = _dismissed(old_data, old["created_at"])
             db.execute("INSERT INTO todo_lists (user_id, data, done, model, usage, created_at) VALUES (?, ?, '[]', ?, ?, ?)"
                        " ON CONFLICT (user_id) DO UPDATE SET data = excluded.data, done = '[]', model = excluded.model,"
                        " usage = excluded.usage, created_at = excluded.created_at",
                        (user_id, json.dumps(data), model, json.dumps(usage) if usage else None, _now()))
 
+    def todo_dismissed(self, user_id: int) -> list[dict]:
+        """David's items this person removed in the last DISMISS_DAYS: [{ticket, title, at}], for the next list
+        to leave out (until the ticket changes)."""
+        with self._db() as db:
+            row = db.execute("SELECT data, created_at FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+        return _dismissed(json.loads(row["data"]), row["created_at"]) if row else []
+
     def get_todo(self, user_id: int) -> dict | None:
-        """{data, done (ticked item numbers), model, usage, created_at}, or None before the first list."""
+        """{data, done (ticked item ids), model, usage, created_at}, or None before the first list."""
         with self._db() as db:
             row = db.execute("SELECT * FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
         if row is None:
             return None
-        return {"data": json.loads(row["data"]), "done": json.loads(row["done"]), "model": row["model"],
+        data = json.loads(row["data"])
+        data["items"], done = _with_ids(data.get("items", []), json.loads(row["done"]))
+        return {"data": data, "done": done, "model": row["model"],
                 "usage": json.loads(row["usage"]) if row["usage"] else None, "created_at": row["created_at"]}
 
-    def set_todo_done(self, user_id: int, item: int, done: bool) -> bool:
-        """Tick or untick item number `item`. False if there's no list or no such item."""
+    def set_todo_done(self, user_id: int, item_id: str, done: bool) -> bool:
+        """Tick or untick one item. False if there's no list or no such item."""
         with self._db() as db:
             row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
-            if row is None or not 0 <= item < len(json.loads(row["data"]).get("items", [])):
+            if row is None:
                 return False
-            ticked = set(json.loads(row["done"]))
-            ticked.add(item) if done else ticked.discard(item)
-            db.execute("UPDATE todo_lists SET done = ? WHERE user_id = ?", (json.dumps(sorted(ticked)), user_id))
+            data = json.loads(row["data"])
+            data["items"], ticked = _with_ids(data.get("items", []), json.loads(row["done"]))
+            if not any(item["id"] == item_id for item in data["items"]):
+                return False
+            ticked = [i for i in ticked if i != item_id] + ([item_id] if done else [])
+            db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
+                       (json.dumps(data), json.dumps(ticked), user_id))
             return True
+
+    def set_todo_items(self, user_id: int, items: list[dict]) -> list[dict] | None:
+        """Save the list as the person arranged it: their order and groups, items removed, their own items
+        added or edited. David's items keep their own wording; only their group can change. Returns the saved
+        items, or None if there's no list."""
+        with self._db() as db:
+            row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+            if row is None:
+                return None
+            data = json.loads(row["data"])
+            stored, ticked = _with_ids(data.get("items", []), json.loads(row["done"]))
+            # David's items removed recently are kept aside, so Undo can bring one back after the removal saved.
+            removed = data.get("removed", [])
+            davids = {item["id"]: item for item in removed + stored if not item.get("mine")}
+            saved, seen = [], set()
+            for item in items:
+                if item["id"] in seen:
+                    continue
+                if item.get("mine"):
+                    saved.append({"id": item["id"], "title": item["title"], "why": item.get("why") or "",
+                                  "priority": item["priority"], "ticket": item.get("ticket"), "client": None,
+                                  "when": None, "mine": True})
+                elif item["id"] in davids:
+                    saved.append({**davids[item["id"]], "priority": item["priority"]})
+                else:
+                    continue  # not one of David's, and not marked as theirs: ignore it
+                seen.add(item["id"])
+            data["items"] = saved
+            gone = [{**item, "removed_at": _now()} for item in stored if not item.get("mine") and item["id"] not in seen]
+            data["removed"] = (gone + [item for item in removed if item["id"] not in seen])[:30]
+            db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
+                       (json.dumps(data), json.dumps([i for i in ticked if i in seen]), user_id))
+            return saved
 
     # --- App state ---------------------------------------------------------
 

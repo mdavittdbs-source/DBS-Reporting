@@ -58,7 +58,7 @@ PROJECT_FIELDS = (
 )
 PROJECT_TICKET_FIELDS = (
     "id,summary,closedFlag,closedDate,company/id,company/name,project/id,project/name,phase/name,"
-    "status/name,budgetHours,actualHours,resources,priority/name,type/name,_info/dateEntered"
+    "status/name,budgetHours,actualHours,resources,priority/name,type/name,_info/dateEntered,_info/lastUpdated"
 )
 
 # What time summaries need. Full time entries include their notes, which can be long.

@@ -12,6 +12,7 @@ import queue
 import re
 import threading
 import time
+from typing import Literal
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
@@ -23,7 +24,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import activity, digest, exports, todo
 from .charts import extract_charts
@@ -303,7 +304,8 @@ _todo_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
 def _todo_view(user: dict, saved: dict | None) -> dict:
     if saved is None:
         return {"list": None}
-    view = {"list": saved["data"], "done": saved["done"], "created_at": saved["created_at"], "model": saved["model"]}
+    listed = {k: v for k, v in saved["data"].items() if k not in ("removed", "dismissed")}  # server-side only
+    view = {"list": listed, "done": saved["done"], "created_at": saved["created_at"], "model": saved["model"]}
     if user["is_admin"]:
         view["usage"] = saved["usage"]
     return view
@@ -319,7 +321,7 @@ def _make_todo(user: dict) -> dict:
     with _todo_locks[user["id"]]:  # one at a time per person, so a double click doesn't pay twice
         started = time.monotonic()
         model = os.environ.get("TODO_MODEL", "").strip() or agent.default_model
-        data = todo.make(cw, agent.client, model, user)
+        data = todo.make(cw, agent.client, model, user, store.todo_dismissed(user["id"]))
         used = data.pop("usage")
         store.save_todo(user["id"], data, model, used)
         activity.log_todo(user, data, model, used, time.monotonic() - started)
@@ -341,8 +343,11 @@ async def make_todo(user: dict = Depends(current_user)) -> dict:
         raise HTTPException(status, message)
 
 
+TODO_ID = r"^[A-Za-z0-9_-]{1,40}$"
+
+
 class TodoTick(BaseModel):
-    item: int
+    item: str = Field(pattern=TODO_ID)
     done: bool
 
 
@@ -351,6 +356,32 @@ def tick_todo(body: TodoTick, user: dict = Depends(current_user)) -> dict:
     if not store.set_todo_done(user["id"], body.item, body.done):
         raise HTTPException(404, "That item isn't on your list any more.")
     return {"ok": True}
+
+
+class TodoItem(BaseModel):
+    id: str = Field(pattern=TODO_ID)
+    priority: Literal["now", "today", "this_week", "later"]
+    mine: bool = False
+    title: str = Field(default="", max_length=200)
+    why: str = Field(default="", max_length=500)
+    ticket: int | None = Field(default=None, ge=1, le=99_999_999)
+
+
+class TodoItems(BaseModel):
+    items: list[TodoItem] = Field(max_length=100)
+
+
+@app.put("/api/todo/items")
+def arrange_todo(body: TodoItems, user: dict = Depends(current_user)) -> dict:
+    """Save your list as you've arranged it: order, groups, items removed, and items you've added or edited."""
+    for item in body.items:
+        if item.mine and not item.title.strip():
+            raise HTTPException(422, "Give the to-do a title.")
+    items = [{**item.model_dump(), "title": item.title.strip(), "why": item.why.strip()} for item in body.items]
+    saved = store.set_todo_items(user["id"], items)
+    if saved is None:
+        raise HTTPException(404, "Make a list first.")
+    return {"items": saved}
 
 
 @app.get("/todo")
