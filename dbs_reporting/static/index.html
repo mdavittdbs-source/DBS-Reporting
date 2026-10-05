@@ -124,7 +124,11 @@
                transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   #me-button:hover, #me-button[aria-expanded="true"] { background: var(--hover); }
   #me-button:active { transform: scale(.98); }
-  #me-button .who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  #me-button .who { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  /* Up/down arrows: the name opens a menu. They stay put when a long name is cut short. */
+  #me-button .chev { width: 14px; height: 14px; flex-shrink: 0; margin-left: -4px; color: var(--faint);
+                     transition: color .2s var(--ease); }
+  #me-button:hover .chev, #me-button[aria-expanded="true"] .chev { color: var(--text); }
   /* The settings menu opens upward from your name. */
   #me-menu { left: 0; right: 0; top: auto; bottom: calc(100% + 2px); min-width: 0; padding: 6px; border-radius: 13px;
              border-color: var(--glass-ring); box-shadow: 0 12px 32px -16px rgba(15, 23, 42, .16); }
@@ -513,6 +517,7 @@
       <button id="me-button" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="me-menu" title="Theme and sign out">
         <span class="avatar" id="avatar" aria-hidden="true"></span>
         <span class="who"><span id="me"></span></span>
+        <svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 6.5 8 3.5l3 3M5 9.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <button id="todo-tab" type="button" class="nav-tab">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1942,6 +1947,7 @@
   (async () => {
     const [me, models] = await Promise.all([api("/api/me"), api("/api/models")]);
     $("me").textContent = me.display_name;
+    $("me").title = me.display_name;  // the full name when a long one is cut short
     isAdmin = me.is_admin;
     if (isAdmin) {
       $("feedback-link").hidden = false;
