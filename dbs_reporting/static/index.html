@@ -186,17 +186,17 @@
   .cta.ghost .ico { background: var(--pill); }
 
   /* To Do tab: a sidebar entry, and a view that takes the chat's place. */
-  .nav-tab { margin: 0 10px 6px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 0;
-             border-radius: 14px; background: none; color: var(--muted); font-size: 13.5px; text-align: left;
-             transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .nav-tab { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 30px;
+             padding: 0 12px 0 10px; border: 0; border-radius: 999px; background: var(--pill); color: var(--muted);
+             font-size: 12.5px; font-weight: 500; box-shadow: inset 0 0 0 1px var(--hair);
+             transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .nav-tab:hover { background: var(--hover); color: var(--text); }
   .nav-tab:active { transform: scale(.96); }
-  .nav-tab[aria-current="page"] { background: var(--pill); color: var(--text); font-weight: 500;
-                                  box-shadow: inset 0 0 0 1px var(--hair); }
-  .nav-tab svg { width: 16px; height: 16px; flex-shrink: 0; }
-  .nav-tab .label { flex: 1; }
-  .nav-tab .count { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 20px;
-                    padding: 1px 7px; border-radius: 999px; text-align: center; background: var(--tag-bg); color: var(--tag-ink); }
+  .nav-tab[aria-current="page"] { background: var(--cta); color: var(--cta-ink); box-shadow: none; }
+  .nav-tab svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .nav-tab .count { font-size: 10.5px; font-variant-numeric: tabular-nums; min-width: 17px; line-height: 17px;
+                    padding: 0 5px; border-radius: 999px; text-align: center; background: var(--tag-bg); color: var(--tag-ink); }
+  .nav-tab[aria-current="page"] .count { background: color-mix(in srgb, currentColor 20%, transparent); color: inherit; }
   body.todo-view #log, body.todo-view #form { display: none; }
   #todo .inner { min-height: 100%; display: flex; flex-direction: column; }
   #todo { flex: 1; overflow-y: auto; padding: 28px 24px 40px;
@@ -496,11 +496,6 @@
       New chat
       <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
     </button>
-    <button id="todo-tab" type="button" class="nav-tab">
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="label">To Do</span>
-      <span class="count" id="todo-count" hidden></span>
-    </button>
     <ul id="chats"></ul>
     <div class="appearance">
       <span id="theme-label">Theme</span>
@@ -530,6 +525,11 @@
         <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </button>
       <span id="chat-title"></span>
+      <button id="todo-tab" type="button" class="nav-tab">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="label">To Do</span>
+        <span class="count" id="todo-count" hidden></span>
+      </button>
     </header>
     <div id="log"><div class="inner"><div id="messages" aria-live="polite"></div></div></div>
     <section id="todo" hidden aria-label="Your to-do list"><div class="inner" id="todo-inner"></div></section>
