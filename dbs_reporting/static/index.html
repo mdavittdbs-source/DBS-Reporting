@@ -242,7 +242,7 @@
   .todo-group h3 { margin: 0 14px 6px; display: flex; align-items: center; gap: 10px; }
   .todo-group h3 .n { font-size: 12px; color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
   .todo-group.now .eyebrow { color: var(--danger); background: var(--danger-soft); }
-  .todo-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; border-radius: 16px;
+  .todo-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; border-radius: 14px;
                transition: background .2s var(--ease); }
   .todo-item + .todo-item { box-shadow: 0 -1px 0 var(--hair); }
   .todo-item:hover { background: var(--hover); }
@@ -293,8 +293,9 @@
   .todo-none { display: none; margin: 0 14px 0 64px; padding: 6px 0; font-size: 13px; color: var(--faint); }
   .todo-group.empty .todo-none { display: block; }
   .todo-add { display: flex; align-items: center; gap: 18px; width: 100%; margin-top: 2px; padding: 9px 14px 9px 32px; border: 0;
-              border-radius: 12px; background: none; color: var(--faint); font-size: 13.5px; text-align: left;
-              transition: background .2s var(--ease), color .2s var(--ease); }
+              border-radius: 14px; background: none; color: var(--faint); font-size: 13.5px; text-align: left;
+              transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .todo-add:active { transform: scale(.96); }
   .todo-add svg { width: 14px; height: 14px; }
   .todo-add:hover { background: var(--hover); color: var(--text); }
   .todo-add[hidden] { display: none; }
@@ -307,7 +308,8 @@
   .todo-form .cta { border: 0; padding: 8px 16px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
   .todo-form .cta:active { transform: scale(.96); }
   .ghost-btn { border: 0; border-radius: 999px; padding: 8px 12px; background: none; color: var(--muted); font-size: 13.5px;
-               transition: background .2s var(--ease), color .2s var(--ease); }
+               transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .ghost-btn:active { transform: scale(.96); }
   .ghost-btn:hover { background: var(--hover); color: var(--text); }
   /* Dragging: the row follows the pointer above everything; a dashed slot shows where it will land. */
   .todo-item.dragging { position: fixed; z-index: var(--z-popover); margin: 0; background: var(--core); pointer-events: none;
@@ -324,7 +326,11 @@
   .removed-toggle { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 6px;
                     padding: 10px 14px; border: 0; border-radius: 12px; background: none; color: var(--muted);
                     font-size: 13.5px; font-weight: 500; text-align: left;
-                    transition: background .2s var(--ease), color .2s var(--ease); }
+                    transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .removed-toggle:active { transform: scale(.96); }
+  /* One icon: the + turns into a − as its upright stroke rotates flat. */
+  .removed-toggle .v { transform-box: fill-box; transform-origin: center; transition: transform .2s cubic-bezier(.2, 0, 0, 1); }
+  .removed-toggle[aria-expanded="true"] .v { transform: rotate(90deg); }
   .removed-toggle:hover { background: var(--hover); color: var(--text); }
   .removed-toggle .label { flex: 0 0 auto; }
   .removed-toggle .n { font-size: 11.5px; font-variant-numeric: tabular-nums; min-width: 20px; padding: 1px 7px;
@@ -534,6 +540,8 @@
                   transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .toast-action:hover { background: color-mix(in srgb, currentColor 26%, transparent); }
   .toast-action:active { transform: scale(.96); }
+  .toast-action { position: relative; }
+  .toast-action::after { content: ""; position: absolute; inset: -8px -4px; }  /* 40px tall to click */
   .backdrop { display: none; }
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -1823,7 +1831,7 @@
   const TICK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const GRIP = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="6" cy="3.5" r="1.2"/><circle cx="10" cy="3.5" r="1.2"/><circle cx="6" cy="8" r="1.2"/><circle cx="10" cy="8" r="1.2"/><circle cx="6" cy="12.5" r="1.2"/><circle cx="10" cy="12.5" r="1.2"/></svg>';
   const TRASH = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const MINUS = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  const TOGGLE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="v" d="M8 3.5v9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const RESTORE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4.5 3.5 7 6 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 7h6a3 3 0 0 1 0 6H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const PLUS = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const EDIT = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 3 13 5.5 6 12.5H3.5V10L10.5 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
@@ -2055,16 +2063,21 @@
     const box = todoBox.querySelector(".todo-removed");
     if (!box) return;
     const removed = todoState.removed || [];
-    box.replaceChildren();
+    box.querySelector(".removed-list")?.remove();
     box.hidden = !removed.length;
-    if (!removed.length) { removedOpen = false; return; }
-    const toggle = make("button", "removed-toggle");
-    toggle.type = "button";
+    if (!removed.length) { removedOpen = false; box.replaceChildren(); return; }
+    // The toggle stays put between redraws, so its icon can turn from + to - instead of swapping.
+    let toggle = box.querySelector(".removed-toggle");
+    if (!toggle) {
+      toggle = make("button", "removed-toggle");
+      toggle.type = "button";
+      toggle.innerHTML = TOGGLE;
+      toggle.prepend(make("span", "label", "Removed"), make("span", "n"));
+      toggle.onclick = () => { removedOpen = !removedOpen; drawRemoved(); };
+      box.append(toggle);
+    }
     toggle.setAttribute("aria-expanded", String(removedOpen));
-    toggle.innerHTML = removedOpen ? MINUS : PLUS;
-    toggle.prepend(make("span", "label", "Removed"), make("span", "n", String(removed.length)));
-    toggle.onclick = () => { removedOpen = !removedOpen; drawRemoved(); box.querySelector(".removed-toggle").focus(); };
-    box.append(toggle);
+    toggle.querySelector(".n").textContent = String(removed.length);
     if (!removedOpen) return;
     const panel = make("div", "removed-list");
     const head = make("div", "removed-head");
