@@ -49,10 +49,11 @@
   .brand-name small { display: block; font-size: 9.5px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase;
                       color: var(--faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .side-actions { display: flex; gap: 8px; margin: 0 14px 14px; }
-  #new { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;
-         padding: 6px 6px 6px 18px; border-radius: 999px; border: 0; background: var(--cta); color: var(--cta-ink);
+  .side-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 14px 14px; }
+  #new { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+         height: 42px; padding: 0 6px 0 14px; white-space: nowrap; border-radius: 999px; border: 0; background: var(--cta); color: var(--cta-ink);
          font-weight: 500; transition: transform var(--duration-quick) var(--ease-smooth-out), opacity .2s; }
+  #new .ico { width: 26px; height: 26px; }
   #new:hover { opacity: .92; }
   #new:active { transform: scale(.96); }
 
@@ -190,8 +191,8 @@
   .cta.ghost .ico { background: var(--pill); }
 
   /* To Do tab: a sidebar entry, and a view that takes the chat's place. */
-  .nav-tab { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 42px;
-             padding: 0 14px 0 12px; border: 0; border-radius: 999px; background: var(--pill); color: var(--muted);
+  .nav-tab { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 42px;
+             padding: 0 12px; white-space: nowrap; border: 0; border-radius: 999px; background: var(--pill); color: var(--muted);
              font-size: inherit; font-weight: 500; box-shadow: inset 0 0 0 1px var(--hair);
              transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .nav-tab:hover { background: var(--hover); color: var(--text); }
@@ -497,14 +498,14 @@
       </a></span><small>DBS ConnectWise Assistant</small></span>
     </div>
     <div class="side-actions">
-      <button id="new" type="button">
-        New chat
-        <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
-      </button>
       <button id="todo-tab" type="button" class="nav-tab">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="label">To Do</span>
         <span class="count" id="todo-count" hidden></span>
+      </button>
+      <button id="new" type="button">
+        New chat
+        <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
       </button>
     </div>
     <ul id="chats"></ul>
