@@ -56,6 +56,9 @@
   #new:active { transform: scale(.96); }
 
   #chats { list-style: none; margin: 0; padding: 4px 10px 12px; overflow-y: auto; flex: 1; }
+  /* Thin scrollbar that only shows while the pointer is over the chat list (or it has focus). */
+  #chats { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color .2s; }
+  #chats:hover, #chats:focus-within { scrollbar-color: color-mix(in srgb, var(--faint) 60%, transparent) transparent; }
   #chats .group { font-size: 10px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase; color: var(--faint);
                   padding: 16px 12px 6px; }
   #chats .group:first-child { padding-top: 4px; }

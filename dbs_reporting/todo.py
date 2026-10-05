@@ -140,6 +140,8 @@ means work is booked. Project tickets have no "in progress" status.
 with the reason from the data (priority, age, status, time). when: the date and time if it's on the \
 calendar, e.g. "Tue 10/06/2026 9:00 AM", else null. ticket: the ticket number, else null.
 - summary: one or two sentences on their week, e.g. how many tickets are open and the biggest thing.
+- Write to the person directly, in the second person: "You have 7 open tickets", "your 2:00 PM \
+visit". Never use their name or "they".
 - Dates are month/day/year; times are 12-hour Eastern."""
 
 SCHEMA = {
