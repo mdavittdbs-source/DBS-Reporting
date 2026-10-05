@@ -89,6 +89,16 @@ def log_answer(user: dict, conversation_id: str, model: str, question: str, answ
     )
 
 
+def log_todo(user: dict, data: dict, model: str, usage: dict | None, seconds: float) -> None:
+    items = data.get("items", [])
+    logger().info(
+        f"{user['display_name']} ({user['username']}) · To Do list · {model} · {seconds:.0f}s\n"
+        f"  For: {data.get('member')} ({data.get('username')}) · {len(items)} items\n"
+        + "".join(f"    [{i.get('priority')}] {i.get('title')}\n" for i in items)
+        + f"  Usage: {usage_line(usage)}\n"
+    )
+
+
 def log_error(user: dict, conversation_id: str | None, model: str, question: str, error: str) -> None:
     logger().info(
         f"{user['display_name']} ({user['username']}) · chat {(conversation_id or 'new')[:8]} · {model} · ERROR\n"

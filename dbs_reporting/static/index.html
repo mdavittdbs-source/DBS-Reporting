@@ -185,6 +185,74 @@
   .cta.ghost { background: var(--pill); color: var(--text); }
   .cta.ghost .ico { background: var(--pill); }
 
+  /* To Do tab: a sidebar entry, and a view that takes the chat's place. */
+  .nav-tab { margin: 0 10px 6px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 0;
+             border-radius: 14px; background: none; color: var(--muted); font-size: 13.5px; text-align: left;
+             transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .nav-tab:hover { background: var(--hover); color: var(--text); }
+  .nav-tab:active { transform: scale(.96); }
+  .nav-tab[aria-current="page"] { background: var(--pill); color: var(--text); font-weight: 500;
+                                  box-shadow: inset 0 0 0 1px var(--hair); }
+  .nav-tab svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .nav-tab .label { flex: 1; }
+  .nav-tab .count { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 20px;
+                    padding: 1px 7px; border-radius: 999px; text-align: center; background: var(--tag-bg); color: var(--tag-ink); }
+  body.todo-view #log, body.todo-view #form { display: none; }
+  #todo .inner { min-height: 100%; display: flex; flex-direction: column; }
+  #todo { flex: 1; overflow-y: auto; padding: 28px 24px 40px;
+          -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
+                  mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
+  .todo-head h2 { font-size: clamp(30px, 4vw, 44px); font-weight: 600; letter-spacing: -.05em; line-height: 1.04;
+                  margin: 16px 0 10px; text-wrap: balance;
+                  background: linear-gradient(180deg, var(--text) 30%, var(--muted)); -webkit-background-clip: text;
+                  background-clip: text; -webkit-text-fill-color: transparent; }
+  .todo-head p { margin: 0 0 18px; color: var(--muted); max-width: 60ch; text-wrap: pretty; }
+  .todo-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+  .todo-bar .meta { color: var(--faint); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .todo-bar .cta { border: 0; transition: transform var(--duration-quick) var(--ease-smooth-out), opacity .2s; }
+  .todo-bar .cta:active { transform: scale(.96); }
+  .todo-bar .cta:disabled { opacity: .5; }
+  .progress { flex-basis: 100%; height: 4px; border-radius: 999px; background: var(--pill); overflow: hidden; }
+  .progress i { display: block; height: 100%; border-radius: inherit; background: var(--tag-ink);
+                transition: width var(--duration-slow) var(--ease-smooth-out); }
+  .todo-group { margin-bottom: 16px; animation: rise var(--duration-slow) var(--ease-smooth-out) both; }
+  .todo-group > .core { padding: 18px 8px 8px; }
+  .todo-group h3 { margin: 0 14px 6px; display: flex; align-items: center; gap: 10px; }
+  .todo-group h3 .n { font-size: 12px; color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .todo-group.now .eyebrow { color: var(--danger); background: var(--danger-soft); }
+  .todo-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; border-radius: 16px;
+               transition: background .2s var(--ease); }
+  .todo-item + .todo-item { box-shadow: 0 -1px 0 var(--hair); }
+  .todo-item:hover { background: var(--hover); }
+  .tick { position: relative; flex-shrink: 0; width: 22px; height: 22px; margin-top: 1px; border-radius: 999px; border: 0;
+          padding: 0; background: none; box-shadow: inset 0 0 0 1.5px var(--faint); color: var(--cta-ink);
+          display: grid; place-items: center; transition: background .2s var(--ease), box-shadow .2s var(--ease),
+          transform var(--duration-quick) var(--ease-smooth-out); }
+  .tick::after { content: ""; position: absolute; inset: -9px; }
+  .tick:hover { box-shadow: inset 0 0 0 1.5px var(--text); }
+  .tick:active { transform: scale(.96); }
+  .tick svg { width: 13px; height: 13px; opacity: 0; transform: scale(.25); filter: blur(4px);
+              transition: opacity .2s cubic-bezier(.2, 0, 0, 1), transform .2s cubic-bezier(.2, 0, 0, 1), filter .2s cubic-bezier(.2, 0, 0, 1); }
+  .todo-item.done .tick { background: var(--tag-ink); box-shadow: none; }
+  .todo-item.done .tick svg { opacity: 1; transform: none; filter: none; }
+  .todo-item .what { min-width: 0; flex: 1; }
+  .todo-item .title { font-weight: 500; letter-spacing: -.01em; line-height: 1.4; text-wrap: pretty;
+                      transition: color .2s var(--ease); }
+  .todo-item .why { color: var(--muted); font-size: 13.5px; margin-top: 2px; text-wrap: pretty; }
+  .todo-item .tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 7px;
+                     font-size: 12.5px; color: var(--faint); }
+  .todo-item.done .title { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--faint); }
+  .todo-item.done .why, .todo-item.done .tags { opacity: .6; }
+  .todo-empty { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 6vh; }
+  .todo-note { padding: 16px 20px; border-radius: 18px; background: var(--danger-soft); color: var(--danger);
+               margin-bottom: 18px; }
+  #todo .usage { display: block; margin: 10px 4px 0; }
+  @media (max-width: 760px) {
+    #todo { padding: 18px 14px 32px; }
+    .todo-group > .core { padding: 14px 4px 4px; }
+    .todo-item { padding: 11px 10px; gap: 12px; }
+  }
+
   /* Messages */
   .msg { animation: rise var(--duration-slow) var(--ease-smooth-out); }
   .msg.user { align-self: flex-end; max-width: 82%; background: var(--glass);
@@ -428,6 +496,11 @@
       New chat
       <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
     </button>
+    <button id="todo-tab" type="button" class="nav-tab">
+      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="label">To Do</span>
+      <span class="count" id="todo-count" hidden></span>
+    </button>
     <ul id="chats"></ul>
     <div class="appearance">
       <span id="theme-label">Theme</span>
@@ -459,6 +532,7 @@
       <span id="chat-title"></span>
     </header>
     <div id="log"><div class="inner"><div id="messages" aria-live="polite"></div></div></div>
+    <section id="todo" hidden aria-label="Your to-do list"><div class="inner" id="todo-inner"></div></section>
     <form id="form">
       <div class="inner">
         <div class="composer"><div class="core">
@@ -509,11 +583,27 @@
   const ARROW = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 11 11 5M6 5h5v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const COPY = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5V4.5A1.5 1.5 0 0 1 4.5 3h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
 
+  // When the browser can't reach David at all (the server was stopped or restarted, the laptop slept,
+  // the network changed) it only says "Failed to fetch" (Edge, Chrome), "NetworkError ..." (Firefox)
+  // or "Load failed" (Safari). Say what that means instead.
+  const UNREACHABLE = "Couldn't reach David's server. It may have been restarted, or the connection dropped. " +
+    "Refresh the page and try again; if it keeps happening, check that David (start-web.bat) is running.";
+  const DROPPED = "The connection dropped while David was answering. The answer may still finish: " +
+    "open this chat again in a minute to check.";
+  function networkFailure(err) {
+    return err instanceof TypeError && /fetch|network|load failed|input stream/i.test(err.message);
+  }
+
   async function api(path, options = {}) {
-    const res = await fetch(path, {
-      ...options,
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    });
+    let res;
+    try {
+      res = await fetch(path, {
+        ...options,
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      });
+    } catch (err) {
+      throw networkFailure(err) ? new Error(UNREACHABLE) : err;
+    }
     if (res.status === 401) { location.href = "/login"; throw new Error("Signed out"); }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || res.statusText);
@@ -1167,14 +1257,14 @@
     }
   }
 
-  function addThinking() {
+  function addThinking(parent = messages) {
     const div = document.createElement("div");
     div.className = "msg bot";
     div.innerHTML = '<div class="thinking"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
       '<span class="t-think" role="status"><span class="t-think-sizer" aria-hidden="true">Thinking…</span>' +
       '<span class="t-think-text" data-text="Thinking…">Thinking…</span></span><span class="elapsed">0s</span></div>';
-    messages.appendChild(div);
-    scrollToEnd();
+    parent.appendChild(div);
+    if (parent === messages) scrollToEnd();
     const started = Date.now();
     const elapsed = div.querySelector(".elapsed");
     const timer = setInterval(() => { elapsed.textContent = Math.round((Date.now() - started) / 1000) + "s"; }, 1000);
@@ -1412,6 +1502,7 @@
   }
 
   function newChat() {
+    leaveTodo();
     conversationId = null;
     clearMessages();
     chatTitle.textContent = "";  // a new chat has no title until its first answer
@@ -1424,6 +1515,7 @@
 
   async function openChat(id) {
     closeDrawer();
+    leaveTodo();
     try {
       const chat = await api(`/api/conversations/${id}`);
       conversationId = chat.id;
@@ -1509,6 +1601,7 @@
       if (streamed) { streamed.parentElement.remove(); streamed = null; }
       thinking.el.hidden = false;
     };
+    let reached = false;  // whether David got the question (then an answer may still be saved)
     try {
       const response = await fetch("/api/chat/stream", {
         method: "POST",
@@ -1516,6 +1609,7 @@
         body: JSON.stringify({ question, conversation_id: conversationId, model: modelSelect.value || null }),
       });
       if (response.status === 401) { location.href = "/login"; return; }
+      reached = true;
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.detail || response.statusText);
@@ -1569,12 +1663,13 @@
     } catch (err) {
       if (frame) cancelAnimationFrame(frame);
       thinking.stop();
-      if (!shown()) { toast("That answer didn't go through: " + err.message); return; }
+      const why = networkFailure(err) ? (reached ? DROPPED : UNREACHABLE) : err.message;
+      if (!shown()) { toast("That answer didn't go through: " + why); return; }
       if (startsChat && !conversationId) setModel(modelSelect.value, false);  // nothing was saved: still a new chat
       if (streamed) streamed.parentElement.remove();
       thinking.el.hidden = false;
       thinking.el.className = "msg error";
-      thinking.el.textContent = "That didn't go through: " + err.message;
+      thinking.el.textContent = "That didn't go through: " + why;
       const retry = document.createElement("button");
       retry.type = "button";
       retry.textContent = "Try again";
@@ -1589,6 +1684,189 @@
       }
     }
   }
+
+  // ---------- To Do tab ----------
+  // David turns your open ConnectWise tickets and next 7 days of calendar into a list: now, today, this
+  // week, later. Ticks are saved, so the list keeps your progress until you make a new one.
+  const todoTab = $("todo-tab"), todoBox = $("todo-inner");
+  const TODO_GROUPS = [["now", "Now"], ["today", "Today"], ["this_week", "This week"], ["later", "Later"]];
+  const REFRESH = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const TICK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  let todoState = null;   // {list, done, created_at, usage}, as the server sends it
+  let todoMaking = false;
+  const make = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  function inTodo() { return document.body.classList.contains("todo-view"); }
+  function showTodo() {
+    document.body.classList.add("todo-view");
+    $("todo").hidden = false;
+    todoTab.setAttribute("aria-current", "page");
+    chatTitle.textContent = "To Do";
+    chatList.querySelectorAll("li.chat.active").forEach((li) => li.classList.remove("active"));
+    if (location.hash !== "#todo") history.replaceState(null, "", "#todo");
+    closeDrawer();
+    if (!todoMaking) todoState ? drawTodo() : loadTodo();
+  }
+  function leaveTodo() {
+    if (!inTodo()) return;
+    document.body.classList.remove("todo-view");
+    $("todo").hidden = true;
+    todoTab.removeAttribute("aria-current");
+    history.replaceState(null, "", location.pathname);
+  }
+  function todoLeft() {
+    const items = todoState?.list?.items || [];
+    return items.length - items.filter((_, i) => todoState.done.includes(i)).length;
+  }
+  function updateTodoCount() {
+    const left = todoState?.list ? todoLeft() : 0;
+    $("todo-count").hidden = !left;
+    $("todo-count").textContent = left;
+    todoTab.setAttribute("aria-label", left ? `To Do, ${left} left` : "To Do");
+  }
+  async function loadTodo() {
+    try {
+      todoState = await api("/api/todo");
+    } catch (err) {
+      todoState = null;
+      if (inTodo()) { todoBox.replaceChildren(make("p", "todo-note", "Couldn't load your list: " + err.message)); }
+      return;
+    }
+    updateTodoCount();
+    if (inTodo()) drawTodo();
+  }
+
+  function eastern(iso) {
+    return new Date(iso).toLocaleString("en-US", { weekday: "short", month: "2-digit", day: "2-digit",
+      hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).replace(",", "") + " ET";
+  }
+
+  function todoButton(label, icon = REFRESH) {
+    const b = make("button", "cta");
+    b.type = "button";
+    b.innerHTML = `<span></span><span class="ico">${icon}</span>`;
+    b.firstChild.textContent = label;
+    b.onclick = makeTodo;
+    b.disabled = todoMaking;
+    return b;
+  }
+
+  function drawTodo(problem) {
+    todoBox.replaceChildren();
+    const list = todoState?.list;
+    if (!list) {  // first visit: what this is, and the button
+      const start = make("section", "todo-empty todo-head");
+      const pill = make("div"); pill.append(make("span", "eyebrow", "To Do"));
+      start.append(pill, make("h2", null, firstName ? `${firstName}, let's plan your week` : "Plan your week"),
+        make("p", null, "David looks at your open ConnectWise tickets, your project work and your calendar for the next " +
+          "7 days, and puts them in order: what to do now, today, this week and later."));
+      if (problem) start.append(make("p", "todo-note", problem));
+      const bar = make("div", "todo-bar"); bar.append(todoButton("Make my list", ARROW));
+      start.append(bar);
+      todoBox.append(start);
+      return;
+    }
+    const head = make("section", "todo-head");
+    const pill = make("div"); pill.append(make("span", "eyebrow", `To Do · ${list.member}`));
+    head.append(pill, make("h2", null, firstName ? `${firstName}, here's your week` : "Your to-do list"),
+                make("p", null, list.summary));
+    const items = list.items || [];
+    const doneCount = items.filter((_, i) => todoState.done.includes(i)).length;
+    const bar = make("div", "todo-bar");
+    bar.append(todoButton("Make a new list"),
+               make("span", "meta", `Made ${eastern(todoState.created_at)} · ${doneCount} of ${items.length} done`));
+    const progress = make("div", "progress"); progress.setAttribute("aria-hidden", "true");
+    const fill = make("i"); fill.style.width = items.length ? `${(100 * doneCount) / items.length}%` : "0";
+    progress.append(fill); bar.append(progress);
+    head.append(bar);
+    if (problem) head.append(make("p", "todo-note", problem));
+    todoBox.append(head);
+    if (!items.length) { todoBox.append(make("p", null, list.summary ? "" : "Nothing to do. Nice.")); }
+    let n = 0;
+    for (const [key, label] of TODO_GROUPS) {
+      const inGroup = items.map((item, i) => [item, i]).filter(([item]) => item.priority === key);
+      if (!inGroup.length) continue;
+      const card = make("section", `shell todo-group ${key}`);
+      card.style.animationDelay = `${n++ * 60}ms`;
+      const core = make("div", "core");
+      const h3 = make("h3"); h3.append(make("span", "eyebrow", label));
+      const left = inGroup.filter(([, i]) => !todoState.done.includes(i)).length;
+      h3.append(make("span", "n", left ? `${left} to do` : "All done"));
+      core.append(h3);
+      for (const [item, i] of inGroup) core.append(todoItem(item, i));
+      card.append(core);
+      todoBox.append(card);
+    }
+    if (isAdmin && todoState.usage) todoBox.append(usageTag(todoState.usage));
+  }
+
+  function todoItem(item, index) {
+    const done = todoState.done.includes(index);
+    const row = make("div", "todo-item" + (done ? " done" : ""));
+    const tick = make("button", "tick");
+    tick.type = "button";
+    tick.innerHTML = TICK;
+    tick.setAttribute("aria-pressed", String(done));
+    tick.setAttribute("aria-label", `Done: ${item.title}`);
+    tick.onclick = () => setTodoDone(index, !todoState.done.includes(index));
+    const what = make("div", "what");
+    what.append(make("div", "title", item.title));
+    if (item.why) what.append(make("div", "why", item.why));
+    const tags = make("div", "tags");
+    if (item.ticket) {
+      const ref = make(ticketUrl ? "a" : "span", "ref", `#${item.ticket}`);
+      if (ticketUrl) { ref.href = ticketUrl.replace("{id}", item.ticket); ref.target = "_blank"; ref.rel = "noopener"; ref.title = "Open in ConnectWise"; }
+      tags.append(ref);
+    }
+    if (item.client) tags.append(make("span", null, item.client));
+    if (item.when) tags.append(make("span", null, item.when));
+    if (tags.childNodes.length) what.append(tags);
+    row.append(tick, what);
+    return row;
+  }
+
+  async function setTodoDone(index, done) {
+    const before = [...todoState.done];
+    todoState.done = done ? [...new Set([...before, index])] : before.filter((i) => i !== index);
+    drawTodo(); updateTodoCount();
+    try {
+      await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: index, done }) });
+    } catch (err) {
+      todoState.done = before;
+      drawTodo(); updateTodoCount();
+      toast("Couldn't save that: " + err.message);
+    }
+  }
+
+  async function makeTodo() {
+    if (todoMaking) return;
+    todoMaking = true;
+    todoBox.querySelectorAll(".todo-bar .cta").forEach((b) => { b.disabled = true; });
+    todoBox.querySelector(".todo-note")?.remove();
+    const holder = make("div");
+    holder.style.margin = "4px 0 26px";
+    (todoBox.querySelector(".todo-bar") || todoBox).after(holder);
+    const thinking = addThinking(holder);
+    thinking.setStatus("Finding you in ConnectWise…");
+    const steps = [[1500, "Pulling your open tickets…"], [3500, "Checking your calendar…"], [6500, "Putting it in order…"]]
+      .map(([ms, text]) => setTimeout(() => thinking.setStatus(text), ms));
+    let problem = null;
+    try {
+      todoState = await api("/api/todo", { method: "POST" });
+      updateTodoCount();
+    } catch (err) {
+      problem = "Couldn't make your list: " + err.message;
+    } finally {
+      steps.forEach(clearTimeout);
+      thinking.stop();
+      todoMaking = false;
+    }
+    if (inTodo()) drawTodo(problem); else if (problem) toast(problem);
+    else toast("Your to-do list is ready");
+  }
+
+  todoTab.onclick = showTodo;
+  addEventListener("hashchange", () => { if (location.hash === "#todo") showTodo(); else if (inTodo()) newChat(); });
 
   // Phones get a shorter hint and short model names, so neither gets cut off.
   const narrowQuery = window.matchMedia("(max-width: 760px)");
@@ -1658,6 +1936,8 @@
     narrowQuery.addEventListener("change", fitToScreen);
     updateSend();
     newChat();
+    await loadTodo();  // the sidebar shows how many items are left
+    if (location.hash === "#todo") showTodo();
   })();
 </script>
 </body>

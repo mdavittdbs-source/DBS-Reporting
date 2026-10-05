@@ -1,13 +1,15 @@
 """Manage logins by editing a plain text file (users.txt).
 
-Each line is:   username | Display Name | password | admin
+Each line is:   username | Display Name | password | admin | ConnectWise username
 
 - Type a plain password; the bot replaces it with a scrambled (hashed) version the next
   time it reads the file, so readable passwords don't stay in the file.
 - To change a password, type a new one over the scrambled text.
 - Delete a line to remove someone's access. Their saved chats are kept, so adding the
   line back restores them.
-- The last column is optional; write "admin" to mark an admin.
+- The "admin" column is optional; write "admin" to mark an admin.
+- The ConnectWise username column is optional too. The To Do tab finds each person in ConnectWise
+  by their display name; fill this in only when that doesn't work (two people with the same name).
 - Lines starting with # are ignored.
 
 The file is re-read automatically when it changes; no restart needed.
@@ -27,12 +29,14 @@ HASH_PREFIX = "scrypt$"
 TEMPLATE = """\
 # DBS Reporting logins. One person per line:
 #
-#   username | Display Name | password | admin
+#   username | Display Name | password | admin | ConnectWise username
 #
 # - Type a plain password. The bot scrambles it the next time it reads this file, so it
 #   won't stay readable. To change a password, type a new one over the scrambled text.
 # - Delete a line to remove someone. Their chats are kept if you add them back later.
-# - Write "admin" in the last column for admins; leave it off for everyone else.
+# - Write "admin" in the fourth column for admins; leave it empty for everyone else.
+# - The last column is optional: the person's ConnectWise username, for their To Do list. Only needed
+#   when David can't find them in ConnectWise by their display name.
 # - Passwords need at least 8 characters and can't contain the | character.
 # - Changes apply within a few seconds; no restart needed.
 #
@@ -61,15 +65,16 @@ def parse_and_hash(path: Path) -> tuple[list[dict], list[str], set[str]]:
         if not text or text.startswith("#"):
             continue
         parts = [p.strip() for p in text.split("|")]
-        if len(parts) < 3 or len(parts) > 4:
-            problems.append(f"line {number}: expected 'username | Display Name | password | admin'")
+        if len(parts) < 3 or len(parts) > 5:
+            problems.append(f"line {number}: expected 'username | Display Name | password | admin | ConnectWise username'")
             continue
         username, display_name, password = parts[0], parts[1], parts[2]
-        admin = len(parts) == 4 and parts[3].lower() == "admin"
+        admin = len(parts) >= 4 and parts[3].lower() == "admin"
+        cw_member = parts[4] if len(parts) == 5 else ""
         if not username or " " in username:
             problems.append(f"line {number}: username can't be blank or contain spaces")
             continue
-        if len(parts) == 4 and parts[3] and parts[3].lower() != "admin":
+        if len(parts) >= 4 and parts[3] and parts[3].lower() != "admin":
             problems.append(f"line {number}: last column should be 'admin' or empty, not {parts[3]!r}")
         if username.lower() in seen:
             problems.append(f"line {number}: {username!r} is listed twice; only the first line is used")
@@ -84,7 +89,8 @@ def parse_and_hash(path: Path) -> tuple[list[dict], list[str], set[str]]:
                 continue
             password = hash_password(password)
             parts[2] = password
-            lines[number - 1] = " | ".join(parts[:3] + [parts[3] if len(parts) == 4 else ""])
+            lines[number - 1] = " | ".join(parts[:3] + [parts[3] if len(parts) >= 4 else ""]
+                                           + ([cw_member] if cw_member else []))
             changed = True
         seen.add(username.lower())
         users.append({
@@ -92,6 +98,7 @@ def parse_and_hash(path: Path) -> tuple[list[dict], list[str], set[str]]:
             "display_name": display_name or username,
             "password_hash": password,
             "is_admin": admin,
+            "cw_member": cw_member,
         })
 
     if changed:
@@ -114,7 +121,8 @@ class UsersFile:
         if self.path.exists():
             return
         lines = [
-            " | ".join([a["username"], a["display_name"], a["password_hash"], "admin" if a["is_admin"] else ""])
+            " | ".join([a["username"], a["display_name"], a["password_hash"], "admin" if a["is_admin"] else ""]
+                       + ([a["cw_member"]] if a.get("cw_member") else []))
             for a in self.store.active_accounts()
         ]
         self.path.write_text(TEMPLATE + "\n" + "\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
