@@ -583,11 +583,27 @@
   const ARROW = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 11 11 5M6 5h5v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const COPY = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5V4.5A1.5 1.5 0 0 1 4.5 3h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
 
+  // When the browser can't reach David at all (the server was stopped or restarted, the laptop slept,
+  // the network changed) it only says "Failed to fetch" (Edge, Chrome), "NetworkError ..." (Firefox)
+  // or "Load failed" (Safari). Say what that means instead.
+  const UNREACHABLE = "Couldn't reach David's server. It may have been restarted, or the connection dropped. " +
+    "Refresh the page and try again; if it keeps happening, check that David (start-web.bat) is running.";
+  const DROPPED = "The connection dropped while David was answering. The answer may still finish: " +
+    "open this chat again in a minute to check.";
+  function networkFailure(err) {
+    return err instanceof TypeError && /fetch|network|load failed|input stream/i.test(err.message);
+  }
+
   async function api(path, options = {}) {
-    const res = await fetch(path, {
-      ...options,
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    });
+    let res;
+    try {
+      res = await fetch(path, {
+        ...options,
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      });
+    } catch (err) {
+      throw networkFailure(err) ? new Error(UNREACHABLE) : err;
+    }
     if (res.status === 401) { location.href = "/login"; throw new Error("Signed out"); }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || res.statusText);
@@ -1585,6 +1601,7 @@
       if (streamed) { streamed.parentElement.remove(); streamed = null; }
       thinking.el.hidden = false;
     };
+    let reached = false;  // whether David got the question (then an answer may still be saved)
     try {
       const response = await fetch("/api/chat/stream", {
         method: "POST",
@@ -1592,6 +1609,7 @@
         body: JSON.stringify({ question, conversation_id: conversationId, model: modelSelect.value || null }),
       });
       if (response.status === 401) { location.href = "/login"; return; }
+      reached = true;
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.detail || response.statusText);
@@ -1645,12 +1663,13 @@
     } catch (err) {
       if (frame) cancelAnimationFrame(frame);
       thinking.stop();
-      if (!shown()) { toast("That answer didn't go through: " + err.message); return; }
+      const why = networkFailure(err) ? (reached ? DROPPED : UNREACHABLE) : err.message;
+      if (!shown()) { toast("That answer didn't go through: " + why); return; }
       if (startsChat && !conversationId) setModel(modelSelect.value, false);  // nothing was saved: still a new chat
       if (streamed) streamed.parentElement.remove();
       thinking.el.hidden = false;
       thinking.el.className = "msg error";
-      thinking.el.textContent = "That didn't go through: " + err.message;
+      thinking.el.textContent = "That didn't go through: " + why;
       const retry = document.createElement("button");
       retry.type = "button";
       retry.textContent = "Try again";
