@@ -49,7 +49,8 @@
   .brand-name small { display: block; font-size: 9.5px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase;
                       color: var(--faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  #new { margin: 0 14px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  .side-actions { display: flex; gap: 8px; margin: 0 14px 14px; }
+  #new { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;
          padding: 6px 6px 6px 18px; border-radius: 999px; border: 0; background: var(--cta); color: var(--cta-ink);
          font-weight: 500; transition: transform var(--duration-quick) var(--ease-smooth-out), opacity .2s; }
   #new:hover { opacity: .92; }
@@ -189,9 +190,9 @@
   .cta.ghost .ico { background: var(--pill); }
 
   /* To Do tab: a sidebar entry, and a view that takes the chat's place. */
-  .nav-tab { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 30px;
-             padding: 0 12px 0 10px; border: 0; border-radius: 999px; background: var(--pill); color: var(--muted);
-             font-size: 12.5px; font-weight: 500; box-shadow: inset 0 0 0 1px var(--hair);
+  .nav-tab { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 42px;
+             padding: 0 14px 0 12px; border: 0; border-radius: 999px; background: var(--pill); color: var(--muted);
+             font-size: inherit; font-weight: 500; box-shadow: inset 0 0 0 1px var(--hair);
              transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .nav-tab:hover { background: var(--hover); color: var(--text); }
   .nav-tab:active { transform: scale(.96); }
@@ -495,10 +496,17 @@
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 6.5h6M5 8.8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </a></span><small>DBS ConnectWise Assistant</small></span>
     </div>
-    <button id="new" type="button">
-      New chat
-      <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
-    </button>
+    <div class="side-actions">
+      <button id="new" type="button">
+        New chat
+        <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+      </button>
+      <button id="todo-tab" type="button" class="nav-tab">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="label">To Do</span>
+        <span class="count" id="todo-count" hidden></span>
+      </button>
+    </div>
     <ul id="chats"></ul>
     <div class="appearance">
       <span id="theme-label">Theme</span>
@@ -528,11 +536,6 @@
         <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </button>
       <span id="chat-title"></span>
-      <button id="todo-tab" type="button" class="nav-tab">
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="label">To Do</span>
-        <span class="count" id="todo-count" hidden></span>
-      </button>
     </header>
     <div id="log"><div class="inner"><div id="messages" aria-live="polite"></div></div></div>
     <section id="todo" hidden aria-label="Your to-do list"><div class="inner" id="todo-inner"></div></section>
