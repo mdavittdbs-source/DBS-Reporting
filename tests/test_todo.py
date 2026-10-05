@@ -131,7 +131,7 @@ def test_todo_endpoints(web, monkeypatch):  # noqa: F811
     module, _ = web
     made = []
 
-    def fake_make(cw_client, client, model, user):
+    def fake_make(cw_client, client, model, user, dismissed=None):
         made.append(user["username"])
         return {"member": "Bob B", "username": "bbee", **REPLY, "counts": {"service": 2, "project": 1},
                 "usage": {"requests": 1, "input_tokens": 900, "output_tokens": 300, "cache_read_tokens": 0,
@@ -143,9 +143,11 @@ def test_todo_endpoints(web, monkeypatch):  # noqa: F811
     made_list = bob.post("/api/todo").json()
     assert made_list["list"]["items"][0]["title"] == "Prep for Blue Fin install" and made_list["done"] == []
     assert "usage" not in made_list  # admins only
-    assert bob.post("/api/todo/done", json={"item": 1, "done": True}).status_code == 200
-    assert bob.post("/api/todo/done", json={"item": 9, "done": True}).status_code == 404
-    assert bob.get("/api/todo").json()["done"] == [1]
+    ids = [item["id"] for item in made_list["list"]["items"]]
+    assert len(set(ids)) == 3
+    assert bob.post("/api/todo/done", json={"item": ids[1], "done": True}).status_code == 200
+    assert bob.post("/api/todo/done", json={"item": "nope", "done": True}).status_code == 404
+    assert bob.get("/api/todo").json()["done"] == [ids[1]]
     assert alice.get("/api/todo").json() == {"list": None}  # each person has their own
     assert "usage" in alice.post("/api/todo").json()
     assert bob.post("/api/todo").json()["done"] == []  # a fresh list starts unticked
@@ -159,3 +161,185 @@ def test_todo_endpoints(web, monkeypatch):  # noqa: F811
     failed = bob.post("/api/todo")
     assert failed.status_code == 400 and "ConnectWise username" in failed.json()["detail"]
     assert bob.get("/api/todo").json()["list"]["items"]  # the last good list stays
+
+
+def _list(module, monkeypatch, user="bob", password="password-b"):
+    monkeypatch.setattr(module.todo, "make", lambda *a: {"member": "Bob B", "username": "bbee", **REPLY,
+                                                          "counts": {"service": 2, "project": 1}, "usage": None})
+    client = login(module, user, password)
+    return client, client.post("/api/todo").json()["list"]["items"]
+
+
+def test_arranging_the_list(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    bob, items = _list(module, monkeypatch)
+    blue_fin, taco, dock = items  # REPLY order: this_week, now, today
+    bob.post("/api/todo/done", json={"item": dock["id"], "done": True})
+    bob.post("/api/todo/done", json={"item": taco["id"], "done": True})
+    mine = {"id": "m-call-joe", "priority": "now", "mine": True, "title": "  Call Joe back  ", "ticket": 4821}
+    arranged = [mine, {**blue_fin, "priority": "today", "title": "Renamed by hand", "why": "edited"}, dock]
+    saved = bob.put("/api/todo/items", json={"items": arranged})
+    assert saved.status_code == 200
+    got = bob.get("/api/todo").json()
+    titles = [(i["title"], i["priority"]) for i in got["list"]["items"]]
+    # Order as arranged, Taco Town removed, David's wording kept though his item moved group, own item trimmed
+    assert titles == [("Call Joe back", "now"), ("Prep for Blue Fin install", "today"), ("Follow up with Dock Bar", "today")]
+    assert got["list"]["items"][0] == {"id": "m-call-joe", "title": "Call Joe back", "why": "", "priority": "now",
+                                       "ticket": 4821, "client": None, "when": None, "mine": True}
+    assert got["done"] == [dock["id"]]  # the removed item's tick went with it
+    # Undo after the removal saved: Taco Town comes back with David's wording, even if the client sends less
+    restored = bob.put("/api/todo/items", json={"items": [{"id": taco["id"], "priority": "now"}, mine, blue_fin, dock]})
+    assert restored.json()["items"][0]["title"] == "Fix Taco Town's kitchen printer"
+    # Edit your own item
+    bob.put("/api/todo/items", json={"items": [{**mine, "title": "Call Joe at 3"}, blue_fin, dock]})
+    assert bob.get("/api/todo").json()["list"]["items"][0]["title"] == "Call Joe at 3"
+
+
+def test_arranging_rejects_bad_input(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    bob, items = _list(module, monkeypatch)
+    put = lambda items: bob.put("/api/todo/items", json={"items": items}).status_code  # noqa: E731
+    assert put([{"id": "m1", "priority": "now", "mine": True, "title": "   "}]) == 422  # needs a title
+    assert put([{"id": "m1", "priority": "soon", "mine": True, "title": "x"}]) == 422
+    assert put([{"id": "bad id!", "priority": "now", "mine": True, "title": "x"}]) == 422
+    assert put([{"id": "m1", "priority": "now", "mine": True, "title": "x" * 201}]) == 422
+    assert put([{"id": f"m{n}", "priority": "now", "mine": True, "title": "x"} for n in range(101)]) == 422
+    # An item that's neither David's nor marked as yours is dropped, not invented
+    assert put([{"id": "made-up", "priority": "now", "title": "Sneaky"}, items[0]]) == 200
+    assert [i["id"] for i in bob.get("/api/todo").json()["list"]["items"]] == [items[0]["id"]]
+    alice = login(module, "alice", "password-a")
+    assert alice.put("/api/todo/items", json={"items": []}).status_code == 404  # no list yet
+
+
+def test_your_own_items_carry_over_to_a_new_list(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    bob, items = _list(module, monkeypatch)
+    keep = {"id": "m-keep", "priority": "later", "mine": True, "title": "Order more paper"}
+    finished = {"id": "m-done", "priority": "now", "mine": True, "title": "Already did it"}
+    bob.put("/api/todo/items", json={"items": [*items, keep, finished]})
+    bob.post("/api/todo/done", json={"item": "m-done", "done": True})
+    fresh = bob.post("/api/todo").json()
+    titles = [i["title"] for i in fresh["list"]["items"]]
+    assert titles[-1] == "Order more paper" and "Already did it" not in titles
+    assert len(titles) == 4 and fresh["done"] == []
+    assert not {i["id"] for i in items} & {i["id"] for i in fresh["list"]["items"]}  # David's new items, new ids
+
+
+def test_lists_saved_before_ids_still_work(tmp_path):
+    from dbs_reporting.store import Store
+    store = Store(tmp_path / "old.db")
+    user_id = store.add_user("sam", "a-long-password", "Sam O")
+    with store._db() as db:
+        db.execute("INSERT INTO todo_lists (user_id, data, done, created_at) VALUES (?, ?, ?, ?)",
+                   (user_id, json.dumps(REPLY), json.dumps([2]), "2026-10-05T12:00:00+00:00"))
+    saved = store.get_todo(user_id)
+    assert [i["id"] for i in saved["data"]["items"]] == ["d0", "d1", "d2"] and saved["done"] == ["d2"]
+    assert store.set_todo_done(user_id, "d0", True)
+    assert store.get_todo(user_id)["done"] == ["d2", "d0"]
+
+
+def test_leaving_out_what_you_removed():
+    # Ticket 2 was removed before it last changed: it comes back. Ticket 1 and project 900 were removed after:
+    # they stay off, and so does 900's calendar entry. The meeting has no ticket and isn't affected.
+    dismissed = [{"ticket": 1, "title": "Fix the printer", "at": stamp(NOW)},
+                 {"ticket": 2, "title": "Dock Bar", "at": stamp(NOW - timedelta(days=12))},
+                 {"ticket": 900, "title": "Blue Fin install", "at": stamp(NOW)}]
+    work = todo.gather_work(cw(), STAFF[0], dismissed=dismissed)
+    assert [t["id"] for t in rows(work["tickets"])] == [2]
+    assert [c["title"] for c in rows(work["calendar_next_7_days"])] == ["Team meeting"]
+    assert work["left_out"] == 2 and work["open_service_tickets"] == 2 and work["open_project_tickets"] == 1
+
+
+def test_a_removed_item_without_a_ticket_stays_off():
+    reply = {"summary": "Busy week.", "items": [
+        {"title": "Team meeting", "why": "Today 2 PM.", "priority": "today", "ticket": None, "client": None, "when": "2 PM"},
+        {"title": "Fix Taco Town's kitchen printer", "why": "P1.", "priority": "now", "ticket": 1, "client": "Taco Town",
+         "when": None}]}
+    data = todo.make(cw(), fake_claude([], reply), "claude-opus-5-5", {"display_name": "Sam Ortiz"},
+                     [{"ticket": None, "title": "team meeting ", "at": stamp(NOW)}])
+    assert [i["title"] for i in data["items"]] == ["Fix Taco Town's kitchen printer"]
+
+
+def _honest_make(seen):
+    """Like todo.make: leaves out the tickets it's told were removed."""
+    def make(cw_, client, model, user, dismissed=None):
+        seen.append(dismissed)
+        gone = {d["ticket"] for d in dismissed or []}
+        items = [dict(i) for i in REPLY["items"] if i["ticket"] not in gone]
+        return {"member": "Bob B", "username": "bbee", "summary": REPLY["summary"], "items": items, "counts": {},
+                "left_out": len(gone), "usage": None}
+    return make
+
+
+def test_removals_follow_you_to_the_next_list(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    seen = []
+    monkeypatch.setattr(module.todo, "make", _honest_make(seen))
+    bob = login(module, "bob", "password-b")
+    items = bob.post("/api/todo").json()["list"]["items"]
+    assert seen == [[]]
+    bob.put("/api/todo/items", json={"items": [i for i in items if i["ticket"] != 1]})  # remove Taco Town (#1)
+    assert "removed" not in bob.get("/api/todo").json()["list"]  # bookkeeping isn't mixed into the list
+    bob.post("/api/todo")
+    assert [(d["ticket"], d["title"]) for d in seen[1]] == [(1, "Fix Taco Town's kitchen printer")]
+    bob.post("/api/todo")  # still remembered a list later
+    assert [d["ticket"] for d in seen[2]] == [1]
+    # Older than 30 days: forgotten
+    with module.store._db() as db:
+        data = json.loads(db.execute("SELECT data FROM todo_lists").fetchone()[0])
+        data["removed"][0]["removed_at"] = (NOW - timedelta(days=31)).isoformat(timespec="seconds")
+        db.execute("UPDATE todo_lists SET data = ?", (json.dumps(data),))
+    bob.post("/api/todo")
+    assert seen[3] == []
+
+
+def test_seeing_and_putting_back_removed_items(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    seen = []
+    monkeypatch.setattr(module.todo, "make", _honest_make(seen))
+    bob = login(module, "bob", "password-b")
+    blue_fin, taco, dock = bob.post("/api/todo").json()["list"]["items"]
+    mine = {"id": "m-paper", "priority": "later", "mine": True, "title": "Order paper", "ticket": 77}
+    bob.put("/api/todo/items", json={"items": [blue_fin, taco, dock, mine]})
+    bob.put("/api/todo/items", json={"items": [blue_fin, dock]})  # remove Taco Town and my own item
+    got = bob.get("/api/todo").json()
+    removed = got["removed"]
+    assert [r["title"] for r in removed] == ["Fix Taco Town's kitchen printer", "Order paper"]
+    assert all(r["removed_at"] for r in removed) and removed[1]["mine"] and removed[1]["ticket"] == 77
+    # Put my own item back (into Now this time); it leaves Removed, and its removal time doesn't stick to it
+    back = bob.put("/api/todo/items", json={"items": [{**mine, "priority": "now"}, blue_fin, dock]}).json()["items"]
+    assert back[0]["title"] == "Order paper" and back[0]["priority"] == "now" and "removed_at" not in back[0]
+    assert [r["title"] for r in bob.get("/api/todo").json()["removed"]] == ["Fix Taco Town's kitchen printer"]
+    # A new list: Taco Town is left out and still listed under Removed, ready to put back
+    fresh = bob.post("/api/todo").json()
+    assert "Fix Taco Town's kitchen printer" not in [i["title"] for i in fresh["list"]["items"]]
+    assert [r["ticket"] for r in fresh["removed"]] == [1]
+    put_back = bob.put("/api/todo/items", json={"items": [*fresh["list"]["items"], {"id": fresh["removed"][0]["id"],
+                                                                                    "priority": "now"}]})
+    assert put_back.json()["items"][-1]["title"] == "Fix Taco Town's kitchen printer"  # David's wording
+    assert bob.get("/api/todo").json()["removed"] == []
+    bob.post("/api/todo")
+    assert seen[-1] == []  # put back, so no longer left out
+
+
+def test_a_ticket_back_on_a_new_list_leaves_removed(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    monkeypatch.setattr(module.todo, "make", lambda *a: {"member": "Bob B", **REPLY, "usage": None})  # ignores removals,
+    bob = login(module, "bob", "password-b")                                                        # as if #1 changed
+    items = bob.post("/api/todo").json()["list"]["items"]
+    bob.put("/api/todo/items", json={"items": [i for i in items if i["ticket"] != 1]})
+    assert len(bob.get("/api/todo").json()["removed"]) == 1
+    assert bob.post("/api/todo").json()["removed"] == []  # #1 is on the new list again, so it isn't "removed"
+
+
+def test_removals_saved_the_older_way_still_show(tmp_path):
+    from dbs_reporting.store import Store
+    store = Store(tmp_path / "old.db")
+    user_id = store.add_user("sam", "a-long-password", "Sam O")
+    data = {**REPLY, "dismissed": [{"ticket": 5, "title": "Swap the card reader", "at": NOW.isoformat(timespec="seconds")}]}
+    with store._db() as db:
+        db.execute("INSERT INTO todo_lists (user_id, data, done, created_at) VALUES (?, ?, '[]', ?)",
+                   (user_id, json.dumps(data), NOW.isoformat(timespec="seconds")))
+    removed = store.get_todo(user_id)["removed"]
+    assert [(r["ticket"], r["title"]) for r in removed] == [(5, "Swap the card reader")]
+    assert [d["ticket"] for d in store.todo_dismissed(user_id)] == [5]

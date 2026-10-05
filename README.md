@@ -143,11 +143,24 @@ Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic 
 
 ## To Do tab
 
-Anyone can click **To Do** (bottom of the sidebar, next to their name) and click **Make my list**. David pulls their open service
-tickets (as owner or resource), the project tickets they're a resource on, and their calendar for the
-next 7 days, and one Claude request puts them in order: **Now**, **Today**, **This week** and
-**Later**, each with the reason and the ticket number (which opens in ConnectWise). Ticked items are
-saved. **Make a new list** starts over from fresh data.
+Anyone can click **To Do** (bottom of the sidebar, next to their name) and click **Make my list**. David pulls
+their open service tickets (as owner or resource), the project tickets they're a resource on, and their calendar
+for the next 7 days, and one Claude request puts them in order: **Now**, **Today**, **This week** and **Later**,
+each with the reason and the ticket number (which opens in ConnectWise).
+
+The list is theirs to change, and every change is saved (no Claude request, so no tokens):
+
+- **Tick** items off; the bar shows progress.
+- **Remove** any item, David's or their own (with Undo). Removed items are listed under **Removed** at the bottom
+  of the page for 30 days, each with **Put back**.
+- **Add** their own to any group, with an optional ticket number, and **edit** them later.
+- **Drag** items by the handle on the left to reorder them or move them to another group. With the keyboard,
+  focus the handle and use the up and down arrows.
+
+The list doesn't reset by itself; it stays until they click **Make a new list**, which rebuilds David's items
+from fresh ConnectWise data. Items they added and haven't ticked carry over to the new list. Tickets they removed
+stay off new lists for 30 days, unless the ticket is updated in ConnectWise after they removed it (the page says
+how many are being left out, with a link to them under Removed). Putting one back ends that.
 
 Each login is matched to its ConnectWise member by display name. When that doesn't work (two people
 with the same name, or a nickname), add the person's ConnectWise username as the last column of their

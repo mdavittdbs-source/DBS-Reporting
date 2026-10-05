@@ -268,6 +268,85 @@
                      font-size: 12.5px; color: var(--faint); }
   .todo-item.done .title { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--faint); }
   .todo-item.done .why, .todo-item.done .tags { opacity: .6; }
+  /* Editing: drag handle, remove/edit buttons, your own items, the add form. */
+  .quiet .todo-group { animation: none; }
+  .todo-item { position: relative; }
+  .todo-item .grip { flex-shrink: 0; width: 16px; height: 24px; margin: 0 -8px 0 -8px; padding: 0; border: 0; border-radius: 6px;
+                     background: none; color: var(--faint); display: grid; place-items: center; cursor: grab; touch-action: none;
+                     opacity: 0; transition: opacity .15s var(--ease), color .15s var(--ease); }
+  .todo-item .grip svg { width: 14px; height: 14px; }
+  .todo-item .grip::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 26px; }
+  .todo-item:hover .grip, .todo-item .grip:focus-visible { opacity: 1; }
+  .todo-item .grip:hover { color: var(--text); }
+  .todo-actions { display: flex; gap: 2px; margin: -3px -6px 0 0; opacity: 0; transition: opacity .15s var(--ease); }
+  .todo-item:hover .todo-actions, .todo-item:focus-within .todo-actions { opacity: 1; }
+  .icon-btn { position: relative; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 8px;
+              background: none; color: var(--faint);
+              transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .icon-btn svg { width: 14px; height: 14px; }
+  .icon-btn:hover { background: var(--pill); color: var(--text); }
+  .icon-btn:active { transform: scale(.96); }
+  .icon-btn::after { content: ""; position: absolute; inset: -6px -1px; }
+  @media (hover: none) { .todo-item .grip, .todo-actions { opacity: 1; } }
+  .mine-tag { font-size: 11.5px; font-weight: 500; padding: 1px 8px; border-radius: 999px; background: var(--tag-bg); color: var(--tag-ink); }
+  .todo-group.empty h3 { margin-bottom: 2px; }
+  .todo-none { display: none; margin: 0 14px; padding: 6px 0; font-size: 13px; color: var(--faint); }
+  .todo-group.empty .todo-none { display: block; }
+  .todo-add { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 2px; padding: 9px 14px; border: 0;
+              border-radius: 12px; background: none; color: var(--faint); font-size: 13.5px; text-align: left;
+              transition: background .2s var(--ease), color .2s var(--ease); }
+  .todo-add svg { width: 14px; height: 14px; }
+  .todo-add:hover { background: var(--hover); color: var(--text); }
+  .todo-add[hidden] { display: none; }
+  .todo-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 6px 6px; animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
+  .todo-form input { min-width: 0; padding: 8px 12px; border: 1px solid var(--glass-ring); border-radius: 10px; background: var(--core);
+                     color: var(--text); font: inherit; font-size: 14px; }
+  .todo-form input:focus { outline: none; box-shadow: var(--ring); }
+  .todo-form input[name=title] { flex: 1 1 260px; }
+  .todo-form input[name=ticket] { flex: 0 0 96px; font-variant-numeric: tabular-nums; }
+  .todo-form .cta { border: 0; padding: 8px 16px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
+  .todo-form .cta:active { transform: scale(.96); }
+  .ghost-btn { border: 0; border-radius: 999px; padding: 8px 12px; background: none; color: var(--muted); font-size: 13.5px;
+               transition: background .2s var(--ease), color .2s var(--ease); }
+  .ghost-btn:hover { background: var(--hover); color: var(--text); }
+  /* Dragging: the row follows the pointer above everything; a dashed slot shows where it will land. */
+  .todo-item.dragging { position: fixed; z-index: var(--z-popover); margin: 0; background: var(--core); pointer-events: none;
+                        box-shadow: 0 14px 34px -14px rgba(15, 23, 42, .35), 0 0 0 1px var(--glass-ring); }
+  .todo-item.dragging .grip, .todo-item.dragging .todo-actions { opacity: 1; }
+  body.dragging-todo, body.dragging-todo * { cursor: grabbing !important; user-select: none; }
+  .todo-drop { border-radius: 16px; background: var(--hover); outline: 1.5px dashed var(--glass-ring); outline-offset: -1.5px; }
+  .todo-item + .todo-drop, .todo-drop + .todo-item { box-shadow: none; }
+  .todo-item.leaving { opacity: 0; transform: translateY(4px);
+                       transition: opacity var(--duration-quick) var(--ease-smooth-out), transform var(--duration-quick) var(--ease-smooth-out); }
+  .todo-item.arriving { animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
+  .todo-hint { margin: -12px 0 22px; font-size: 13px; color: var(--faint); text-wrap: pretty; }
+  .link-btn { border: 0; padding: 0; background: none; color: var(--tag-ink); font: inherit; font-weight: 500;
+              text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+              text-underline-offset: 3px; }
+  .link-btn:hover { text-decoration-color: currentColor; }
+  .todo-removed { margin: 4px 0 8px; }
+  .todo-removed[hidden] { display: none; }
+  .removed-toggle { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px 8px 14px;
+                    border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 13.5px; font-weight: 500;
+                    transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .removed-toggle:hover { background: var(--hover); color: var(--text); }
+  .removed-toggle:active { transform: scale(.96); }
+  .removed-toggle::after { content: ""; position: absolute; inset: -3px 0; }
+  .removed-toggle .n { font-size: 11.5px; font-variant-numeric: tabular-nums; min-width: 20px; padding: 1px 7px;
+                       border-radius: 999px; background: var(--pill); text-align: center; }
+  .removed-toggle .chev { width: 14px; height: 14px; transition: transform var(--duration-fast) var(--ease-smooth-out); }
+  .removed-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  .removed-list { margin-top: 6px; padding: 6px 8px; border-radius: 20px; box-shadow: inset 0 0 0 1px var(--hair);
+                  animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
+  .removed-note { margin: 8px 14px 6px; font-size: 13px; color: var(--faint); text-wrap: pretty; }
+  .removed-item { display: flex; align-items: center; gap: 14px; padding: 10px 6px 10px 14px; border-radius: 14px; }
+  .removed-item + .removed-item { box-shadow: 0 -1px 0 var(--hair); }
+  .removed-item .what { min-width: 0; flex: 1; }
+  .removed-item .title { color: var(--muted); font-weight: 500; line-height: 1.4; text-wrap: pretty; }
+  .removed-item .tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 5px;
+                        font-size: 12.5px; color: var(--faint); }
+  .put-back { flex-shrink: 0; position: relative; box-shadow: inset 0 0 0 1px var(--hair); }
+  .put-back::after { content: ""; position: absolute; inset: -3px 0; }
   .todo-empty { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 6vh; }
   .todo-note { padding: 16px 20px; border-radius: 18px; background: var(--danger-soft); color: var(--danger);
                margin-bottom: 18px; }
@@ -447,6 +526,12 @@
            padding: 6px 13px 6px 10px; border-radius: 999px; font-size: 13px; font-weight: 500; line-height: 1.4;
            box-shadow: 0 8px 24px -12px rgba(15, 23, 42, .45); pointer-events: none; }
   #toast svg { width: 13px; height: 13px; flex-shrink: 0; }
+  #toast.has-action { pointer-events: auto; padding-right: 5px; }
+  .toast-action { margin-left: 6px; border: 0; border-radius: 999px; padding: 3px 11px; font-weight: 600; font-size: 12.5px;
+                  background: color-mix(in srgb, currentColor 16%, transparent); color: inherit;
+                  transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .toast-action:hover { background: color-mix(in srgb, currentColor 26%, transparent); }
+  .toast-action:active { transform: scale(.96); }
   .backdrop { display: none; }
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -642,16 +727,26 @@
   }
 
   let toastTimer;
-  function toast(text) {
+  // action: {label, run}, a button on the toast (e.g. Undo), which then stays up a little longer.
+  function toast(text, action = null) {
     const t = $("toast");
     // A check for confirmations ("Answer copied"), nothing for problems ("Couldn't …").
-    const ok = !/^(couldn|allow|that didn|error)/i.test(text);
+    const ok = !action && !/^(couldn|allow|that didn|error)/i.test(text);
     t.innerHTML = ok ? '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" ' +
       'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' : "";
-    t.append(text);
+    const words = document.createElement("span");
+    words.textContent = text;
+    t.append(words);
+    if (action) {
+      const b = document.createElement("button");
+      b.className = "toast-action"; b.type = "button"; b.textContent = action.label;
+      b.onclick = () => { t.classList.remove("is-open", "has-action"); clearTimeout(toastTimer); action.run(); };
+      t.append(b);
+    }
+    t.classList.toggle("has-action", !!action);
     t.classList.add("is-open");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove("is-open"), 2600);
+    toastTimer = setTimeout(() => t.classList.remove("is-open", "has-action"), action ? 6000 : 2600);
   }
 
   function renderMarkdown(el, text) {
@@ -1724,6 +1819,11 @@
   const TODO_GROUPS = [["now", "Now"], ["today", "Today"], ["this_week", "This week"], ["later", "Later"]];
   const REFRESH = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const TICK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const GRIP = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="6" cy="3.5" r="1.2"/><circle cx="10" cy="3.5" r="1.2"/><circle cx="6" cy="8" r="1.2"/><circle cx="10" cy="8" r="1.2"/><circle cx="6" cy="12.5" r="1.2"/><circle cx="10" cy="12.5" r="1.2"/></svg>';
+  const CHEVRON = '<svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const PLUS = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  const EDIT = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 3 13 5.5 6 12.5H3.5V10L10.5 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  const REMOVE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   let todoState = null;   // {list, done, created_at, usage}, as the server sends it
   let todoMaking = false;
   const make = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -1746,15 +1846,16 @@
     todoTab.removeAttribute("aria-current");
     history.replaceState(null, "", location.pathname);
   }
-  async function loadTodo() {
+  async function loadTodo(quiet = false) {
     try {
       todoState = await api("/api/todo");
     } catch (err) {
+      if (quiet) return;  // keep showing what's there
       todoState = null;
       if (inTodo()) { todoBox.replaceChildren(make("p", "todo-note", "Couldn't load your list: " + err.message)); }
       return;
     }
-    if (inTodo()) drawTodo();
+    if (inTodo()) drawTodo(null, quiet);
   }
 
   function eastern(iso) {
@@ -1772,8 +1873,13 @@
     return b;
   }
 
-  function drawTodo(problem) {
+  // ----- Drawing the list -----
+  // Every group is always shown once there's a list, so items can be added to or dragged into an empty one.
+  // `quiet` redraws (after undo, or a failed save) skip the cards' entrance and keep the scroll position.
+  function drawTodo(problem, quiet = false) {
+    const scroller = $("todo"), scrollTop = scroller.scrollTop;
     todoBox.replaceChildren();
+    todoBox.classList.toggle("quiet", quiet);
     const list = todoState?.list;
     if (!list) {  // first visit: what this is, and the button
       const start = make("section", "todo-empty todo-head");
@@ -1791,47 +1897,66 @@
     const pill = make("div"); pill.append(make("span", "eyebrow", `To Do · ${list.member}`));
     head.append(pill, make("h2", null, firstName ? `${firstName}, here's your week` : "Your to-do list"),
                 make("p", null, list.summary));
-    const items = list.items || [];
-    const doneCount = items.filter((_, i) => todoState.done.includes(i)).length;
     const bar = make("div", "todo-bar");
-    bar.append(todoButton("Make a new list"),
-               make("span", "meta", `Made ${eastern(todoState.created_at)} · ${doneCount} of ${items.length} done`));
+    bar.append(todoButton("Make a new list"), make("span", "meta"));
     const progress = make("div", "progress"); progress.setAttribute("aria-hidden", "true");
-    const fill = make("i"); fill.style.width = items.length ? `${(100 * doneCount) / items.length}%` : "0";
-    progress.append(fill); bar.append(progress);
+    progress.append(make("i")); bar.append(progress);
     head.append(bar);
+    if (list.left_out) {
+      const one = list.left_out === 1;
+      const hint = make("p", "todo-hint", `Leaving out ${one ? "1 ticket" : `${list.left_out} tickets`} you removed ` +
+        `from an earlier list. ${one ? "It comes back if it's" : "They come back if they're"} updated in ConnectWise. `);
+      const see = make("button", "link-btn", one ? "See it" : "See them");
+      see.type = "button";
+      see.onclick = () => { removedOpen = true; drawRemoved(); todoBox.querySelector(".todo-removed").scrollIntoView({ behavior: "smooth", block: "start" }); };
+      hint.append(see);
+      head.append(hint);
+    }
     if (problem) head.append(make("p", "todo-note", problem));
     todoBox.append(head);
-    if (!items.length) { todoBox.append(make("p", null, list.summary ? "" : "Nothing to do. Nice.")); }
     let n = 0;
     for (const [key, label] of TODO_GROUPS) {
-      const inGroup = items.map((item, i) => [item, i]).filter(([item]) => item.priority === key);
-      if (!inGroup.length) continue;
       const card = make("section", `shell todo-group ${key}`);
       card.dataset.key = key;
       card.style.animationDelay = `${n++ * 60}ms`;
       const core = make("div", "core");
-      const h3 = make("h3"); h3.append(make("span", "eyebrow", label));
-      const left = inGroup.filter(([, i]) => !todoState.done.includes(i)).length;
-      h3.append(make("span", "n", left ? `${left} to do` : "All done"));
-      core.append(h3);
-      for (const [item, i] of inGroup) core.append(todoItem(item, i));
+      const h3 = make("h3"); h3.append(make("span", "eyebrow", label), make("span", "n"));
+      const rows = make("div", "todo-rows");
+      for (const item of list.items.filter((it) => it.priority === key)) rows.append(todoItem(item));
+      const none = make("p", "todo-none", "Nothing here. Drag a to-do in, or add one.");
+      core.append(h3, rows, none, addButton(key));
       card.append(core);
       todoBox.append(card);
     }
+    todoBox.append(make("section", "todo-removed"));
+    drawRemoved();
+    todoBox.append(make("span", "sr-only todo-live"));
+    todoBox.lastChild.setAttribute("aria-live", "polite");
     if (isAdmin && todoState.usage) todoBox.append(usageTag(todoState.usage));
+    refreshTodo();
+    scroller.scrollTop = quiet ? scrollTop : 0;
   }
 
-  function todoItem(item, index) {
-    const done = todoState.done.includes(index);
-    const row = make("div", "todo-item" + (done ? " done" : ""));
-    row.dataset.i = index;
+  const todoById = (id) => todoState.list.items.find((it) => it.id === id);
+  const isDone = (id) => todoState.done.includes(id);
+
+  function todoItem(item) {
+    const done = isDone(item.id);
+    const row = make("div", "todo-item" + (done ? " done" : "") + (item.mine ? " mine" : ""));
+    row.dataset.id = item.id;
+    const grip = make("button", "grip");
+    grip.type = "button";
+    grip.innerHTML = GRIP;
+    grip.setAttribute("aria-label", `Move: ${item.title}. Use the up and down arrows.`);
+    grip.title = "Drag to move";
+    grip.onpointerdown = (e) => startDrag(e, row);
+    grip.onkeydown = (e) => moveByKey(e, row);
     const tick = make("button", "tick");
     tick.type = "button";
     tick.innerHTML = TICK;
     tick.setAttribute("aria-pressed", String(done));
     tick.setAttribute("aria-label", `Done: ${item.title}`);
-    tick.onclick = () => setTodoDone(index, !todoState.done.includes(index));
+    tick.onclick = () => setTodoDone(item.id, !isDone(item.id));
     const what = make("div", "what");
     what.append(make("div", "title", item.title));
     if (item.why) what.append(make("div", "why", item.why));
@@ -1843,44 +1968,367 @@
     }
     if (item.client) tags.append(make("span", null, item.client));
     if (item.when) tags.append(make("span", null, item.when));
+    if (item.mine) tags.append(make("span", "mine-tag", "Added by you"));
     if (tags.childNodes.length) what.append(tags);
-    row.append(tick, what);
+    const actions = make("div", "todo-actions");
+    if (item.mine) actions.append(iconButton(EDIT, `Edit: ${item.title}`, () => editTodo(row)));
+    actions.append(iconButton(REMOVE, `Remove: ${item.title}`, () => removeTodo(row)));
+    row.append(grip, tick, what, actions);
     return row;
   }
 
-  // A tick updates the list in place: the row, the counts and the bar. Redrawing would replay every
-  // card's entrance, jump the scroll and drop keyboard focus.
-  function showTodoDone(index) {
-    const items = todoState.list.items || [];
-    const done = todoState.done.includes(index);
-    const row = todoBox.querySelector(`.todo-item[data-i="${index}"]`);
-    if (row) {
-      row.classList.toggle("done", done);
-      row.querySelector(".tick").setAttribute("aria-pressed", String(done));
-    }
-    const doneCount = items.filter((_, i) => todoState.done.includes(i)).length;
+  function iconButton(svg, label, onclick) {
+    const b = make("button", "icon-btn");
+    b.type = "button"; b.innerHTML = svg; b.title = label.split(":")[0]; b.setAttribute("aria-label", label);
+    b.onclick = onclick;
+    return b;
+  }
+
+  // Counts, empty-group hints, "N of M done" and the bar, from the list as it stands.
+  function refreshTodo() {
+    const items = todoState.list.items;
+    const doneCount = items.filter((it) => isDone(it.id)).length;
     const meta = todoBox.querySelector(".todo-bar .meta");
     if (meta) meta.textContent = `Made ${eastern(todoState.created_at)} · ${doneCount} of ${items.length} done`;
     const fill = todoBox.querySelector(".progress i");
     if (fill) fill.style.width = items.length ? `${(100 * doneCount) / items.length}%` : "0";
-    const group = todoBox.querySelector(`.todo-group[data-key="${items[index]?.priority}"] h3 .n`);
-    if (group) {
-      const left = items.filter((item, i) => item.priority === items[index].priority && !todoState.done.includes(i)).length;
-      group.textContent = left ? `${left} to do` : "All done";
+    for (const card of todoBox.querySelectorAll(".todo-group")) {
+      const inGroup = items.filter((it) => it.priority === card.dataset.key);
+      const left = inGroup.filter((it) => !isDone(it.id)).length;
+      card.querySelector("h3 .n").textContent = !inGroup.length ? "" : left ? `${left} to do` : "All done";
+      card.classList.toggle("empty", !card.querySelector(".todo-rows").children.length);
     }
   }
 
-  async function setTodoDone(index, done) {
+  function announce(text) { const live = todoBox.querySelector(".todo-live"); if (live) live.textContent = text; }
+
+  // ----- Saving -----
+  // The list's order and groups come from the page. Saves are batched so a burst of moves is one request.
+  let saveTimer = null;
+  function readOrder() {
+    const items = [];
+    for (const card of todoBox.querySelectorAll(".todo-group"))
+      for (const row of card.querySelectorAll(".todo-rows > .todo-item")) {
+        const item = todoById(row.dataset.id);
+        if (item) items.push({ ...item, priority: card.dataset.key });
+      }
+    todoState.list.items = items;
+  }
+  function saveTodo() {
+    readOrder();
+    refreshTodo();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      const items = todoState.list.items.map(({ id, priority, mine, title, why, ticket }) =>
+        ({ id, priority, mine: !!mine, title, why: why || "", ticket: ticket || null }));
+      try {
+        await api("/api/todo/items", { method: "PUT", body: JSON.stringify({ items }) });
+      } catch (err) {
+        toast("Couldn't save that: " + err.message);
+        await loadTodo(true);
+      }
+    }, 300);
+  }
+
+  function showTodoDone(id) {
+    const done = isDone(id);
+    const row = todoBox.querySelector(`.todo-item[data-id="${id}"]`);
+    if (row) {
+      row.classList.toggle("done", done);
+      row.querySelector(".tick").setAttribute("aria-pressed", String(done));
+    }
+    refreshTodo();
+  }
+
+  async function setTodoDone(id, done) {
     const before = [...todoState.done];
-    todoState.done = done ? [...new Set([...before, index])] : before.filter((i) => i !== index);
-    showTodoDone(index);
+    todoState.done = done ? [...new Set([...before, id])] : before.filter((i) => i !== id);
+    showTodoDone(id);
     try {
-      await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: index, done }) });
+      await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: id, done }) });
     } catch (err) {
       todoState.done = before;
-      showTodoDone(index);
+      showTodoDone(id);
       toast("Couldn't save that: " + err.message);
     }
+  }
+
+  // ----- Removed: what you took off, for 30 days, with Put back -----
+  let removedOpen = false;
+  const groupName = (key) => (TODO_GROUPS.find(([k]) => k === key) || [, "Later"])[1];
+
+  function drawRemoved() {
+    const box = todoBox.querySelector(".todo-removed");
+    if (!box) return;
+    const removed = todoState.removed || [];
+    box.replaceChildren();
+    box.hidden = !removed.length;
+    if (!removed.length) { removedOpen = false; return; }
+    const toggle = make("button", "removed-toggle");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", String(removedOpen));
+    toggle.innerHTML = CHEVRON;
+    toggle.prepend(make("span", null, "Removed"), make("span", "n", String(removed.length)));
+    toggle.onclick = () => { removedOpen = !removedOpen; drawRemoved(); box.querySelector(".removed-toggle").focus(); };
+    box.append(toggle);
+    if (!removedOpen) return;
+    const panel = make("div", "removed-list");
+    panel.append(make("p", "removed-note", "Tickets you removed stay off new lists for 30 days, unless they're updated " +
+      "in ConnectWise. Put one back to add it to your list again."));
+    for (const item of removed) {
+      const row = make("div", "removed-item");
+      const what = make("div", "what");
+      what.append(make("div", "title", item.title));
+      const tags = make("div", "tags");
+      if (item.ticket) {
+        const ref = make(ticketUrl ? "a" : "span", "ref", `#${item.ticket}`);
+        if (ticketUrl) { ref.href = ticketUrl.replace("{id}", item.ticket); ref.target = "_blank"; ref.rel = "noopener"; ref.title = "Open in ConnectWise"; }
+        tags.append(ref);
+      }
+      if (item.client) tags.append(make("span", null, item.client));
+      if (item.mine) tags.append(make("span", "mine-tag", "Added by you"));
+      tags.append(make("span", null, `Was in ${groupName(item.priority)} · removed ${eastern(item.removed_at)}`));
+      what.append(tags);
+      const back = make("button", "ghost-btn put-back", "Put back");
+      back.type = "button";
+      back.setAttribute("aria-label", `Put back: ${item.title}`);
+      back.onclick = () => putBack(item);
+      row.append(what, back);
+      panel.append(row);
+    }
+    box.append(panel);
+  }
+
+  function putBack(entry) {
+    const { removed_at, ...item } = entry;
+    todoState.removed = todoState.removed.filter((r) => r.id !== item.id);
+    // A ticket left out of this list (removed from an earlier one) is no longer being left out.
+    if (!item.mine && item.ticket && todoState.list.left_out && new Date(removed_at) < new Date(todoState.created_at)) {
+      todoState.list.left_out -= 1;
+    }
+    const card = todoBox.querySelector(`.todo-group[data-key="${item.priority}"]`) || todoBox.querySelector(".todo-group");
+    item.priority = card.dataset.key;
+    todoState.list.items.push(item);
+    const row = todoItem(item);
+    row.classList.add("arriving");
+    card.querySelector(".todo-rows").append(row);
+    saveTodo();
+    drawRemoved();
+    const hint = todoBox.querySelector(".todo-hint");
+    if (hint && !todoState.list.left_out) hint.remove();
+    const next = todoBox.querySelector(".put-back") || todoBox.querySelector(".removed-toggle");
+    next?.focus({ preventScroll: true });
+    toast(`Put back in ${groupName(item.priority)}`);
+  }
+
+  // ----- Remove, with undo -----
+  function removeTodo(row) {
+    const item = todoById(row.dataset.id);
+    if (!item) return;
+    const index = todoState.list.items.indexOf(item), wasDone = isDone(item.id);
+    const next = row.nextElementSibling || row.previousElementSibling;
+    row.classList.add("leaving");
+    setTimeout(() => {
+      row.remove();
+      todoState.done = todoState.done.filter((i) => i !== item.id);
+      saveTodo();
+      (next?.querySelector(".grip") || todoBox.querySelector(`.todo-group[data-key="${item.priority}"] .todo-add`))?.focus({ preventScroll: true });
+    }, reducedMotion() ? 0 : 150);
+    todoState.removed = [{ ...item, removed_at: new Date().toISOString() }, ...(todoState.removed || [])];
+    drawRemoved();
+    toast(`Removed "${item.title}"`, { label: "Undo", run: () => {
+      todoState.removed = todoState.removed.filter((r) => r.id !== item.id);
+      todoState.list.items.splice(Math.min(index, todoState.list.items.length), 0, item);
+      drawTodo(null, true);
+      saveTodo();
+      if (wasDone) setTodoDone(item.id, true);
+      todoBox.querySelector(`.todo-item[data-id="${item.id}"] .grip`)?.focus({ preventScroll: true });
+    } });
+  }
+
+  // ----- Add and edit your own -----
+  function addButton(key) {
+    const b = make("button", "todo-add");
+    b.type = "button";
+    b.innerHTML = PLUS;
+    b.append("Add a to-do");
+    b.onclick = () => openTodoForm(b.closest(".todo-group"), null);
+    return b;
+  }
+
+  // One form at a time: for a new item at the end of a group, or in place of one of your items to edit it.
+  function openTodoForm(card, row) {
+    closeTodoForm();
+    const item = row ? todoById(row.dataset.id) : null;
+    const form = make("form", "todo-form");
+    const title = make("input"); title.name = "title"; title.maxLength = 200; title.required = true;
+    title.placeholder = "What do you need to do?"; title.setAttribute("aria-label", "To-do");
+    title.value = item?.title || "";
+    const ticket = make("input"); ticket.name = "ticket"; ticket.inputMode = "numeric"; ticket.maxLength = 9;
+    ticket.placeholder = "Ticket #"; ticket.setAttribute("aria-label", "Ticket number (optional)");
+    ticket.value = item?.ticket || "";
+    const save = make("button", "cta small", item ? "Save" : "Add"); save.type = "submit";
+    const cancel = make("button", "ghost-btn", "Cancel"); cancel.type = "button";
+    form.append(title, ticket, save, cancel);
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const text = title.value.trim();
+      if (!text) { title.focus(); return; }
+      const number = parseInt(ticket.value.replace(/[^0-9]/g, ""), 10) || null;
+      if (item) {
+        Object.assign(item, { title: text, ticket: number });
+        const fresh = todoItem(item);
+        row.replaceWith(fresh);
+        closeTodoForm();
+        saveTodo();
+        fresh.querySelector(".grip").focus({ preventScroll: true });
+        return;
+      }
+      const added = { id: "m-" + Math.random().toString(36).slice(2, 12), title: text, why: "", priority: card.dataset.key,
+                      ticket: number, client: null, when: null, mine: true };
+      todoState.list.items.push(added);
+      const fresh = todoItem(added);
+      fresh.classList.add("arriving");
+      card.querySelector(".todo-rows").append(fresh);
+      saveTodo();
+      announce(`Added "${text}"`);
+      title.value = ""; ticket.value = "";
+      title.focus();  // ready for the next one
+    };
+    cancel.onclick = () => closeTodoForm(true);
+    form.onkeydown = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeTodoForm(true); } };
+    if (row) { row.hidden = true; row.after(form); form.dataset.editing = row.dataset.id; }
+    else { card.querySelector(".todo-add").hidden = true; card.querySelector(".todo-rows").after(form); }
+    title.focus();
+  }
+  function closeTodoForm(refocus = false) {
+    const form = todoBox.querySelector(".todo-form");
+    if (!form) return;
+    const card = form.closest(".todo-group");
+    const row = form.dataset.editing && todoBox.querySelector(`.todo-item[data-id="${form.dataset.editing}"]`);
+    form.remove();
+    if (row) { row.hidden = false; if (refocus) row.querySelector(".grip").focus(); }
+    const add = card.querySelector(".todo-add");
+    add.hidden = false;
+    if (refocus && !row) add.focus();
+  }
+  function editTodo(row) { openTodoForm(row.closest(".todo-group"), row); }
+
+  // ----- Moving: drag the handle, or arrow keys on it -----
+  const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Slide rows from where they were to where they are now (FLIP), so nothing jumps.
+  function slideRows(change) {
+    const rows = [...todoBox.querySelectorAll(".todo-item:not(.dragging), .todo-drop, .todo-add, .todo-none")];
+    const before = new Map(rows.map((r) => [r, r.getBoundingClientRect().top]));
+    change();
+    if (reducedMotion()) return;
+    for (const r of rows) {
+      const dy = before.get(r) - r.getBoundingClientRect().top;
+      if (!dy || !r.isConnected) continue;
+      r.style.transition = "none";
+      r.style.transform = `translateY(${dy}px)`;
+      requestAnimationFrame(() => {
+        r.style.transition = "transform var(--duration-fast) var(--ease-smooth-out)";
+        r.style.transform = "";
+      });
+    }
+  }
+
+  function moveByKey(e, row) {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    const up = e.key === "ArrowUp";
+    const sibling = up ? row.previousElementSibling : row.nextElementSibling;
+    let card = row.closest(".todo-group");
+    slideRows(() => {
+      if (sibling) { up ? sibling.before(row) : sibling.after(row); return; }
+      const cards = [...todoBox.querySelectorAll(".todo-group")];
+      const next = cards[cards.indexOf(card) + (up ? -1 : 1)];
+      if (!next) return;
+      card = next;
+      const rows = next.querySelector(".todo-rows");
+      up ? rows.append(row) : rows.prepend(row);
+    });
+    saveTodo();
+    row.querySelector(".grip").focus({ preventScroll: true });
+    row.scrollIntoView({ block: "nearest" });
+    announce(`${todoById(row.dataset.id)?.title}: ${TODO_GROUPS.find(([k]) => k === card.dataset.key)[1]}, ` +
+             `${[...card.querySelectorAll(".todo-rows > .todo-item")].indexOf(row) + 1} of ${card.querySelectorAll(".todo-rows > .todo-item").length}`);
+  }
+
+  function startDrag(e, row) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    closeTodoForm();
+    const grip = e.currentTarget, scroller = $("todo");
+    const box = row.getBoundingClientRect();
+    const offset = e.clientY - box.top;
+    const drop = make("div", "todo-drop");
+    drop.style.height = `${box.height}px`;
+    row.after(drop);
+    Object.assign(row.style, { width: `${box.width}px`, height: `${box.height}px`, left: `${box.left}px`, top: `${box.top}px` });
+    row.classList.add("dragging");
+    document.body.classList.add("dragging-todo");
+    // Lifted out to the page while dragged: a group card's entrance animation leaves a transform on it,
+    // which would make the fixed-position row move relative to the card instead of the window.
+    document.body.append(row);
+    let y = e.clientY, raf = 0, scrollRaf = 0;
+
+    const place = () => {
+      raf = 0;
+      row.style.top = `${y - offset}px`;
+      // Where would it land? The group under the pointer, before the first row whose middle is below it.
+      const card = [...todoBox.querySelectorAll(".todo-group")].find((c) => {
+        const r = c.getBoundingClientRect(); return y >= r.top - 8 && y <= r.bottom + 8;
+      });
+      if (!card) return;
+      const rows = card.querySelector(".todo-rows");
+      const before = [...rows.children].find((r) => r !== drop && r.getBoundingClientRect().top + r.offsetHeight / 2 > y) || null;
+      if (drop.parentNode === rows && drop.nextElementSibling === before) return;
+      slideRows(() => { rows.insertBefore(drop, before); refreshEmpty(); });
+    };
+    // Keep the list scrolling while the pointer sits near its top or bottom edge.
+    const edgeScroll = () => {
+      const r = scroller.getBoundingClientRect();
+      const speed = y < r.top + 60 ? -(r.top + 60 - y) / 4 : y > r.bottom - 60 ? (y - (r.bottom - 60)) / 4 : 0;
+      if (speed) { scroller.scrollTop += speed; if (!raf) raf = requestAnimationFrame(place); }
+      scrollRaf = requestAnimationFrame(edgeScroll);
+    };
+    scrollRaf = requestAnimationFrame(edgeScroll);
+    const refreshEmpty = () => {
+      for (const c of todoBox.querySelectorAll(".todo-group"))
+        c.classList.toggle("empty", ![...c.querySelector(".todo-rows").children].some((r) => r !== row));
+    };
+
+    const move = (ev) => { if (ev.pointerId !== e.pointerId) return; y = ev.clientY; if (!raf) raf = requestAnimationFrame(place); };
+    const end = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      removeEventListener("pointermove", move); removeEventListener("pointerup", end); removeEventListener("pointercancel", end);
+      cancelAnimationFrame(raf); cancelAnimationFrame(scrollRaf);
+      const from = row.getBoundingClientRect();
+      drop.replaceWith(row);
+      row.classList.remove("dragging");
+      document.body.classList.remove("dragging-todo");
+      row.removeAttribute("style");
+      // Settle from where it was let go into its slot.
+      const to = row.getBoundingClientRect();
+      if (!reducedMotion() && Math.abs(from.top - to.top) > 1) {
+        row.style.transform = `translateY(${from.top - to.top}px)`;
+        row.style.transition = "none";
+        requestAnimationFrame(() => {
+          row.style.transition = "transform var(--duration-fast) var(--ease-smooth-out)";
+          row.style.transform = "";
+          row.addEventListener("transitionend", () => row.removeAttribute("style"), { once: true });
+        });
+      }
+      const card = row.closest(".todo-group");
+      const moved = todoById(row.dataset.id);
+      if (moved && moved.priority !== card.dataset.key) announce(`Moved to ${TODO_GROUPS.find(([k]) => k === card.dataset.key)[1]}`);
+      saveTodo();
+      grip.focus({ preventScroll: true });
+    };
+    addEventListener("pointermove", move); addEventListener("pointerup", end); addEventListener("pointercancel", end);
   }
 
   async function makeTodo() {

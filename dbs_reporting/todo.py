@@ -53,8 +53,20 @@ def find_member(cw, user: dict) -> dict:
                     "username as the last column of your line in users.txt.")
 
 
-def gather_work(cw, member: dict, now: datetime | None = None) -> dict:
-    """The person's open tickets and the next 7 days of their calendar, compact for Claude."""
+def _left_out(dismissed: list[dict] | None) -> dict[int, datetime]:
+    """Ticket number -> when the person last removed it from a list."""
+    hide: dict[int, datetime] = {}
+    for entry in dismissed or []:
+        at = parse_dt(entry.get("at"))
+        if entry.get("ticket") and at:
+            hide[entry["ticket"]] = max(at, hide.get(entry["ticket"], at))
+    return hide
+
+
+def gather_work(cw, member: dict, now: datetime | None = None, dismissed: list[dict] | None = None) -> dict:
+    """The person's open tickets and the next 7 days of their calendar, compact for Claude. Tickets they removed
+    from an earlier list (`dismissed`) are left out, with their calendar entries, unless the ticket has been
+    updated since."""
     now = now or eastern.now()
     today = now.date()
     ident = member["identifier"]
@@ -62,6 +74,14 @@ def gather_work(cw, member: dict, now: datetime | None = None) -> dict:
     (service, project), entries = _together(lambda: cw.member_open_tickets(ident),
                                             lambda: cw.member_schedule(ident, start, end))
     utc_now = datetime.now(timezone.utc)
+    hide = _left_out(dismissed)
+    changed = {t.get("id") for t in service + project if t.get("id") in hide
+               and (parse_dt((t.get("_info") or {}).get("lastUpdated")) or hide[t["id"]]) > hide[t["id"]]}
+    hidden = set(hide) - changed
+    left_out = sum(t.get("id") in hidden for t in service + project)
+    open_service, open_project = len(service), len(project)  # the real totals, for the summary
+    service = [t for t in service if t.get("id") not in hidden]
+    project = [t for t in project if t.get("id") not in hidden]
 
     def days_since(value) -> int | None:
         dt = parse_dt(value)
@@ -94,6 +114,8 @@ def gather_work(cw, member: dict, now: datetime | None = None) -> dict:
         local = eastern.to_eastern(begin)
         local_end = eastern.to_eastern(finish) if finish and finish > begin else None
         kind = e.get("type") or {}
+        if (kind.get("identifier") or "").upper() in ("S", "P") and e.get("objectId") in hidden:
+            continue
         for d in entry_days(local, local_end):
             if today <= d < today + timedelta(days=7):
                 calendar.append({
@@ -107,8 +129,9 @@ def gather_work(cw, member: dict, now: datetime | None = None) -> dict:
     return _compact({
         "person": member_name(member),
         "now": f"{now:%A} {eastern.day(today)} {eastern.clock(now)} ET",
-        "open_service_tickets": len(service),
-        "open_project_tickets": len(project),
+        "open_service_tickets": open_service,
+        "open_project_tickets": open_project,
+        "left_out": left_out or None,  # tickets the person removed before; the summary can say so
         "tickets": _table(rows[:MAX_TICKETS], ("id", "kind", "summary", "client", "site", "project", "phase", "status",
                                                "priority", "role", "board", "age_days", "days_since_update")),
         "calendar_next_7_days": _table(calendar, ("day", "time", "title", "kind", "ticket", "where")),
@@ -139,7 +162,9 @@ means work is booked. Project tickets have no "in progress" status.
 - title: a short instruction, e.g. "Call Taco Town about the kitchen printer". why: one short sentence \
 with the reason from the data (priority, age, status, time). when: the date and time if it's on the \
 calendar, e.g. "Tue 10/06/2026 9:00 AM", else null. ticket: the ticket number, else null.
-- summary: one or two sentences on their week, e.g. how many tickets are open and the biggest thing.
+- summary: one or two sentences on their week, e.g. how many tickets are open and the biggest thing. \
+"left_out" (when present) counts open tickets they took off an earlier list; they aren't in the data, so \
+don't list them.
 - Write to the person directly, in the second person: "You have 7 open tickets", "your 2:00 PM \
 visit". Never use their name or "they".
 - Dates are month/day/year; times are 12-hour Eastern."""
@@ -200,11 +225,16 @@ def rank(client: anthropic.Anthropic, model: str, work: dict) -> tuple[dict, dic
     return {"summary": data.get("summary") or "", "items": items[:MAX_ITEMS]}, used
 
 
-def make(cw, client: anthropic.Anthropic, model: str, user: dict) -> dict:
-    """Everything the To Do tab shows for `user`: who they are in ConnectWise and their ranked list."""
+def make(cw, client: anthropic.Anthropic, model: str, user: dict, dismissed: list[dict] | None = None) -> dict:
+    """Everything the To Do tab shows for `user`: who they are in ConnectWise and their ranked list. Items they
+    removed from earlier lists (`dismissed`, from the store) stay off it until their ticket changes."""
     member = find_member(cw, user)
-    work = gather_work(cw, member)
+    work = gather_work(cw, member, dismissed=dismissed)
     todo, used = rank(client, model, work)
+    # The data sent to Claude already leaves those tickets out; this catches a calendar item without a ticket
+    # that was removed before, matched by its title.
+    titles = {(e.get("title") or "").strip().lower() for e in dismissed or [] if not e.get("ticket")}
+    todo["items"] = [i for i in todo["items"] if i.get("ticket") or (i.get("title") or "").strip().lower() not in titles]
     return {"member": member_name(member), "username": member.get("identifier"), **todo,
             "counts": {"service": work.get("open_service_tickets", 0), "project": work.get("open_project_tickets", 0)},
-            "usage": used}
+            "left_out": work.get("left_out") or 0, "usage": used}
