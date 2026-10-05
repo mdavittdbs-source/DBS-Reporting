@@ -150,7 +150,8 @@ each with the reason and the ticket number (which opens in ConnectWise).
 
 The list is theirs to change, and every change is saved (no Claude request, so no tokens):
 
-- **Tick** items off; the bar shows progress.
+- **Tick** items off: they slide away into **Done** (with Undo), and the bar shows progress. Untick one in Done
+  to put it back where it was.
 - **Remove** any item, David's or their own (with Undo). Removed items are listed under **Removed** at the bottom
   of the page for 30 days, each with **Put back** and **Delete** (or **Delete all**, both with Undo).
 - **Add** their own to any group, with an optional ticket number, and **edit** them later.

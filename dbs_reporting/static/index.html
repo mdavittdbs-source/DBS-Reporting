@@ -321,6 +321,16 @@
   .todo-item.leaving { opacity: 0; transform: translateY(4px);
                        transition: opacity var(--duration-quick) var(--ease-smooth-out), transform var(--duration-quick) var(--ease-smooth-out); }
   .todo-item.arriving { animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
+  .todo-item.finishing { opacity: 0; transform: translateX(24px);
+                         transition: opacity 260ms var(--ease-smooth-out), transform 260ms var(--ease-smooth-out); }
+  .todo-done { margin: 22px 8px 0; box-shadow: 0 -1px 0 var(--hair); }
+  .todo-done[hidden] { display: none; }
+  .todo-done + .todo-removed { margin-top: 0; }
+  .done-item { gap: 14px; padding-left: 6px; }
+  .done-item .title { text-decoration: line-through; text-decoration-color: var(--faint); }
+  .done-item .tick { background: var(--tag-ink); box-shadow: none; margin-top: 0; }
+  .done-item .tick svg { opacity: 1; transform: none; filter: none; }
+  .done-item .tick:focus-visible { box-shadow: var(--ring); }
   .todo-removed { margin: 22px 8px 8px; box-shadow: 0 -1px 0 var(--hair); }
   .todo-removed[hidden] { display: none; }
   .removed-toggle { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 6px;
@@ -1924,13 +1934,14 @@
       const core = make("div", "core");
       const h3 = make("h3"); h3.append(make("span", "eyebrow", label), make("span", "n"));
       const rows = make("div", "todo-rows");
-      for (const item of list.items.filter((it) => it.priority === key)) rows.append(todoItem(item));
-      const none = make("p", "todo-none", "Nothing here. Drag a to-do in, or add one.");
+      for (const item of list.items.filter((it) => it.priority === key && !isDone(it.id))) rows.append(todoItem(item));
+      const none = make("p", "todo-none");
       core.append(h3, rows, none, addButton(key));
       card.append(core);
       todoBox.append(card);
     }
-    todoBox.append(make("section", "todo-removed"));
+    todoBox.append(make("section", "todo-done"), make("section", "todo-removed"));
+    drawDone();
     drawRemoved();
     todoBox.append(make("span", "sr-only todo-live"));
     todoBox.lastChild.setAttribute("aria-live", "polite");
@@ -1999,6 +2010,8 @@
       const left = inGroup.filter((it) => !isDone(it.id)).length;
       card.querySelector("h3 .n").textContent = !inGroup.length ? "" : left ? `${left} to do` : "All done";
       card.classList.toggle("empty", !card.querySelector(".todo-rows").children.length);
+      card.querySelector(".todo-none").textContent = inGroup.length && !left
+        ? "All done here." : "Nothing here. Drag a to-do in, or add one.";
     }
   }
 
@@ -2014,7 +2027,8 @@
         const item = todoById(row.dataset.id);
         if (item) items.push({ ...item, priority: card.dataset.key });
       }
-    todoState.list.items = items;
+    const shown = new Set(items.map((it) => it.id));
+    todoState.list.items = [...items, ...todoState.list.items.filter((it) => isDone(it.id) && !shown.has(it.id))];
   }
   // now: add, edit, remove and put back save at once; moves (a burst of arrow keys or drags) wait 300ms.
   function saveTodo(now = false) {
@@ -2050,20 +2064,59 @@
   addEventListener("pagehide", () => { if (saveTimer) sendTodo(true); });
   document.addEventListener("visibilitychange", () => { if (document.hidden && saveTimer) sendTodo(true); });
 
+  // Ticking an item: the check fills, then the row slides out and the rows below close the gap; it's then
+  // listed under Done. Unticking (from Done, or Undo) puts it back in its place in its group.
+  const FINISH_PAUSE = 450;
   function showTodoDone(id) {
     const done = isDone(id);
-    const row = todoBox.querySelector(`.todo-item[data-id="${id}"]`);
-    if (row) {
-      row.classList.toggle("done", done);
-      row.querySelector(".tick").setAttribute("aria-pressed", String(done));
+    const row = todoBox.querySelector(`.todo-rows > .todo-item[data-id="${id}"]`);
+    if (done && row) {
+      row.classList.add("done");
+      row.querySelector(".tick").setAttribute("aria-pressed", "true");
+      const leave = () => {
+        if (!isDone(id) || !row.isConnected) return;  // unticked again in the meantime
+        const next = row.nextElementSibling?.querySelector(".tick") || row.closest(".todo-group").querySelector(".todo-add");
+        const hadFocus = row.contains(document.activeElement);
+        row.classList.add("finishing");
+        setTimeout(() => {
+          if (!isDone(id) || !row.isConnected) { row.classList.remove("finishing"); return; }
+          slideRows(() => row.remove());
+          refreshTodo();
+          drawDone();
+          if (hadFocus) next?.focus({ preventScroll: true });
+        }, reducedMotion() ? 0 : 260);
+      };
+      setTimeout(leave, reducedMotion() ? 0 : FINISH_PAUSE);
+    } else if (!done && !row) {
+      const item = todoById(id);
+      if (item) placeRow(item);
+    } else if (row) {
+      row.classList.remove("done", "finishing");
+      row.querySelector(".tick").setAttribute("aria-pressed", "false");
     }
     refreshTodo();
+    drawDone();
+  }
+
+  // Back into its group, before the next item that follows it in the list.
+  function placeRow(item) {
+    const card = todoBox.querySelector(`.todo-group[data-key="${item.priority}"]`);
+    if (!card) return null;
+    const rows = card.querySelector(".todo-rows");
+    const after = todoState.list.items.slice(todoState.list.items.indexOf(item) + 1);
+    const before = after.map((it) => rows.querySelector(`.todo-item[data-id="${it.id}"]`)).find(Boolean) || null;
+    const row = todoItem(item);
+    row.classList.add("arriving");
+    slideRows(() => rows.insertBefore(row, before));
+    return row;
   }
 
   async function setTodoDone(id, done) {
     const before = [...todoState.done];
     todoState.done = done ? [...new Set([...before, id])] : before.filter((i) => i !== id);
     showTodoDone(id);
+    const item = todoById(id);
+    if (done && item) toast(`Done: ${item.title}`, { label: "Undo", run: () => setTodoDone(id, false) });
     try {
       await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: id, done }), keepalive: true });
     } catch (err) {
@@ -2071,6 +2124,59 @@
       showTodoDone(id);
       toast("Couldn't save that: " + err.message);
     }
+  }
+
+  // ----- Done: what you've ticked off, newest list order, untick to put back -----
+  let doneOpen = false;
+  function drawDone() {
+    const box = todoBox.querySelector(".todo-done");
+    if (!box) return;
+    const done = todoState.list.items.filter((it) => isDone(it.id) && !todoBox.querySelector(`.todo-rows > .todo-item[data-id="${it.id}"]`));
+    box.querySelector(".done-list")?.remove();
+    box.hidden = !done.length;
+    if (!done.length) { doneOpen = false; box.replaceChildren(); return; }
+    let toggle = box.querySelector(".removed-toggle");
+    if (!toggle) {
+      toggle = make("button", "removed-toggle");
+      toggle.type = "button";
+      toggle.innerHTML = TOGGLE;
+      toggle.prepend(make("span", "label", "Done"), make("span", "n"));
+      toggle.onclick = () => { doneOpen = !doneOpen; drawDone(); };
+      box.append(toggle);
+    }
+    toggle.setAttribute("aria-expanded", String(doneOpen));
+    toggle.querySelector(".n").textContent = String(done.length);
+    if (!doneOpen) return;
+    const panel = make("div", "removed-list done-list");
+    for (const item of done) {
+      const row = make("div", "removed-item done-item");
+      const tick = make("button", "tick");
+      tick.type = "button";
+      tick.innerHTML = TICK;
+      tick.setAttribute("aria-pressed", "true");
+      tick.setAttribute("aria-label", `Not done: ${item.title}`);
+      tick.title = "Not done yet";
+      tick.onclick = () => {
+        const next = row.nextElementSibling?.querySelector(".tick") || box.querySelector(".removed-toggle");
+        setTodoDone(item.id, false);
+        next?.focus({ preventScroll: true });
+      };
+      const what = make("div", "what");
+      what.append(make("div", "title", item.title));
+      const tags = make("div", "tags");
+      if (item.ticket) {
+        const ref = make(ticketUrl ? "a" : "span", "ref", `#${item.ticket}`);
+        if (ticketUrl) { ref.href = ticketUrl.replace("{id}", item.ticket); ref.target = "_blank"; ref.rel = "noopener"; ref.title = "Open in ConnectWise"; }
+        tags.append(ref);
+      }
+      if (item.client) tags.append(make("span", null, item.client));
+      if (item.mine) tags.append(make("span", "mine-tag", "Added by you"));
+      tags.append(make("span", null, `In ${groupName(item.priority)}`));
+      what.append(tags);
+      row.append(tick, what);
+      panel.append(row);
+    }
+    box.append(panel);
   }
 
   // ----- Removed: what you took off, for 30 days, with Put back -----
