@@ -206,7 +206,7 @@
   transition:
     transform var(--tabs-dur) var(--tabs-ease),
     width     var(--tabs-dur) var(--tabs-ease);
-  will-change: transform, width;
+  will-change: transform;  /* width can't be composited */
   z-index: 0;
   pointer-events: none;
 }
