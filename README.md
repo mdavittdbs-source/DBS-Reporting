@@ -143,7 +143,7 @@ Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic 
 
 ## To Do tab
 
-Anyone can click **To Do** (next to New chat) and click **Make my list**. David pulls their open service
+Anyone can click **To Do** at the bottom of the sidebar and click **Make my list**. David pulls their open service
 tickets (as owner or resource), the project tickets they're a resource on, and their calendar for the
 next 7 days, and one Claude request puts them in order: **Now**, **Today**, **This week** and
 **Later**, each with the reason and the ticket number (which opens in ConnectWise). Ticked items are
