@@ -98,3 +98,17 @@ def test_bad_last_column_is_not_erased(tmp_path):
     store, users, path = setup(tmp_path, "jsmith | Jane Smith | Welcome2026! | admn\n")
     assert "admn" in path.read_text()
     assert any("last column" in p for p in users.problems)
+
+
+def test_connectwise_username_column(tmp_path):
+    store, users, path = setup(tmp_path, "sam | Sam O | Welcome2026! | | sortiz\nboss | The Boss | SuperSecret99 | admin\n")
+    text = path.read_text()
+    assert "sam | Sam O | scrypt$" in text and text.splitlines()[0].endswith(" |  | sortiz")  # kept when hashing
+    sam = store.authenticate("sam", "Welcome2026!")
+    assert sam["cw_member"] == "sortiz" and store.authenticate("boss", "SuperSecret99")["cw_member"] == ""
+    token = store.create_session(sam["id"])
+    assert store.session_user(token)["cw_member"] == "sortiz"
+    write(path, path.read_text().replace("| sortiz", "| sortiz2"))
+    users.refresh()
+    assert store.session_user(token)["cw_member"] == "sortiz2"
+    assert not users.problems

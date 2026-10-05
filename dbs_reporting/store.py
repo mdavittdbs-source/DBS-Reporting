@@ -66,6 +66,15 @@ CREATE TABLE IF NOT EXISTS feedback (
     PRIMARY KEY (turn_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS feedback_by_time ON feedback(updated_at);
+-- Each person's latest to-do list (To Do tab) and which items they've ticked off.
+CREATE TABLE IF NOT EXISTS todo_lists (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    data TEXT NOT NULL,
+    done TEXT NOT NULL DEFAULT '[]',
+    model TEXT,
+    usage TEXT,
+    created_at TEXT NOT NULL
+);
 -- Small bits of app state, e.g. which week's email digest has been sent.
 CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
@@ -106,6 +115,8 @@ class Store:
             columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
             if "active" not in columns:  # databases created before users.txt support
                 db.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+            if "cw_member" not in columns:  # databases created before the To Do tab
+                db.execute("ALTER TABLE users ADD COLUMN cw_member TEXT NOT NULL DEFAULT ''")
             turn_columns = {row[1] for row in db.execute("PRAGMA table_info(turns)")}
             if "model" not in turn_columns:  # databases created before per-answer models
                 db.execute("ALTER TABLE turns ADD COLUMN model TEXT")
@@ -167,16 +178,18 @@ class Store:
                                  (u["username"],)).fetchone()
                 if row is None:
                     db.execute(
-                        "INSERT INTO users (username, display_name, password_hash, is_admin, active, created_at)"
-                        " VALUES (?, ?, ?, ?, 1, ?)",
-                        (u["username"], u["display_name"], u["password_hash"], int(u["is_admin"]), _now()),
+                        "INSERT INTO users (username, display_name, password_hash, is_admin, active, created_at,"
+                        " cw_member) VALUES (?, ?, ?, ?, 1, ?, ?)",
+                        (u["username"], u["display_name"], u["password_hash"], int(u["is_admin"]), _now(),
+                         u.get("cw_member") or ""),
                     )
                     continue
                 if row["password_hash"] != u["password_hash"]:
                     db.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
                 db.execute(
-                    "UPDATE users SET display_name = ?, password_hash = ?, is_admin = ?, active = 1 WHERE id = ?",
-                    (u["display_name"], u["password_hash"], int(u["is_admin"]), row["id"]),
+                    "UPDATE users SET display_name = ?, password_hash = ?, is_admin = ?, active = 1, cw_member = ?"
+                    " WHERE id = ?",
+                    (u["display_name"], u["password_hash"], int(u["is_admin"]), u.get("cw_member") or "", row["id"]),
                 )
             for row in db.execute("SELECT id, username FROM users WHERE active = 1").fetchall():
                 if row["username"].lower() not in listed:
@@ -187,7 +200,7 @@ class Store:
         """Username, display name, hash and admin flag for every active login."""
         with self._db() as db:
             rows = db.execute(
-                "SELECT username, display_name, password_hash, is_admin FROM users WHERE active = 1"
+                "SELECT username, display_name, password_hash, is_admin, cw_member FROM users WHERE active = 1"
                 " ORDER BY username"
             ).fetchall()
             return [dict(r) for r in rows]
@@ -231,7 +244,7 @@ class Store:
     def session_user(self, token: str) -> dict | None:
         with self._db() as db:
             row = db.execute(
-                "SELECT u.id, u.username, u.display_name, u.is_admin FROM sessions s"
+                "SELECT u.id, u.username, u.display_name, u.is_admin, u.cw_member FROM sessions s"
                 " JOIN users u ON u.id = s.user_id"
                 " WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1",
                 (_token_hash(token), _now()),
@@ -308,6 +321,36 @@ class Store:
         answer = dict(row)
         answer["charts"] = json.loads(answer["charts"]) if answer["charts"] else []
         return answer
+
+    # --- To-do lists ------------------------------------------------------
+
+    def save_todo(self, user_id: int, data: dict, model: str, usage: dict | None) -> None:
+        """Replace this person's to-do list with a new one (nothing ticked yet)."""
+        with self._db() as db:
+            db.execute("INSERT INTO todo_lists (user_id, data, done, model, usage, created_at) VALUES (?, ?, '[]', ?, ?, ?)"
+                       " ON CONFLICT (user_id) DO UPDATE SET data = excluded.data, done = '[]', model = excluded.model,"
+                       " usage = excluded.usage, created_at = excluded.created_at",
+                       (user_id, json.dumps(data), model, json.dumps(usage) if usage else None, _now()))
+
+    def get_todo(self, user_id: int) -> dict | None:
+        """{data, done (ticked item numbers), model, usage, created_at}, or None before the first list."""
+        with self._db() as db:
+            row = db.execute("SELECT * FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+        if row is None:
+            return None
+        return {"data": json.loads(row["data"]), "done": json.loads(row["done"]), "model": row["model"],
+                "usage": json.loads(row["usage"]) if row["usage"] else None, "created_at": row["created_at"]}
+
+    def set_todo_done(self, user_id: int, item: int, done: bool) -> bool:
+        """Tick or untick item number `item`. False if there's no list or no such item."""
+        with self._db() as db:
+            row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+            if row is None or not 0 <= item < len(json.loads(row["data"]).get("items", [])):
+                return False
+            ticked = set(json.loads(row["done"]))
+            ticked.add(item) if done else ticked.discard(item)
+            db.execute("UPDATE todo_lists SET done = ? WHERE user_id = ?", (json.dumps(sorted(ticked)), user_id))
+            return True
 
     # --- App state ---------------------------------------------------------
 

@@ -245,6 +245,10 @@ class ReportingAgent:
         self._effort = os.environ.get("CLAUDE_EFFORT", "medium").strip() or "medium"
 
     @property
+    def client(self) -> anthropic.Anthropic:
+        return self._client
+
+    @property
     def description(self) -> str:
         return f"Claude ({self.default_model})"
 

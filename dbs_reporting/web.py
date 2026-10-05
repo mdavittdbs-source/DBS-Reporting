@@ -7,6 +7,7 @@ only their own saved chats.
 import base64
 import json
 import logging
+import os
 import queue
 import re
 import threading
@@ -17,13 +18,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import anthropic
+import httpx
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, digest, exports
+from . import activity, digest, exports, todo
 from .charts import extract_charts
 from .agent import create_agent
 from .config import ConnectWiseSettings
@@ -291,6 +293,69 @@ def all_feedback(user: dict = Depends(current_user)) -> dict:
     _require_admin(user)
     rows = store.list_feedback()
     return {"items": rows, "up": sum(r["rating"] > 0 for r in rows), "down": sum(r["rating"] < 0 for r in rows)}
+
+
+# --- To Do -----------------------------------------------------------------
+
+_todo_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
+
+
+def _todo_view(user: dict, saved: dict | None) -> dict:
+    if saved is None:
+        return {"list": None}
+    view = {"list": saved["data"], "done": saved["done"], "created_at": saved["created_at"], "model": saved["model"]}
+    if user["is_admin"]:
+        view["usage"] = saved["usage"]
+    return view
+
+
+@app.get("/api/todo")
+def get_todo(user: dict = Depends(current_user)) -> dict:
+    """Your latest to-do list and what you've ticked off."""
+    return _todo_view(user, store.get_todo(user["id"]))
+
+
+def _make_todo(user: dict) -> dict:
+    with _todo_locks[user["id"]]:  # one at a time per person, so a double click doesn't pay twice
+        started = time.monotonic()
+        model = os.environ.get("TODO_MODEL", "").strip() or agent.default_model
+        data = todo.make(cw, agent.client, model, user)
+        used = data.pop("usage")
+        store.save_todo(user["id"], data, model, used)
+        activity.log_todo(user, data, model, used, time.monotonic() - started)
+        return _todo_view(user, store.get_todo(user["id"]))
+
+
+@app.post("/api/todo")
+async def make_todo(user: dict = Depends(current_user)) -> dict:
+    """Make a fresh to-do list from your open ConnectWise tickets and calendar (replaces the last one)."""
+    try:
+        return await run_in_threadpool(_make_todo, user)
+    except todo.TodoError as exc:
+        raise HTTPException(400, str(exc))
+    except httpx.HTTPStatusError as exc:
+        log.warning("To Do: ConnectWise returned HTTP %s", exc.response.status_code)
+        raise HTTPException(502, f"ConnectWise returned an error (HTTP {exc.response.status_code}). Try again shortly.")
+    except Exception as exc:
+        status, message = _friendly_error(exc)
+        raise HTTPException(status, message)
+
+
+class TodoTick(BaseModel):
+    item: int
+    done: bool
+
+
+@app.post("/api/todo/done")
+def tick_todo(body: TodoTick, user: dict = Depends(current_user)) -> dict:
+    if not store.set_todo_done(user["id"], body.item, body.done):
+        raise HTTPException(404, "That item isn't on your list any more.")
+    return {"ok": True}
+
+
+@app.get("/todo")
+def todo_page():
+    return RedirectResponse("/#todo")
 
 
 @app.get("/api/feedback/recent")
