@@ -199,9 +199,6 @@
   .nav-tab:active { transform: scale(.96); }
   .nav-tab[aria-current="page"] { background: var(--cta); color: var(--cta-ink); box-shadow: none; }
   .nav-tab svg { width: 14px; height: 14px; flex-shrink: 0; }
-  .nav-tab .count { font-size: 10.5px; font-variant-numeric: tabular-nums; min-width: 17px; line-height: 17px;
-                    padding: 0 5px; border-radius: 999px; text-align: center; background: var(--tag-bg); color: var(--tag-ink); }
-  .nav-tab[aria-current="page"] .count { background: color-mix(in srgb, currentColor 20%, transparent); color: inherit; }
   body.todo-view #log, body.todo-view #form { display: none; }
   #todo .inner { min-height: 100%; display: flex; flex-direction: column; }
   #todo { flex: 1; overflow-y: auto; padding: 28px 24px 40px;
@@ -501,7 +498,6 @@
       <button id="todo-tab" type="button" class="nav-tab">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="label">To Do</span>
-        <span class="count" id="todo-count" hidden></span>
       </button>
       <button id="new" type="button">
         New chat
@@ -1721,16 +1717,6 @@
     todoTab.removeAttribute("aria-current");
     history.replaceState(null, "", location.pathname);
   }
-  function todoLeft() {
-    const items = todoState?.list?.items || [];
-    return items.length - items.filter((_, i) => todoState.done.includes(i)).length;
-  }
-  function updateTodoCount() {
-    const left = todoState?.list ? todoLeft() : 0;
-    $("todo-count").hidden = !left;
-    $("todo-count").textContent = left;
-    todoTab.setAttribute("aria-label", left ? `To Do, ${left} left` : "To Do");
-  }
   async function loadTodo() {
     try {
       todoState = await api("/api/todo");
@@ -1739,7 +1725,6 @@
       if (inTodo()) { todoBox.replaceChildren(make("p", "todo-note", "Couldn't load your list: " + err.message)); }
       return;
     }
-    updateTodoCount();
     if (inTodo()) drawTodo();
   }
 
@@ -1835,12 +1820,12 @@
   async function setTodoDone(index, done) {
     const before = [...todoState.done];
     todoState.done = done ? [...new Set([...before, index])] : before.filter((i) => i !== index);
-    drawTodo(); updateTodoCount();
+    drawTodo();
     try {
       await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: index, done }) });
     } catch (err) {
       todoState.done = before;
-      drawTodo(); updateTodoCount();
+      drawTodo();
       toast("Couldn't save that: " + err.message);
     }
   }
@@ -1860,7 +1845,6 @@
     let problem = null;
     try {
       todoState = await api("/api/todo", { method: "POST" });
-      updateTodoCount();
     } catch (err) {
       problem = "Couldn't make your list: " + err.message;
     } finally {
@@ -1943,7 +1927,6 @@
     narrowQuery.addEventListener("change", fitToScreen);
     updateSend();
     newChat();
-    await loadTodo();  // the sidebar shows how many items are left
     if (location.hash === "#todo") showTodo();
   })();
 </script>
