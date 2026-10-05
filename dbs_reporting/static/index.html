@@ -2081,6 +2081,9 @@
         const next = row.nextElementSibling?.querySelector(".tick") || row.closest(".todo-group").querySelector(".todo-add");
         const hadFocus = row.contains(document.activeElement);
         row.classList.remove("arriving");  // a finished entrance animation would hold it in place
+        row.glide = (row.glide || 0) + 1;  // and a glide still in progress would override the fade
+        row.style.removeProperty("transition");
+        row.style.removeProperty("transform");
         row.classList.add("finishing");
         setTimeout(() => {
           if (!isDone(id) || !row.isConnected) { row.classList.remove("finishing"); return; }
@@ -2299,6 +2302,9 @@
     if (!item) return;
     const index = todoState.list.items.indexOf(item), wasDone = isDone(item.id);
     const next = row.nextElementSibling || row.previousElementSibling;
+    row.glide = (row.glide || 0) + 1;  // a glide still in progress would override the fade
+    row.style.removeProperty("transition");
+    row.style.removeProperty("transform");
     row.classList.add("leaving");
     setTimeout(() => {
       row.remove();
@@ -2392,8 +2398,10 @@
   const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // Slide rows from where they were to where they are now (FLIP), so nothing jumps.
+  // Glides use inline styles, which would override the row's own transitions (the fade when ticked or
+  // removed), so they're cleared as soon as each glide ends. Rows already on their way out are left alone.
   function slideRows(change) {
-    const rows = [...todoBox.querySelectorAll(".todo-item:not(.dragging), .todo-drop, .todo-add, .todo-none")];
+    const rows = [...todoBox.querySelectorAll(".todo-item:not(.dragging):not(.finishing):not(.leaving), .todo-drop, .todo-add, .todo-none")];
     const before = new Map(rows.map((r) => [r, r.getBoundingClientRect().top]));
     change();
     if (reducedMotion()) return;
@@ -2402,9 +2410,12 @@
       if (!dy || !r.isConnected) continue;
       r.style.transition = "none";
       r.style.transform = `translateY(${dy}px)`;
+      const glide = (r.glide || 0) + 1;
+      r.glide = glide;
       requestAnimationFrame(() => {
         r.style.transition = "transform var(--duration-fast) var(--ease-smooth-out)";
         r.style.transform = "";
+        setTimeout(() => { if (r.glide === glide) r.style.removeProperty("transition"); }, 320);
       });
     }
   }
