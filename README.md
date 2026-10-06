@@ -157,6 +157,14 @@ The list is theirs to change, and every change is saved (no Claude request, so n
 - **Add** their own to any group, with an optional ticket number, and **edit** them later.
 - **Drag** items by the handle on the left to reorder them or move them to another group. With the keyboard,
   focus the handle and use the up and down arrows.
+- **Remind me**: the bell on any item sets a time (in 1 hour, later today, tomorrow morning, next Monday, or
+  any date and time). When it comes, a reminder card pops up in the top corner of David, on any page, with a
+  soft chime, **Done** and **Snooze 15 min**. If the tab is in the background, its title shows the reminder, and
+  the browser shows a desktop notification if the person allowed them. Desktop notifications only work when
+  David is opened as `http://localhost:8000` or over HTTPS; on other computers using
+  `http://<laptop-address>:8000`, the browser won't allow them, but the card, chime and tab title still work.
+  Reminders only go off while David is open in a tab. One that came due while it was closed shows the next
+  time David is opened. A reminder on one of David's items moves to the same ticket when a new list is made.
 
 The list doesn't reset by itself; it stays until they click **Make a new list**, which rebuilds David's items
 from fresh ConnectWise data. Items they added and haven't ticked carry over to the new list. Tickets they removed

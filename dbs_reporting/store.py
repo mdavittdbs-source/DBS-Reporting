@@ -109,6 +109,13 @@ def _removed(data: dict, made_at: str) -> list[dict]:
     return kept[:REMOVED_MAX]
 
 
+REMINDER = ("remind_at", "reminded")  # an item's reminder: when (UTC), and whether it's gone off
+
+
+def _reminder(item: dict | None) -> dict:
+    return {k: item[k] for k in REMINDER if item and k in item}
+
+
 def _with_ids(items: list[dict], done: list) -> tuple[list[dict], list[str]]:
     """Lists saved before items had ids: number David's items d0, d1… and turn ticked positions into ids."""
     if all("id" in item for item in items):
@@ -373,6 +380,11 @@ class Store:
             if old is not None:
                 old_data = json.loads(old["data"])
                 items, done = _with_ids(old_data.get("items", []), json.loads(old["done"]))
+                # A reminder on one of David's items moves to the same ticket (or to-do) on the new list.
+                timed = {(item.get("ticket") or item.get("title")): _reminder(item) for item in items
+                         if not item.get("mine") and item.get("remind_at") and item["id"] not in done}
+                data["items"] = [{**item, **timed.pop(item.get("ticket") or item.get("title"), {})}
+                                 for item in data["items"]]
                 data["items"] += [item for item in items if item.get("mine") and item["id"] not in done]
                 # Removed items stay in Removed, except a ticket that's back on the new list (it changed since).
                 back = {item.get("ticket") for item in data["items"] if item.get("ticket")}
@@ -438,6 +450,7 @@ class Store:
             # after it saved. Only David's own wording comes back for his items.
             removed = _removed(data, row["created_at"])
             davids = {item["id"]: item for item in removed + stored if not item.get("mine")}
+            known = {item["id"]: item for item in removed + stored}
             saved, seen = [], set()
             for item in items:
                 if item["id"] in seen:
@@ -445,7 +458,7 @@ class Store:
                 if item.get("mine"):
                     saved.append({"id": item["id"], "title": item["title"], "why": item.get("why") or "",
                                   "priority": item["priority"], "ticket": item.get("ticket"), "client": None,
-                                  "when": None, "mine": True})
+                                  "when": None, "mine": True, **_reminder(known.get(item["id"]))})
                 elif item["id"] in davids:
                     saved.append({k: v for k, v in {**davids[item["id"]], "priority": item["priority"]}.items()
                                   if k not in ("removed_at", "deleted")})
@@ -478,6 +491,46 @@ class Store:
             data.pop("dismissed", None)
             db.execute("UPDATE todo_lists SET data = ? WHERE user_id = ?", (json.dumps(data), user_id))
             return [item for item in data["removed"] if not item.get("deleted")]
+
+    def set_todo_reminder(self, user_id: int, item_id: str, at: str | None) -> dict | None:
+        """Set (UTC ISO time) or clear (None) the reminder on one item. Returns the item, or None if there's no
+        list or no such item."""
+        with self._db(write=True) as db:
+            row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+            if row is None:
+                return None
+            data = json.loads(row["data"])
+            data["items"], ticked = _with_ids(data.get("items", []), json.loads(row["done"]))
+            item = next((i for i in data["items"] if i["id"] == item_id), None)
+            if item is None:
+                return None
+            for key in REMINDER:
+                item.pop(key, None)
+            if at:
+                item.update(remind_at=at, reminded=False)
+            db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
+                       (json.dumps(data), json.dumps(ticked), user_id))
+            return item
+
+    def take_due_reminders(self, user_id: int) -> tuple[list[dict], str | None]:
+        """The reminders that are due on items still to do, marked as gone off so each shows once (in whichever
+        tab asks first), and when the next one is due (or None)."""
+        now = _now()
+        with self._db(write=True) as db:
+            row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+            if row is None:
+                return [], None
+            data = json.loads(row["data"])
+            data["items"], ticked = _with_ids(data.get("items", []), json.loads(row["done"]))
+            waiting = [i for i in data["items"] if i.get("remind_at") and not i.get("reminded") and i["id"] not in ticked]
+            due = [i for i in waiting if i["remind_at"] <= now]
+            later = [i["remind_at"] for i in waiting if i["remind_at"] > now]
+            if due:
+                for item in due:
+                    item["reminded"] = True
+                db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
+                           (json.dumps(data), json.dumps(ticked), user_id))
+            return due, min(later, default=None)
 
     # --- App state ---------------------------------------------------------
 
