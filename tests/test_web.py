@@ -17,7 +17,7 @@ def web(monkeypatch, tmp_path):
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("USERS_FILE", str(tmp_path / "users.txt"))
     (tmp_path / "users.txt").write_text(
-        "alice | Alice A | password-a | admin\nbob | Bob B | password-b |\n", encoding="utf-8"
+        "alice | Alice A | password-a | admin\nbob | Bob B | password-b |\ncarol | Carol C | password-c | uploader\n", encoding="utf-8"
     )
     from dbs_reporting import web as module
 
@@ -507,3 +507,42 @@ def test_overlong_questions_are_refused_before_reaching_claude(web, monkeypatch)
         assert too_long.status_code == 400 and "too long" in too_long.json()["detail"]
         assert client.post(path, json={"question": "   "}).status_code == 400
     assert asked == []
+
+
+def spoton_zip() -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("about.txt", "Restaurant: Test Pub\nExported: 2026-10-06 10:00\n")
+        z.writestr("menu_items.csv", "﻿Name,Price,ReportGroupName\nBurger,12.50,Food\nFries,4.00,\n")
+    return buf.getvalue()
+
+
+def test_only_admins_and_uploaders_can_upload_spoton_data(web):
+    module, _ = web
+    admin, user, uploader = (login(module, "alice", "password-a"), login(module, "bob", "password-b"),
+                             login(module, "carol", "password-c"))
+    assert admin.get("/api/me").json()["can_upload"] is True
+    assert uploader.get("/api/me").json() | {"ticket_url": None} == {
+        "username": "carol", "display_name": "Carol C", "is_admin": False, "can_upload": True, "ticket_url": None}
+    assert user.get("/api/me").json()["can_upload"] is False
+
+    assert user.post("/api/spoton/upload?filename=x.zip", content=spoton_zip()).status_code == 403
+    assert user.get("/api/spoton").status_code == 403
+    assert uploader.get("/api/feedback").status_code == 403  # uploaders aren't admins
+
+    response = uploader.post("/api/spoton/upload?filename=Test_Pub.zip", content=spoton_zip())
+    assert response.status_code == 200, response.text
+    assert response.json() == {"restaurant": "Test Pub", "files": {"menu_items": 2}}
+    assert [(f["restaurant"], f["file"], f["row_count"], f["uploaded_by"]) for f in admin.get("/api/spoton").json()] \
+        == [("Test Pub", "menu_items", 2, "Carol C")]
+
+    bad = uploader.post("/api/spoton/upload?filename=menu.csv", content=b"Name\nBurger\n")
+    assert bad.status_code == 400 and "restaurant" in bad.json()["detail"]
+    assert uploader.post("/api/spoton/upload?filename=menu.csv&restaurant=Other", content=b"Name\nBurger\n").status_code == 200
+
+    assert user.delete("/api/spoton/Test Pub").status_code == 403
+    assert admin.delete("/api/spoton/Test Pub").status_code == 200
+    assert [f["restaurant"] for f in admin.get("/api/spoton").json()] == ["Other"]

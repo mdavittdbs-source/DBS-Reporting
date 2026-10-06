@@ -68,12 +68,22 @@ mdavitt  | Matt Davitt  | S0mething-Long | admin
 - Type plain passwords. The bot replaces them with a scrambled (hashed) version the next
   time it reads the file, within seconds of saving.
 - To change a password, type a new one over the scrambled text.
+- The fourth column is the role: `admin`, `uploader` (a normal user who can also upload SpotOn data),
+  or empty.
 - Delete a line to remove access. That person is signed out immediately, and their chats
   are kept if you add them back.
 - Run `python -m dbs_reporting.users` to apply the file now and see any problems.
 
 `users.txt` and the chat database (`data/dbs_reporting.db`, override with `DB_PATH`) are
 gitignored. Back up both.
+
+## SpotOn data
+
+David can also answer questions about a restaurant's SpotOn menu, modifiers, employees and Audit Check.
+In the SpotOn Exporter, pick the restaurant and click **Export CSVs**; it downloads one zip. In David,
+admins and uploaders (see Logins) click the upload arrow next to David's name and choose that zip. A new
+upload for a restaurant replaces the old one. Then anyone can ask, e.g. "Which menu items at Test Pub have
+no report group?" The data is a copy from the upload, not live SpotOn.
 
 ## Logo
 

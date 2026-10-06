@@ -230,8 +230,8 @@ def test_lookups_asked_for_together_run_at_the_same_time(monkeypatch):
     calls, lock = [], threading.Lock()
     real = tools_mod.build_tools
 
-    def slow_tools(cw, charts_allowed=True):
-        built = real(cw, charts_allowed)
+    def slow_tools(cw, charts_allowed=True, store=None):
+        built = real(cw, charts_allowed, store)
         for t in built:
             if t.name == "find_company":
                 def call(args, run=t.call):

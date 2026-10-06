@@ -112,3 +112,14 @@ def test_connectwise_username_column(tmp_path):
     users.refresh()
     assert store.session_user(token)["cw_member"] == "sortiz2"
     assert not users.problems
+
+
+def test_uploader_role(tmp_path):
+    store, users, path = setup(tmp_path, "up | Up Loader | Welcome2026! | uploader\nboss | Boss | SuperSecret99 | admin\n"
+                                         "jsmith | Jane | Welcome2026! |\n")
+    assert users.problems == []
+    accounts = {a["username"]: a for a in store.active_accounts()}
+    assert (accounts["up"]["is_admin"], accounts["up"]["can_upload"]) == (0, 1)
+    assert (accounts["boss"]["is_admin"], accounts["boss"]["can_upload"]) == (1, 1)
+    assert (accounts["jsmith"]["is_admin"], accounts["jsmith"]["can_upload"]) == (0, 0)
+    assert "| uploader" in path.read_text()

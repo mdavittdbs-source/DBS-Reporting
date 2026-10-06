@@ -132,6 +132,14 @@ settle", "terminal offline"), and give a count for each group. Keep requests (me
 changes, new employees, training) separate from things that broke. Mention the ticket type/subtype \
 breakdown only when it adds something.
 - Pull ticket details for a few representative tickets when root causes or resolutions matter.
+- SpotOn POS data: admins upload SpotOn data for some restaurants from the SpotOn Exporter: the menu \
+(menu_items: price, menu groups, report group, requisition/print group, taxes, OLO name, flags), \
+modifiers, employees (name, active, job positions) and the SpotOn Audit Check (audit_summary with \
+FIX/REVIEW/PASS/INFO per check, audit_items_to_fix listing each item to fix, and more). For questions \
+about a restaurant's SpotOn menu, modifiers, employees or audit, call list_spoton_data, then \
+get_spoton_data (use where, group_by and columns to keep results small). Say when the data was \
+uploaded. This is a copy from the upload, not live SpotOn; the restaurant's name may differ from its \
+ConnectWise company name.
 - Long lists in tool results are tables: "columns" names the fields once, each entry in "rows" gives \
 the values in that order (null means blank), and "every_row" holds fields that are the same on every row.
 - Data from earlier questions in a chat is removed once they're answered; your earlier answers \
@@ -170,6 +178,8 @@ TOOL_STATUS = {
     "get_clients_by_software": "Checking which software clients use…",
     "get_projects": "Looking up projects…",
     "get_project_tickets": "Pulling project tickets…",
+    "list_spoton_data": "Checking uploaded SpotOn data…",
+    "get_spoton_data": "Reading SpotOn data…",
     "create_chart": "Drawing a chart…",
 }
 
@@ -238,9 +248,10 @@ def _to_json(block) -> dict:
     return block
 
 class ReportingAgent:
-    def __init__(self, cw: ConnectWiseClient, client: anthropic.Anthropic | None = None):
+    def __init__(self, cw: ConnectWiseClient, client: anthropic.Anthropic | None = None, store=None):
         self._client = client or anthropic.Anthropic()
         self._cw = cw
+        self._store = store  # for uploaded SpotOn data; None leaves those tools out
         self.default_model, self.models = configured_models()
         self._effort = os.environ.get("CLAUDE_EFFORT", "medium").strip() or "medium"
 
@@ -282,7 +293,7 @@ class ReportingAgent:
         final = None
         json_retries = 0
         usage = usage_mod.empty()
-        tools = build_tools(self._cw, charts_allowed=wants_chart(question))
+        tools = build_tools(self._cw, charts_allowed=wants_chart(question), store=self._store)
         ready: dict = {}
         _reuse_results(tools, ready)
         while True:
@@ -349,5 +360,5 @@ class ReportingAgent:
                "history": compact_history(messages),
                "usage": usage}
 
-def create_agent(cw: ConnectWiseClient) -> ReportingAgent:
-    return ReportingAgent(cw)
+def create_agent(cw: ConnectWiseClient, store=None) -> ReportingAgent:
+    return ReportingAgent(cw, store=store)
