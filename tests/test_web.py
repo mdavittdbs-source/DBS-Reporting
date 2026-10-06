@@ -546,3 +546,12 @@ def test_only_admins_and_uploaders_can_upload_spoton_data(web):
     assert user.delete("/api/spoton/Test Pub").status_code == 403
     assert admin.delete("/api/spoton/Test Pub").status_code == 200
     assert [f["restaurant"] for f in admin.get("/api/spoton").json()] == ["Other"]
+
+
+def test_a_question_about_an_upload_keeps_a_clean_title(web):
+    module, calls = web
+    alice = login(module, "alice", "password-a")
+    question = "[SpotOn upload: Taco Town · Menu Items.xlsx]\nWhich items have no report group?"
+    done = alice.post("/api/chat", json={"question": question}).json()
+    assert done["title"] == "Which items have no report group?"
+    assert calls[-1][1] == question  # David still sees which upload it's about

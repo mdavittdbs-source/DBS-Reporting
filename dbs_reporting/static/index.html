@@ -597,6 +597,20 @@
   /* A file dragged over the box: a faint tint, the ring, and the placeholder says what dropping does. */
   .composer > .core { transition: background .2s var(--ease); }
   .composer.dropping { box-shadow: var(--ambient), var(--ring); }
+  /* Uploaded files stay in the box, as chips, until the next question is sent (or they're taken off). */
+  .composer > .core:has(.attached:not([hidden])) { flex-wrap: wrap; }
+  .attached { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 2px; }
+  .attached[hidden] { display: none; }
+  .file-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 5px 6px 5px 10px;
+               border-radius: 12px; background: var(--pill); box-shadow: inset 0 0 0 1px var(--hair);
+               font-size: 12.5px; line-height: 1.3; animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
+  .file-chip > svg { flex-shrink: 0; width: 15px; height: 15px; color: var(--tag-ink); }
+  .file-chip .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-chip .meta { color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .file-chip .icon-btn { width: 22px; height: 22px; border-radius: 7px; }
+  .file-chip .icon-btn svg { width: 12px; height: 12px; }
+  .file-chip.leaving { opacity: 0; transform: translateY(2px); transition: opacity var(--duration-quick) ease-out, transform var(--duration-quick) ease-out; }
+  .msg.user .file-chip { margin: 0 0 8px; padding-right: 10px; background: color-mix(in srgb, var(--pill) 70%, transparent); animation: none; }
   .composer.dropping > .core { background: color-mix(in srgb, var(--tag-bg) 60%, transparent); }
   #q { flex: 1; min-width: 0; resize: none; border: 0; background: none; padding: 9px 0; max-height: 200px;
        line-height: 1.5; outline: none; }
@@ -770,6 +784,7 @@
     <form id="form">
       <div class="inner">
         <div class="composer"><div class="core">
+          <div class="attached" id="attached" hidden></div>
           <button type="button" class="attach" id="spoton-upload" hidden aria-label="Upload SpotOn data" title="Upload SpotOn data: the zip from the SpotOn Exporter, a .csv or an Excel .xlsx (or drop it here)">
             <svg class="i-clip" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 7.5 8 12.5a3.2 3.2 0 0 1-4.5-4.5l5.3-5.3a2.1 2.1 0 0 1 3 3L6.5 10.9a1 1 0 0 1-1.4-1.4L10 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <svg class="i-spin" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.5" opacity=".25"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -1078,12 +1093,31 @@
   keepAtEnd.observe(messages);
   keepAtEnd.observe(log);
 
+  const UPLOAD_LINE = /^\[SpotOn upload: ([^\]\n]*)\]\n/;
   function addUser(text) {
     const div = document.createElement("div");
     div.className = "msg user";
-    div.textContent = text;
+    let found;
+    while ((found = text.match(UPLOAD_LINE))) {  // files uploaded for this question show as chips
+      const [restaurant, ...rest] = found[1].split(" · "), name = rest.join(" · ");
+      div.append(fileChip(name || restaurant, name ? restaurant : ""), document.createElement("br"));
+      text = text.slice(found[0].length);
+    }
+    div.append(text);
     messages.appendChild(div);
     scrollToEnd();
+  }
+  const FILE_ICON = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 2.5h5l3 3v8H4v-11Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 2.5v3h3M6.5 9h3M6.5 11h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function fileChip(name, meta, remove) {
+    const chip = document.createElement("span");
+    chip.className = "file-chip";
+    chip.innerHTML = FILE_ICON;
+    const label = document.createElement("span"); label.className = "name"; label.textContent = name;
+    chip.append(label);
+    if (meta) { const m = document.createElement("span"); m.className = "meta"; m.textContent = meta; chip.append(m); }
+    chip.title = meta ? `${name} · ${meta}` : name;
+    if (remove) chip.append(iconButton(REMOVE, `Take off: ${name}`, remove));
+    return chip;
   }
 
   function fmtTokens(n) {
@@ -3022,10 +3056,14 @@
 
   $("form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const question = q.value.trim();
-    if (!question || busy) return;
+    const typed = q.value.trim();
+    if (!typed || busy) return;
+    // Files just uploaded go with the question, so David knows what "this file" means.
+    const question = attachments.map((a) => `[SpotOn upload: ${a.restaurant} · ${a.name}]\n`).join("") + typed;
     q.value = "";
     autoGrow();
+    attachments = [];
+    drawAttachments();
     ask(question);
   });
   q.addEventListener("input", () => { autoGrow(); updateSend(); });
@@ -3100,6 +3138,27 @@
     if (!/\.(zip|csv|xlsx)$/i.test(file.name)) { toast("Couldn't upload", null, "Use the SpotOn zip, a .csv or an .xlsx"); return; }
     uploadSpotOn(file);
   });
+  // Uploaded files wait in the question box until the next question is sent.
+  let attachments = [];
+  function attach(name, data) {
+    const rows = Object.values(data.files).reduce((a, b) => a + b, 0), sheets = Object.keys(data.files).length;
+    attachments = attachments.filter((a) => !(a.name === name && a.restaurant === data.restaurant));
+    attachments.push({ name: name.replace(/[\]\n]/g, " "), restaurant: data.restaurant.replace(/[\]\n·]/g, " "),
+                       meta: `${data.restaurant} · ${sheets > 1 ? `${sheets} files, ` : ""}${rows.toLocaleString()} row${rows === 1 ? "" : "s"}` });
+    drawAttachments();
+    q.focus();
+  }
+  function drawAttachments() {
+    const box = $("attached");
+    box.replaceChildren(...attachments.map((a) => fileChip(a.name, a.meta, (e) => {
+      e.stopPropagation();
+      attachments = attachments.filter((x) => x !== a);
+      const chip = e.currentTarget.closest(".file-chip");
+      chip.classList.add("leaving");
+      setTimeout(() => { drawAttachments(); q.focus(); }, 150);
+    })));
+    box.hidden = !attachments.length;
+  }
   async function uploadSpotOn(file) {
     let restaurant = "";
     if (!/\.zip$/i.test(file.name)) {
@@ -3120,6 +3179,7 @@
       if (!res.ok) throw new Error(errorText(data, res.statusText));
       toast("Uploaded", null, data.restaurant);
       ok = true;
+      attach(file.name, data);
     } catch (err) {
       toast("Couldn't upload", null, err.message);
     } finally {
