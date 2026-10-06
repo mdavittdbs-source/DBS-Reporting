@@ -470,4 +470,5 @@ def test_reminders(web, monkeypatch):  # noqa: F811
     assert remind(taco["id"], (NOW + timedelta(days=400)).isoformat()).status_code == 422
     assert remind("nope", soon).status_code == 404
     alice = login(module, "alice", "password-a")
-    assert alice.post("/api/todo/reminders").json() == {"due": [], "next": None}
+    got = alice.post("/api/todo/reminders").json()
+    assert got["due"] == [] and got["next"] is None and got["now"]

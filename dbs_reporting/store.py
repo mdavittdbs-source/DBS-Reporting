@@ -75,6 +75,14 @@ CREATE TABLE IF NOT EXISTS todo_lists (
     usage TEXT,
     created_at TEXT NOT NULL
 );
+-- Browsers that get reminders as pop-ups even with David closed (Web Push). The endpoint is the browser's
+-- own address at its push service; signing in as someone else in that browser moves it to them.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 -- Small bits of app state, e.g. which week's email digest has been sent.
 CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
@@ -109,7 +117,7 @@ def _removed(data: dict, made_at: str) -> list[dict]:
     return kept[:REMOVED_MAX]
 
 
-REMINDER = ("remind_at", "reminded")  # an item's reminder: when (UTC), and whether it's gone off
+REMINDER = ("remind_at", "reminded", "fired_at")  # an item's reminder: when (UTC), whether and when it went off
 
 
 def _reminder(item: dict | None) -> dict:
@@ -512,25 +520,56 @@ class Store:
                        (json.dumps(data), json.dumps(ticked), user_id))
             return item
 
-    def take_due_reminders(self, user_id: int) -> tuple[list[dict], str | None]:
-        """The reminders that are due on items still to do, marked as gone off so each shows once (in whichever
-        tab asks first), and when the next one is due (or None)."""
+    def take_due_reminders(self, user_id: int, since: str | None = None) -> tuple[list[dict], str | None]:
+        """check_reminders, with what went off now and since together."""
+        fresh, recent, upcoming = self.check_reminders(user_id, since)
+        return recent + fresh, upcoming
+
+    def check_reminders(self, user_id: int, since: str | None = None) -> tuple[list[dict], list[dict], str | None]:
+        """(the reminders due now on items still to do, marked as gone off with "fired_at" so each goes off once;
+        those that went off at or after `since`, e.g. sent as a push to a page that asked before then; when the
+        next one is due, or None)."""
         now = _now()
         with self._db(write=True) as db:
             row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
             if row is None:
-                return [], None
+                return [], [], None
             data = json.loads(row["data"])
             data["items"], ticked = _with_ids(data.get("items", []), json.loads(row["done"]))
             waiting = [i for i in data["items"] if i.get("remind_at") and not i.get("reminded") and i["id"] not in ticked]
             due = [i for i in waiting if i["remind_at"] <= now]
             later = [i["remind_at"] for i in waiting if i["remind_at"] > now]
+            recent = [i for i in data["items"] if since and i.get("reminded") and (i.get("fired_at") or "") >= since
+                      and i["id"] not in ticked]
             if due:
                 for item in due:
-                    item["reminded"] = True
+                    item.update(reminded=True, fired_at=now)
                 db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
                            (json.dumps(data), json.dumps(ticked), user_id))
-            return due, min(later, default=None)
+            return due, recent, min(later, default=None)
+
+    # --- Push subscriptions ----------------------------------------------------
+
+    def add_push(self, user_id: int, subscription: dict) -> None:
+        with self._db() as db:
+            db.execute("INSERT INTO push_subscriptions (endpoint, user_id, data, created_at) VALUES (?, ?, ?, ?)"
+                       " ON CONFLICT (endpoint) DO UPDATE SET user_id = excluded.user_id, data = excluded.data",
+                       (subscription["endpoint"], user_id, json.dumps(subscription), _now()))
+
+    def remove_push(self, endpoint: str, user_id: int | None = None) -> None:
+        with self._db() as db:
+            if user_id is None:
+                db.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+            else:
+                db.execute("DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?", (endpoint, user_id))
+
+    def push_subscriptions(self, user_id: int | None = None) -> list[tuple[int, dict]]:
+        """[(user id, subscription)], for one person or everyone."""
+        with self._db() as db:
+            rows = db.execute("SELECT user_id, data FROM push_subscriptions"
+                              + (" WHERE user_id = ?" if user_id is not None else ""),
+                              () if user_id is None else (user_id,)).fetchall()
+        return [(row["user_id"], json.loads(row["data"])) for row in rows]
 
     # --- App state ---------------------------------------------------------
 

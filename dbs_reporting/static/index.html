@@ -313,7 +313,10 @@
   .remind-pop input:focus { outline: none; box-shadow: var(--ring); }
   .remind-pop .custom button { width: auto; padding: 6px 14px; background: var(--pill); font-weight: 600; text-align: center; }
   .remind-pop .custom button:hover { background: var(--hover); }
-  .remind-pop .hint { margin: 8px 10px 4px; font-size: 12px; color: var(--faint); line-height: 1.4; }
+  .remind-pop .hint { margin: 8px 10px 4px; font-size: 12px; color: var(--faint); line-height: 1.45; text-wrap: pretty; }
+  .remind-pop .hint button.linkish { display: inline; width: auto; padding: 0; border-radius: 0; background: none; font: inherit;
+                                     font-weight: 600; color: var(--tag-ink); text-decoration: underline; text-underline-offset: 2px; }
+  .remind-pop .hint button.linkish:hover { background: none; }
   #reminders { position: fixed; top: 16px; right: 24px; z-index: var(--z-toast); width: min(340px, calc(100vw - 32px));
                display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
   .reminder { pointer-events: auto; display: flex; gap: 12px; align-items: flex-start; padding: 12px 8px 10px 14px;
@@ -2170,7 +2173,68 @@
   }
   const localInput = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
   function askToNotify() {  // asked on the first reminder you set, while you're clicking (browsers require that)
-    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+    if (notifyState() === "default")
+      Notification.requestPermission().then((answer) => { if (answer === "granted") setupPush(); }).catch(() => {});
+  }
+
+  // Push: this browser gets reminders from David even when no David tab is open (see push.py and sw.js).
+  let pushOn = false;
+  const keyBytes = (b64) => Uint8Array.from(atob(b64.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+  async function setupPush() {
+    if (notifyState() !== "granted" || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    try {
+      const { key } = await api("/api/push/key");
+      if (!key) return;  // not set up on the server
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      const current = sub?.options.applicationServerKey;
+      if (sub && current && btoa(String.fromCharCode(...new Uint8Array(current))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") !== key) {
+        await sub.unsubscribe();  // made with an older server key
+        sub = null;
+      }
+      sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(sub.toJSON()) });
+      pushOn = true;
+    } catch (err) {
+      console.warn("Reminder pop-ups with David closed aren't available:", err);
+    }
+  }
+  navigator.serviceWorker?.addEventListener("message", ({ data }) => {
+    if (data?.reminder) showReminder(data.reminder);
+    if (data?.open === "todo") showTodo();
+    if (data?.refresh) {
+      $("reminders")?.querySelector(`.reminder[data-id="${data.item}"]`)?.remove();
+      if (todoState) loadTodo(true);
+    }
+  });
+
+  // Windows pop-ups (desktop notifications): whether they can show, and how to turn them on if not.
+  function notifyState() {
+    if (!("Notification" in window) || !window.isSecureContext) return "unavailable";
+    return Notification.permission;  // "granted", "denied" or "default" (not asked yet)
+  }
+  function windowsHint(onGranted) {
+    const state = notifyState();
+    if (state === "granted") return null;
+    const p = make("p", "hint");
+    if (state === "unavailable") {
+      p.textContent = "Windows pop-ups only work when David is opened as localhost on the PC running it, or over " +
+        "HTTPS. Reminders still pop up here while David is open.";
+    } else if (state === "denied") {
+      p.textContent = "Windows pop-ups are blocked for David. Click the icon left of the address bar, set " +
+        "Notifications to Allow, then reload.";
+    } else {
+      const b = make("button", "linkish", "Turn on Windows pop-ups");
+      b.type = "button";
+      b.onclick = async () => {
+        const answer = await Notification.requestPermission().catch(() => "default");
+        if (answer === "granted") { toast("Windows pop-ups are on"); onGranted(); setupPush(); }
+        else { p.replaceWith(windowsHint(onGranted) || ""); }
+      };
+      p.append(b, make("span", null, " so reminders show even when David is in the background."));
+    }
+    return p;
   }
 
   let remindPop = null;
@@ -2225,8 +2289,8 @@
       off.onclick = () => choose(null);
       pop.append(off);
     }
-    const blocked = !("Notification" in window) || Notification.permission === "denied";
-    if (blocked) pop.append(make("p", "hint", "Reminders pop up while David is open in a tab."));
+    const hint = windowsHint(() => { hint?.remove(); });
+    if (hint) pop.append(hint);
     document.body.append(pop);
     // Under the button, lined up with its right edge; above it when there's no room below.
     const r = anchor.getBoundingClientRect(), h = pop.offsetHeight, w = pop.offsetWidth;
@@ -2268,13 +2332,16 @@
   }
 
   // Asking David what's due.
-  let reminderTimer = null, reminderCheck = null;
+  let reminderTimer = null, reminderCheck = null, reminderSince = null;
+  const shownReminders = new Set();  // "id|fired_at", so a reminder that arrives by push and by asking shows once
   function wakeAt(iso) {  // check right when the next one is due, if that's sooner than the next half-minute poll
     const wait = new Date(iso).getTime() - Date.now() + 500;
     if (wait < 30000) { clearTimeout(reminderTimer); reminderTimer = setTimeout(checkReminders, Math.max(0, wait)); }
   }
   function checkReminders() {
-    reminderCheck ||= api("/api/todo/reminders", { method: "POST" }).then(({ due, next }) => {
+    reminderCheck ||= api("/api/todo/reminders", { method: "POST", body: JSON.stringify({ since: reminderSince }) })
+      .then(({ due, next, now }) => {
+      reminderSince = now;
       for (const item of due) showReminder(item);
       if (next) wakeAt(next);
     }).catch(() => {}).finally(() => { reminderCheck = null; });
@@ -2303,6 +2370,9 @@
     } catch { /* no sound is fine */ }
   }
   function showReminder(item) {
+    const seen = `${item.id}|${item.fired_at || item.remind_at}`;
+    if (shownReminders.has(seen)) return;
+    shownReminders.add(seen);
     const mine = todoState?.list ? todoById(item.id) : null;
     if (mine) { mine.reminded = true; mine.remind_at = item.remind_at; redrawRow(item.id); }
     let stack = $("reminders");
@@ -2343,12 +2413,16 @@
     if (document.hidden) {
       unseenReminders++;
       document.title = `(${unseenReminders}) Reminder · ${pageTitle}`;
-      if ("Notification" in window && Notification.permission === "granted") {
-        try {
-          const n = new Notification("Reminder from David", { body: item.title, tag: `todo-${item.id}` });
-          n.onclick = () => { focus(); showTodo(); n.close(); };
-        } catch { /* some browsers only allow these from a service worker */ }
-      }
+    }
+    // Also as a Windows pop-up, which stays until it's dismissed. It shows even while David's tab is open,
+    // since the browser can be behind other windows without the page knowing.
+    if (notifyState() === "granted" && !pushOn) {  // with push on, the service worker has already shown it
+      try {
+        const n = new Notification("Reminder from David", {
+          body: item.title + (item.ticket ? ` (#${item.ticket})` : ""), tag: `todo-${item.id}`,
+          requireInteraction: true, icon: document.querySelector('link[rel="icon"][href^="/"]')?.href });
+        n.onclick = () => { focus(); close(); showTodo(); n.close(); };
+      } catch { /* some browsers only allow these from a service worker */ }
     }
   }
 
@@ -2948,6 +3022,9 @@
     closePopovers(); closeMeMenu(); closeDrawer(); closeRemindPop();
   });
   $("logout").onclick = async () => {
+    // Signed out: this browser stops getting this person's reminders.
+    const sub = await navigator.serviceWorker?.getRegistration().then((reg) => reg?.pushManager.getSubscription()).catch(() => null);
+    if (sub) await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {});
     await api("/api/logout", { method: "POST" }).catch(() => {});
     location.href = "/login";
   };
@@ -2978,6 +3055,7 @@
     updateSend();
     newChat();
     if (location.hash === "#todo") showTodo();
+    setupPush();
     checkReminders();
     setInterval(checkReminders, 30000);
   })();

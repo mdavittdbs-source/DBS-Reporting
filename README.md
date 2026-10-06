@@ -159,11 +159,17 @@ The list is theirs to change, and every change is saved (no Claude request, so n
   focus the handle and use the up and down arrows.
 - **Remind me**: the bell on any item sets a time (in 1 hour, later today, tomorrow morning, next Monday, or
   any date and time). When it comes, a reminder card pops up in the top corner of David, on any page, with a
-  soft chime, **Done** and **Snooze 15 min**. If the tab is in the background, its title shows the reminder, and
-  the browser shows a desktop notification if the person allowed them. Desktop notifications only work when
-  David is opened as `http://localhost:8000` or over HTTPS; on other computers using
-  `http://<laptop-address>:8000`, the browser won't allow them, but the card, chime and tab title still work.
-  Reminders only go off while David is open in a tab. One that came due while it was closed shows the next
+  soft chime, **Done** and **Snooze 15 min**, and as a Windows pop-up (a desktop notification that stays until
+  it's dismissed) if the person turned those on with **Turn on Windows pop-ups** in the reminder picker. If the
+  tab is in the background, its title shows the reminder too.
+  With Windows pop-ups on, reminders arrive **even when no David tab is open** (Web Push): the David server
+  sends them to the browser, which shows the pop-up with **Done** and **Snooze 15 min** buttons. The browser
+  just has to be running (Chrome and Edge keep running in the background on Windows by default; check
+  *Continue running background apps* in their settings), and the server needs internet access. This needs the
+  `pywebpush` package (`pip install -r requirements.txt`); David makes its push key on first run. Browsers only
+  allow notifications at `http://localhost:8000` or over HTTPS, so on other computers using
+  `http://<laptop-address>:8000` there are no Windows pop-ups, only the card, chime and tab title while David
+  is open. A reminder that came due while nothing could show it shows the next
   time David is opened. A reminder on one of David's items moves to the same ticket when a new list is made.
 
 The list doesn't reset by itself; it stays until they click **Make a new list**, which rebuilds David's items

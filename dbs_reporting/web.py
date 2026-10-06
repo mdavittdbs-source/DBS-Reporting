@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel, Field
 
 from . import activity, digest, exports, todo
+from .push import Push, PushScheduler
 from .charts import extract_charts
 from .agent import create_agent
 from .config import ConnectWiseSettings
@@ -46,6 +47,7 @@ users_file.refresh()
 cw_settings = ConnectWiseSettings.from_env()
 cw = ConnectWiseClient(cw_settings)
 agent = create_agent(cw)
+push = Push(store)
 
 
 @asynccontextmanager
@@ -53,8 +55,12 @@ async def lifespan(_app):
     # The weekly digest goes out the first time David is running on or after Monday morning.
     scheduler = digest.DigestScheduler(cw, store, cw_settings.ticket_url)
     scheduler.start()
+    # Reminders go to browsers with push turned on, even when David isn't open in them.
+    pusher = PushScheduler(push)
+    pusher.start()
     yield
     scheduler.stop()
+    pusher.stop()
 
 
 app = FastAPI(title="DBS Autonomous Virtual Information Desk", lifespan=lifespan)
@@ -406,12 +412,61 @@ def set_reminder(body: TodoReminder, user: dict = Depends(current_user)) -> dict
     return {"item": item}
 
 
+class ReminderCheck(BaseModel):
+    since: str | None = Field(default=None, max_length=40)  # "now" from the page's last check
+
+
 @app.post("/api/todo/reminders")
-def due_reminders(user: dict = Depends(current_user)) -> dict:
-    """Reminders that are due now (each is handed out once), and when the next one is due. The page asks
-    every half minute."""
-    due, upcoming = store.take_due_reminders(user["id"])
-    return {"due": due, "next": upcoming}
+def due_reminders(body: ReminderCheck | None = None, user: dict = Depends(current_user)) -> dict:
+    """Reminders that are due now (each goes off once), those that went off since the page last asked (sent as
+    a push), and when the next one is due. The page asks every half minute."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    fresh, recent, upcoming = store.check_reminders(user["id"], body.since if body else None)
+    if fresh and push.enabled:  # this page got there before the push check: send the Windows pop-ups too
+        threading.Thread(target=push.notify, args=(user["id"], fresh), name="push", daemon=True).start()
+    return {"due": recent + fresh, "next": upcoming, "now": now}
+
+
+# --- Push (reminders with David closed) -------------------------------------
+
+@app.get("/sw.js")
+def service_worker():
+    # Served from the top so it can show notifications for the whole site.
+    return FileResponse(STATIC / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/push/key")
+def push_key(user: dict = Depends(current_user)) -> dict:
+    """This server's public push key, or null when push isn't set up (pywebpush missing)."""
+    return {"key": push.public_key}
+
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(max_length=200)
+    auth: str = Field(max_length=100)
+
+
+class PushSubscription(BaseModel):
+    endpoint: str = Field(pattern=r"^https://", max_length=2000)
+    keys: PushKeys
+
+
+@app.post("/api/push/subscribe")
+def push_subscribe(body: PushSubscription, user: dict = Depends(current_user)) -> dict:
+    if not push.enabled:
+        raise HTTPException(503, "Pop-ups with David closed aren't set up on the server.")
+    store.add_push(user["id"], {"endpoint": body.endpoint, "keys": body.keys.model_dump()})
+    return {"ok": True}
+
+
+class PushEndpoint(BaseModel):
+    endpoint: str = Field(max_length=2000)
+
+
+@app.post("/api/push/unsubscribe")
+def push_unsubscribe(body: PushEndpoint, user: dict = Depends(current_user)) -> dict:
+    store.remove_push(body.endpoint, user["id"])
+    return {"ok": True}
 
 
 class TodoDelete(BaseModel):
