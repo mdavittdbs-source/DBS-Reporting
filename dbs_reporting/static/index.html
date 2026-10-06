@@ -298,9 +298,9 @@
   .remind-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; margin: 0 -8px; border: 0; border-radius: 999px;
                  background: none; color: var(--faint); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums;
                  position: relative; transition: background .2s var(--ease), color .2s var(--ease); }
-  .remind-pill svg { width: 12px; height: 12px; }
+  .remind-pill svg { width: 12px; height: 12px; margin-top: -1px; }  /* the clapper weights the bell low */
   .remind-pill:hover { background: var(--hover); color: var(--text); }
-  .remind-pill::after { content: ""; position: absolute; inset: -8px -2px; }
+  .remind-pill::after { content: ""; position: absolute; inset: -10px -2px; }
   .remind-pill.due { margin: 0; background: var(--tag-bg); color: var(--tag-ink); }
   .remind-pop { position: fixed; right: auto; top: auto; width: 284px; }
   .remind-pop .eyebrow-row { margin: 8px 12px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
@@ -309,14 +309,16 @@
   .remind-pop button.pick span { color: var(--faint); font-variant-numeric: tabular-nums; }
   .remind-pop .custom { display: flex; gap: 6px; margin: 4px 0 0; padding: 8px 4px 4px; box-shadow: 0 -1px 0 var(--hair); }
   .remind-pop input { flex: 1; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text);
-                      border: 1px solid var(--glass-ring); border-radius: 10px; background: var(--core); color-scheme: light dark; }
+                      border: 1px solid var(--glass-ring); border-radius: 8px; background: var(--core); color-scheme: light dark; }
   .remind-pop input:focus { outline: none; box-shadow: var(--ring); }
-  .remind-pop .custom button { width: auto; padding: 6px 14px; background: var(--pill); font-weight: 600; text-align: center; }
+  .remind-pop .custom button { width: auto; padding: 6px 14px; border-radius: 8px; background: var(--pill); font-weight: 600; text-align: center; }
   .remind-pop .custom button:hover { background: var(--hover); }
   .remind-pop .hint { margin: 8px 10px 4px; font-size: 12px; color: var(--faint); line-height: 1.45; text-wrap: pretty; }
   .remind-pop .hint button.linkish { display: inline; width: auto; padding: 0; border-radius: 0; background: none; font: inherit;
                                      font-weight: 600; color: var(--tag-ink); text-decoration: underline; text-underline-offset: 2px; }
   .remind-pop .hint button.linkish:hover { background: none; }
+  .remind-pop .hint button.linkish { position: relative; }
+  .remind-pop .hint button.linkish::after { content: ""; position: absolute; inset: -12px -4px; }
   #reminders { position: fixed; top: 16px; right: 24px; z-index: var(--z-toast); width: min(340px, calc(100vw - 32px));
                display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
   .reminder { pointer-events: auto; display: flex; gap: 12px; align-items: flex-start; padding: 12px 8px 10px 14px;
@@ -325,7 +327,7 @@
   .reminder.leaving { opacity: 0; transform: translateY(-4px); transition: opacity var(--duration-quick) ease-out, transform var(--duration-quick) ease-out; }
   .reminder > .bell { flex-shrink: 0; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center;
                       background: var(--tag-bg); color: var(--tag-ink); }
-  .reminder > .bell svg { width: 14px; height: 14px; }
+  .reminder > .bell svg { width: 14px; height: 14px; transform: translateY(-.5px); }
   .reminder .what { flex: 1; min-width: 0; }
   .reminder .label { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
   .reminder .label b { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tag-ink); }
@@ -335,7 +337,7 @@
   .reminder .row { display: flex; gap: 6px; margin-top: 9px; }
   .reminder .row button { border: 0; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; font-weight: 600; position: relative;
                           background: var(--pill); color: var(--text);
-                          transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+                          transition: background .2s var(--ease), opacity .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .reminder .row button:first-child { background: var(--cta); color: var(--cta-ink); }
   .reminder .row button:hover { background: var(--hover); }
   .reminder .row button:first-child:hover { background: var(--cta); opacity: .9; }
