@@ -295,23 +295,24 @@
                background: var(--pill); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   .when-pill svg { width: 12px; height: 12px; }
   /* Reminders: the time on a to-do, the picker, and the card that pops up when one goes off. */
-  .remind-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 0; border-radius: 999px;
-                 background: var(--pill); color: var(--muted); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums;
+  .remind-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; margin: 0 -8px; border: 0; border-radius: 999px;
+                 background: none; color: var(--faint); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums;
                  position: relative; transition: background .2s var(--ease), color .2s var(--ease); }
   .remind-pill svg { width: 12px; height: 12px; }
   .remind-pill:hover { background: var(--hover); color: var(--text); }
   .remind-pill::after { content: ""; position: absolute; inset: -8px -2px; }
-  .remind-pill.due { background: var(--tag-bg); color: var(--tag-ink); }
+  .remind-pill.due { margin: 0; background: var(--tag-bg); color: var(--tag-ink); }
   .remind-pop { position: fixed; right: auto; top: auto; width: 284px; }
-  .remind-pop .eyebrow-row { margin: 6px 10px 4px; font-size: 12px; font-weight: 600; color: var(--faint); }
+  .remind-pop .eyebrow-row { margin: 8px 12px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+                             text-transform: uppercase; color: var(--faint); }
   .remind-pop button.pick { display: flex; justify-content: space-between; gap: 12px; }
   .remind-pop button.pick span { color: var(--faint); font-variant-numeric: tabular-nums; }
   .remind-pop .custom { display: flex; gap: 6px; margin: 4px 0 0; padding: 8px 4px 4px; box-shadow: 0 -1px 0 var(--hair); }
   .remind-pop input { flex: 1; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text);
                       border: 1px solid var(--glass-ring); border-radius: 10px; background: var(--core); color-scheme: light dark; }
   .remind-pop input:focus { outline: none; box-shadow: var(--ring); }
-  .remind-pop .custom button { width: auto; padding: 6px 12px; background: var(--cta); color: var(--cta-ink); font-weight: 600; text-align: center; }
-  .remind-pop .custom button:hover { background: var(--cta); opacity: .9; }
+  .remind-pop .custom button { width: auto; padding: 6px 14px; background: var(--pill); font-weight: 600; text-align: center; }
+  .remind-pop .custom button:hover { background: var(--hover); }
   .remind-pop .hint { margin: 8px 10px 4px; font-size: 12px; color: var(--faint); line-height: 1.4; }
   #reminders { position: fixed; top: 16px; right: 24px; z-index: var(--z-toast); width: min(340px, calc(100vw - 32px));
                display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
@@ -323,7 +324,8 @@
                       background: var(--tag-bg); color: var(--tag-ink); }
   .reminder > .bell svg { width: 14px; height: 14px; }
   .reminder .what { flex: 1; min-width: 0; }
-  .reminder .label { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .reminder .label { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .reminder .label b { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tag-ink); }
   .reminder .title { display: block; margin-top: 1px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600;
                      text-align: left; color: var(--text); letter-spacing: -.01em; line-height: 1.35; text-wrap: pretty; }
   .reminder .title:hover { text-decoration: underline; text-underline-offset: 2px; }
@@ -2087,7 +2089,7 @@
     const actions = make("div", "todo-actions");
     const bell = iconButton(BELL, `Remind me: ${item.title}`, (e) => openRemindPop(e, bell, item.id));
     bell.classList.add("remind-btn");
-    actions.append(bell);
+    if (!item.remind_at) actions.append(bell);  // with a reminder, its time is the button
     if (item.mine) actions.append(iconButton(EDIT, `Edit: ${item.title}`, () => editTodo(row)));
     actions.append(iconButton(REMOVE, `Remove: ${item.title}`, () => removeTodo(row)));
     row.append(grip, tick, what, actions);
@@ -2150,6 +2152,7 @@
     pill.type = "button";
     pill.innerHTML = BELL;
     pill.append(remindLabel(item.remind_at));
+    pill.setAttribute("aria-label", `Reminder ${remindLabel(item.remind_at)}: ${item.title}. Change it.`);
     pill.title = item.reminded ? "Reminder went off. Click to change it." : "Reminder. Click to change it.";
     pill.onclick = (e) => openRemindPop(e, pill, item.id);
     return pill;
@@ -2247,7 +2250,7 @@
     const hadFocus = row.contains(document.activeElement) || remindPop?.anchor && row.contains(remindPop.anchor);
     const fresh = todoItem(item);
     row.replaceWith(fresh);
-    if (hadFocus) fresh.querySelector(".remind-btn").focus({ preventScroll: true });
+    if (hadFocus) fresh.querySelector(".remind-pill, .remind-btn").focus({ preventScroll: true });
   }
   async function setReminder(id, at) {
     const item = todoState?.list ? todoById(id) : null;
@@ -2310,7 +2313,8 @@
     card.setAttribute("role", "alert");
     const bell = make("span", "bell"); bell.innerHTML = BELL;
     const what = make("div", "what");
-    const label = make("div", "label", "Reminder · " + remindLabel(item.remind_at) + (item.ticket ? ` · #${item.ticket}` : ""));
+    const label = make("div", "label");
+    label.append(make("b", null, "Reminder"), remindLabel(item.remind_at));
     const title = make("button", "title", item.title);
     title.type = "button";
     title.title = "Open To Do";
