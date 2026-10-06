@@ -108,6 +108,10 @@ def _todo_id(prefix: str) -> str:
     return prefix + secrets.token_hex(5)
 
 
+# Uploaded SpotOn data is a snapshot for an audit, so it's deleted this many days after it was uploaded
+# (uploading a file again starts the count again).
+SPOTON_KEEP_DAYS = int(os.environ.get("SPOTON_KEEP_DAYS") or 30)
+
 REMOVED_DAYS = 30  # how long removed items stay in Removed (and off new lists)
 REMOVED_MAX = 60
 
@@ -709,11 +713,17 @@ class Store:
 
     # --- SpotOn data -----------------------------------------------------
 
-    def save_spoton(self, restaurant: str, files: dict[str, tuple[list, list]], uploaded_by: str) -> None:
-        """Replace everything saved for `restaurant` with `files` ({file name: (columns, rows)})."""
+    def save_spoton(self, restaurant: str, files: dict[str, tuple[list, list]], uploaded_by: str,
+                    replace_all: bool = True) -> None:
+        """Save `files` ({file name: (columns, rows)}) for `restaurant`. replace_all (a full exporter zip) clears
+        what was there first; otherwise only files with the same names are replaced and the rest stay."""
         now = _now()
         with self._db(write=True) as db:
-            db.execute("DELETE FROM spoton_files WHERE restaurant = ?", (restaurant,))
+            if replace_all:
+                db.execute("DELETE FROM spoton_files WHERE restaurant = ?", (restaurant,))
+            else:
+                db.executemany("DELETE FROM spoton_files WHERE restaurant = ? AND file = ?",
+                               [(restaurant, name) for name in files])
             for name, (columns, rows) in files.items():
                 db.execute(
                     "INSERT INTO spoton_files (restaurant, file, columns, rows, row_count, uploaded_by, uploaded_at)"
@@ -721,9 +731,15 @@ class Store:
                     (restaurant, name, json.dumps(columns), json.dumps(rows), len(rows), uploaded_by, now),
                 )
 
+    def _drop_old_spoton(self, db) -> None:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=SPOTON_KEEP_DAYS)).isoformat(timespec="seconds")
+        db.execute("DELETE FROM spoton_files WHERE uploaded_at < ?", (cutoff,))
+
     def spoton_files(self) -> list[dict]:
-        """Every uploaded file (no rows): restaurant, file, columns, row_count, uploaded_by, uploaded_at."""
+        """Every uploaded file (no rows): restaurant, file, columns, row_count, uploaded_by, uploaded_at. Files
+        older than SPOTON_KEEP_DAYS are deleted first."""
         with self._db() as db:
+            self._drop_old_spoton(db)
             rows = db.execute(
                 "SELECT restaurant, file, columns, row_count, uploaded_by, uploaded_at FROM spoton_files"
                 " ORDER BY restaurant, file"
@@ -731,12 +747,17 @@ class Store:
         return [{**dict(r), "columns": json.loads(r["columns"])} for r in rows]
 
     def spoton_rows(self, restaurant: str, file: str) -> tuple[list, list] | None:
-        """(columns, rows) of one uploaded file, or None."""
+        """(columns, rows) of one uploaded file, or None (also once it's older than SPOTON_KEEP_DAYS)."""
         with self._db() as db:
+            self._drop_old_spoton(db)
             row = db.execute("SELECT columns, rows FROM spoton_files WHERE restaurant = ? AND file = ?",
                              (restaurant, file)).fetchone()
         return (json.loads(row["columns"]), json.loads(row["rows"])) if row else None
 
-    def delete_spoton(self, restaurant: str) -> bool:
+    def delete_spoton(self, restaurant: str, file: str | None = None) -> bool:
+        """Delete a restaurant's data, or just one of its files. False if there was nothing to delete."""
         with self._db() as db:
-            return db.execute("DELETE FROM spoton_files WHERE restaurant = ?", (restaurant,)).rowcount > 0
+            if file is None:
+                return db.execute("DELETE FROM spoton_files WHERE restaurant = ?", (restaurant,)).rowcount > 0
+            return db.execute("DELETE FROM spoton_files WHERE restaurant = ? AND file = ?",
+                              (restaurant, file)).rowcount > 0

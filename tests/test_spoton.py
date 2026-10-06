@@ -32,8 +32,8 @@ def test_parse_upload_reads_csv_and_needs_a_restaurant():
     columns, rows = files["menu_items"]
     assert columns == ["Name", "Price", "MenuGroupNames", "ReportGroupName"]
     assert rows[1] == ["Fries, large", "4.00", "Dinner", ""]
-    with pytest.raises(UploadError):
-        parse_upload("menu.csv", MENU)
+    assert parse_upload("Taco_Town menu.csv", MENU)[0] == "Taco Town"  # no restaurant given: from the file name
+    assert parse_upload("Weekly notes.csv", MENU)[0] == "Weekly notes"  # nothing to go on: its own name
     with pytest.raises(UploadError):
         parse_upload("menu.pdf", MENU, "Joe's")
     with pytest.raises(UploadError):
@@ -107,3 +107,32 @@ def test_excel_workbooks():
         parse_upload("menu.xlsx", MENU, "Joe's")
     with pytest.raises(UploadError, match="empty"):
         parse_upload("blank.xlsx", _xlsx({"Sheet1": []}), "Joe's")
+
+
+def test_a_single_file_goes_with_the_restaurant_in_its_name():
+    from dbs_reporting.spoton import restaurant_for
+    known = ["Taco Town", "Taco", "Joe's"]
+    assert restaurant_for("Taco Town - Menu Items.xlsx", known) == "Taco Town"  # the longest match
+    assert restaurant_for("joe's_employees.csv", known) == "Joe's"
+    assert restaurant_for("Tacos menu.csv", known) == "Tacos"  # "Taco" is only part of a word; "menu" is a SpotOn file
+    assert restaurant_for("Dock Bar - Menu Items.xlsx", []) == "Dock Bar"  # a new restaurant, before a SpotOn file name
+    assert restaurant_for("dock_bar_audit_items_to_fix.csv", []) == "dock bar"
+    assert restaurant_for("Menu Items.csv", []) == "Menu Items"  # nothing before it: its own name
+    assert restaurant_for("Weekly notes.xlsx", []) == "Weekly notes"
+    from dbs_reporting.spoton import single_file_key
+    assert single_file_key("Taco Town - Menu Items.xlsx", "Taco Town") == "menu_items"
+    assert single_file_key("Menu Items.csv", "Menu Items") == "menu_items"
+
+
+def test_uploads_are_deleted_after_30_days(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    store = Store(tmp_path / "db.sqlite")
+    store.save_spoton("Old Pub", parse_upload("menu_items.csv", MENU, "Old Pub")[1], "Carol C")
+    store.save_spoton("New Pub", parse_upload("menu_items.csv", MENU, "New Pub")[1], "Carol C")
+    old = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat(timespec="seconds")
+    with store._db() as db:
+        db.execute("UPDATE spoton_files SET uploaded_at = ? WHERE restaurant = 'Old Pub'", (old,))
+    assert store.spoton_rows("Old Pub", "menu_items") is None
+    assert [f["restaurant"] for f in store.spoton_files()] == ["New Pub"]
+    listed = call({t.name: t for t in build_spoton_tools(store)}["list_spoton_data"])
+    assert "30 days" in listed["note"] and listed["restaurants"][0]["files"][0]["uploaded_at"]

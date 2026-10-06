@@ -539,13 +539,14 @@ def test_only_admins_and_uploaders_can_upload_spoton_data(web):
     assert [(f["restaurant"], f["file"], f["row_count"], f["uploaded_by"]) for f in admin.get("/api/spoton").json()] \
         == [("Test Pub", "menu_items", 2, "Carol C")]
 
-    bad = uploader.post("/api/spoton/upload?filename=menu.csv", content=b"Name\nBurger\n")
-    assert bad.status_code == 400 and "restaurant" in bad.json()["detail"]
+    named = uploader.post("/api/spoton/upload?filename=Test Pub burgers.csv", content=b"Name\nBurger\n")
+    assert named.json()["restaurant"] == "Test Pub"  # no question: the file name says which restaurant
     assert uploader.post("/api/spoton/upload?filename=menu.csv&restaurant=Other", content=b"Name\nBurger\n").status_code == 200
 
     assert user.delete("/api/spoton/Test Pub").status_code == 403
     assert admin.delete("/api/spoton/Test Pub").status_code == 200
     assert [f["restaurant"] for f in admin.get("/api/spoton").json()] == ["Other"]
+    assert user.get("/api/spoton").status_code == 403
 
 
 def test_a_question_about_an_upload_keeps_a_clean_title(web):
@@ -555,3 +556,22 @@ def test_a_question_about_an_upload_keeps_a_clean_title(web):
     done = alice.post("/api/chat", json={"question": question}).json()
     assert done["title"] == "Which items have no report group?"
     assert calls[-1][1] == question  # David still sees which upload it's about
+
+
+def test_single_files_add_to_a_restaurant_and_a_zip_replaces_it(web):
+    module, _ = web
+    admin = login(module, "alice", "password-a")
+    files = lambda: sorted((f["restaurant"], f["file"], f["row_count"]) for f in admin.get("/api/spoton").json())  # noqa: E731
+    up = lambda name, body, rest="": admin.post(f"/api/spoton/upload?filename={name}&restaurant={rest}", content=body)  # noqa: E731
+    up("Menu Items.csv", b"Name\nBurger\nFries\n", "Taco Town")
+    up("Employees.csv", b"First\nSam\n", "taco town")  # same restaurant, other spelling
+    assert files() == [("Taco Town", "employees", 1), ("Taco Town", "menu_items", 2)]  # the first file stayed
+    up("Menu Items.csv", b"Name\nBurger\n", "Taco Town")  # same file again: replaced
+    assert files() == [("Taco Town", "employees", 1), ("Taco Town", "menu_items", 1)]
+    assert admin.delete("/api/spoton/Taco Town?file=employees").status_code == 200
+    assert admin.delete("/api/spoton/Taco Town?file=employees").status_code == 404
+    assert files() == [("Taco Town", "menu_items", 1)]
+    up("Test_Pub.zip", spoton_zip())
+    up("Wings.csv", b"Name\nWings\n", "Test Pub")
+    up("Test_Pub.zip", spoton_zip())  # a full export replaces everything for its restaurant
+    assert files() == [("Taco Town", "menu_items", 1), ("Test Pub", "menu_items", 2)]

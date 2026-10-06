@@ -3,7 +3,8 @@
 The exporter's "Export CSVs" button makes one zip per restaurant: about.txt (the restaurant's name) plus
 menu_items.csv, modifiers.csv, employees.csv and the Audit Check (audit_summary.csv, audit_items_to_fix.csv,
 ...). Admins and uploaders (see userfile.py) upload it; a new upload for a restaurant replaces the old one.
-A single .csv or Excel workbook (.xlsx) can be uploaded too, with the restaurant's name typed in; each
+A single .csv or Excel workbook (.xlsx) can be uploaded too; it goes with the restaurant named in its file name
+(see restaurant_for), or is listed under its own name. Each
 non-empty sheet of a workbook becomes a file (named after the sheet, or after the workbook if it has one sheet).
 """
 
@@ -17,7 +18,7 @@ from collections import Counter
 
 from anthropic import beta_tool
 
-from .store import Store
+from .store import SPOTON_KEEP_DAYS, Store
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_ROWS = 50_000  # per file
@@ -110,8 +111,41 @@ def _table(reader, name: str) -> tuple[list[str], list[list[str]]]:
     return columns, rows
 
 
+# What the SpotOn Exporter's files are called; at the end of a file name, what comes before is the restaurant.
+SPOTON_FILE = re.compile(r"(?:^|[\s_\-–.]+)(menu[\s_]*items|menu[\s_]*groups|menus?|items|modifier[\s_]*groups|modifiers|"
+                         r"employees|staff|exports?|spoton[\s_]*data|audit[\s_]*items[\s_]*to[\s_]*fix|audit[\s_]*summary|audit[\s_]*check|audit)$", re.I)
+
+
+def _stem(filename: str) -> str:
+    return re.sub(r"\.[a-z0-9]+$", "", filename.rsplit("/", 1)[-1], flags=re.I).strip()
+
+
+def restaurant_for(filename: str, known: list[str]) -> str:
+    """Which restaurant a single uploaded file is for, without asking: a known restaurant named in the file name
+    ("Taco Town - Menu Items.xlsx" -> "Taco Town", the longest match wins); else what comes before a SpotOn file
+    name ("Dock Bar employees.csv" -> "Dock Bar"); else the file's own name."""
+    stem = _stem(filename)
+    words = lambda text: " ".join(re.findall(r"[a-z0-9']+", text.casefold()))  # noqa: E731
+    named = [k for k in known if words(k) and f" {words(k)} " in f" {words(stem)} "]
+    if named:
+        return max(named, key=len)
+    found = SPOTON_FILE.search(stem)
+    before = re.sub(r"[_\s]+", " ", stem[:found.start()]).strip(" -–_.") if found else ""
+    return before or re.sub(r"[_\s]+", " ", stem).strip() or "Upload"
+
+
+def single_file_key(filename: str, restaurant: str) -> str:
+    """The file's name without the restaurant's: "Taco Town - Menu Items.xlsx" for Taco Town -> "menu_items"."""
+    stem = _stem(filename)
+    words = re.findall(r"[a-z0-9']+", stem.casefold())
+    lead = re.findall(r"[a-z0-9']+", restaurant.casefold())
+    rest = words[len(lead):] if lead and words[:len(lead)] == lead else words
+    return file_key(" ".join(rest) or stem)
+
+
 def parse_upload(filename: str, data: bytes, restaurant: str = "") -> tuple[str, dict]:
-    """Returns (restaurant, {file key: (columns, rows)}) from an exporter zip or one .csv."""
+    """Returns (restaurant, {file key: (columns, rows)}) from an exporter zip or one .csv / .xlsx. A single file
+    with no restaurant given is listed under its own name."""
     if len(data) > MAX_UPLOAD_BYTES:
         raise UploadError(f"That file is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
     restaurant = restaurant.strip()
@@ -138,13 +172,17 @@ def parse_upload(filename: str, data: bytes, restaurant: str = "") -> tuple[str,
         if not files:
             raise UploadError("No CSV files in that zip. Use the Export CSVs button in the SpotOn Exporter.")
     elif filename.lower().endswith(".csv"):
-        files[file_key(filename)] = read_csv(data, filename)
+        files[single_file_key(filename, restaurant or restaurant_for(filename, []))] = read_csv(data, filename)
     elif filename.lower().endswith(".xlsx"):
         files = read_xlsx(data, filename)
+        if len(files) == 1:  # one sheet: named after the file, without the restaurant's name
+            files = {single_file_key(filename, restaurant or restaurant_for(filename, [])): next(iter(files.values()))}
     else:
         raise UploadError("Upload the .zip from the SpotOn Exporter's Export CSVs button, a .csv or an Excel .xlsx file.")
     if not restaurant:
-        raise UploadError("Which restaurant is this? Type its name when asked.")
+        if filename.lower().endswith(".zip"):
+            raise UploadError("That zip has no about.txt naming the restaurant. Use the SpotOn Exporter's Export CSVs button.")
+        restaurant = restaurant_for(filename, [])
     return restaurant[:120], files
 
 
@@ -168,21 +206,27 @@ def build_spoton_tools(store: Store) -> list:
     @beta_tool(eager_input_streaming=True)
     def list_spoton_data() -> str:
         """List the SpotOn POS data people have uploaded: each restaurant, its files, row counts,
-        columns, and who uploaded it when.
+        columns, and who uploaded each file when.
 
         Call this first for any question about a restaurant's SpotOn menu, modifiers, employees or
-        Audit Check, to see which restaurants and files exist.
+        Audit Check, to see which restaurants and files exist. Uploads are snapshots taken for system
+        audits and are deleted a month after upload, so say when the data you answer from was uploaded
+        (e.g. "from the 10/6 upload").
         """
         try:
             restaurants: dict[str, dict] = {}
             for f in store.spoton_files():
                 r = restaurants.setdefault(f["restaurant"], {"restaurant": f["restaurant"], "uploaded_by": f["uploaded_by"],
                                                              "uploaded_at": f["uploaded_at"], "files": []})
-                r["files"].append({"file": f["file"], "rows": f["row_count"], "columns": f["columns"]})
+                r["uploaded_at"] = max(r["uploaded_at"], f["uploaded_at"])
+                r["files"].append({"file": f["file"], "rows": f["row_count"], "uploaded_at": f["uploaded_at"],
+                                   "columns": f["columns"]})
             if not restaurants:
                 return json.dumps({"restaurants": [], "note": "No SpotOn data has been uploaded yet. An admin or "
                                    "uploader can upload it with the paperclip in the question box."})
-            return json.dumps({"restaurants": list(restaurants.values())}, separators=(",", ":"), ensure_ascii=False)
+            return json.dumps({"restaurants": list(restaurants.values()),
+                               "note": f"Each file is deleted {SPOTON_KEEP_DAYS} days after it was uploaded."},
+                              separators=(",", ":"), ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
@@ -221,7 +265,10 @@ def build_spoton_tools(store: Store) -> list:
             matched = [r for r in rows
                        if (not search or any(search.lower() in cell.lower() for cell in r))
                        and all(_match(r[i], v) for i, v in filters)]
-            result = {"restaurant": name, "file": file_key(file), "total_rows": len(rows), "matched": len(matched)}
+            uploaded = next((f["uploaded_at"] for f in store.spoton_files()
+                             if f["restaurant"] == name and f["file"] == file_key(file)), None)
+            result = {"restaurant": name, "file": file_key(file), "uploaded_at": uploaded,
+                      "total_rows": len(rows), "matched": len(matched)}
             if group_by:
                 i = col(group_by)
                 counts = Counter()
