@@ -82,8 +82,10 @@ gitignored. Back up both.
 David can also answer questions about a restaurant's SpotOn menu, modifiers, employees and Audit Check.
 In the SpotOn Exporter, pick the restaurant and click **Export CSVs**; it downloads one zip. In David,
 admins and uploaders (see Logins) click the paperclip at the start of the question box and choose that
-zip, or drop it on the box. A new upload for a restaurant replaces the old one. Then anyone can ask, e.g. "Which menu items at Test Pub have
-no report group?" The data is a copy from the upload, not live SpotOn.
+zip, or drop it on the box. A single .csv or Excel workbook (.xlsx) works too; David asks which restaurant
+it's for, and each sheet of a workbook becomes its own file. A new upload for a restaurant replaces the old
+one. Then anyone can ask, e.g. "Which menu items at Test Pub have no report group?" The data is a copy from
+the upload, not live SpotOn.
 
 ## Logo
 

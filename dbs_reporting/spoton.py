@@ -3,10 +3,12 @@
 The exporter's "Export CSVs" button makes one zip per restaurant: about.txt (the restaurant's name) plus
 menu_items.csv, modifiers.csv, employees.csv and the Audit Check (audit_summary.csv, audit_items_to_fix.csv,
 ...). Admins and uploaders (see userfile.py) upload it; a new upload for a restaurant replaces the old one.
-A single .csv can be uploaded too, with the restaurant's name typed in.
+A single .csv or Excel workbook (.xlsx) can be uploaded too, with the restaurant's name typed in; each
+non-empty sheet of a workbook becomes a file (named after the sheet, or after the workbook if it has one sheet).
 """
 
 import csv
+import datetime
 import io
 import json
 import re
@@ -31,7 +33,7 @@ class UploadError(ValueError):
 
 def file_key(name: str) -> str:
     """"Audit Items To Fix.csv" -> "audit_items_to_fix"."""
-    stem = re.sub(r"\.csv$", "", name.rsplit("/", 1)[-1], flags=re.I)
+    stem = re.sub(r"\.(csv|xlsx)$", "", name.rsplit("/", 1)[-1], flags=re.I)
     return re.sub(r"[^a-z0-9]+", "_", stem.lower()).strip("_") or "data"
 
 
@@ -42,7 +44,58 @@ def read_csv(data: bytes, name: str) -> tuple[list[str], list[list[str]]]:
             break
         except UnicodeDecodeError:
             continue
-    reader = csv.reader(io.StringIO(text, newline=""))
+    return _table(csv.reader(io.StringIO(text, newline="")), name)
+
+
+def _cell(value) -> str:
+    """An Excel cell as the text a CSV would have: 12.5 -> "12.5", 3.0 -> "3", dates as 2026-10-06."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, datetime.datetime):
+        return value.date().isoformat() if value.time() == datetime.time() else value.isoformat(sep=" ", timespec="minutes")
+    if isinstance(value, (datetime.date, datetime.time)):
+        return value.isoformat()
+    return str(value).strip()
+
+
+def read_xlsx(data: bytes, name: str) -> dict[str, tuple[list[str], list[list[str]]]]:
+    """{file key: (columns, rows)} for each sheet with data. The first non-empty row of a sheet is its header."""
+    from openpyxl import load_workbook
+    try:
+        book = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception:
+        raise UploadError(f"{name} can't be opened as an Excel workbook (.xlsx).")
+    try:
+        sheets = {}
+        for sheet in book.worksheets:
+            rows = ([_cell(v) for v in row] for row in sheet.iter_rows(values_only=True))
+            rows = (row for row in rows if any(row))
+            first = next(rows, None)
+            if first is None:
+                continue
+            while first and not first[-1]:  # Excel often reports empty columns past the data
+                first.pop()
+            sheets[sheet.title] = _table(_chain([first], rows), f"{name} ({sheet.title})")
+    finally:
+        book.close()
+    if not sheets:
+        raise UploadError(f"{name} is empty.")
+    if len(sheets) == 1:
+        return {file_key(name): next(iter(sheets.values()))}
+    return {file_key(title): table for title, table in sheets.items()}
+
+
+def _chain(*iterables):
+    for it in iterables:
+        yield from it
+
+
+def _table(reader, name: str) -> tuple[list[str], list[list[str]]]:
+    """(columns, rows) from rows of text: the first row is the header; blank rows are skipped."""
     header = next(reader, None)
     if not header or not any(h.strip() for h in header):
         raise UploadError(f"{name} is empty.")
@@ -80,12 +133,16 @@ def parse_upload(filename: str, data: bytes, restaurant: str = "") -> tuple[str,
                 restaurant = found.group(1).strip() if found else ""
             elif name.lower().endswith(".csv"):
                 files[file_key(name)] = read_csv(archive.read(info), name)
+            elif name.lower().endswith(".xlsx"):
+                files.update(read_xlsx(archive.read(info), name))
         if not files:
             raise UploadError("No CSV files in that zip. Use the Export CSVs button in the SpotOn Exporter.")
     elif filename.lower().endswith(".csv"):
         files[file_key(filename)] = read_csv(data, filename)
+    elif filename.lower().endswith(".xlsx"):
+        files = read_xlsx(data, filename)
     else:
-        raise UploadError("Upload the .zip from the SpotOn Exporter's Export CSVs button, or a .csv file.")
+        raise UploadError("Upload the .zip from the SpotOn Exporter's Export CSVs button, a .csv or an Excel .xlsx file.")
     if not restaurant:
         raise UploadError("Which restaurant is this? Type its name when asked.")
     return restaurant[:120], files
@@ -124,7 +181,7 @@ def build_spoton_tools(store: Store) -> list:
                 r["files"].append({"file": f["file"], "rows": f["row_count"], "columns": f["columns"]})
             if not restaurants:
                 return json.dumps({"restaurants": [], "note": "No SpotOn data has been uploaded yet. An admin or "
-                                   "uploader can upload it with the upload button next to David's name."})
+                                   "uploader can upload it with the paperclip in the question box."})
             return json.dumps({"restaurants": list(restaurants.values())}, separators=(",", ":"), ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"error": str(exc)})
