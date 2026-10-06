@@ -85,6 +85,18 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 -- Small bits of app state, e.g. which week's email digest has been sent.
 CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- SpotOn data uploaded from the SpotOn Exporter: one row per CSV file per restaurant. A new upload for a
+-- restaurant replaces all of its files. columns and rows are JSON lists.
+CREATE TABLE IF NOT EXISTS spoton_files (
+    restaurant TEXT NOT NULL COLLATE NOCASE,
+    file TEXT NOT NULL,
+    columns TEXT NOT NULL,
+    rows TEXT NOT NULL,
+    row_count INTEGER NOT NULL,
+    uploaded_by TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL,
+    PRIMARY KEY (restaurant, file)
+);
 """
 
 
@@ -166,6 +178,8 @@ class Store:
                 db.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
             if "cw_member" not in columns:  # databases created before the To Do tab
                 db.execute("ALTER TABLE users ADD COLUMN cw_member TEXT NOT NULL DEFAULT ''")
+            if "can_upload" not in columns:  # databases created before SpotOn uploads
+                db.execute("ALTER TABLE users ADD COLUMN can_upload INTEGER NOT NULL DEFAULT 0")
             turn_columns = {row[1] for row in db.execute("PRAGMA table_info(turns)")}
             if "model" not in turn_columns:  # databases created before per-answer models
                 db.execute("ALTER TABLE turns ADD COLUMN model TEXT")
@@ -232,17 +246,18 @@ class Store:
                 if row is None:
                     db.execute(
                         "INSERT INTO users (username, display_name, password_hash, is_admin, active, created_at,"
-                        " cw_member) VALUES (?, ?, ?, ?, 1, ?, ?)",
+                        " cw_member, can_upload) VALUES (?, ?, ?, ?, 1, ?, ?, ?)",
                         (u["username"], u["display_name"], u["password_hash"], int(u["is_admin"]), _now(),
-                         u.get("cw_member") or ""),
+                         u.get("cw_member") or "", int(u.get("can_upload", False))),
                     )
                     continue
                 if row["password_hash"] != u["password_hash"]:
                     db.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
                 db.execute(
-                    "UPDATE users SET display_name = ?, password_hash = ?, is_admin = ?, active = 1, cw_member = ?"
-                    " WHERE id = ?",
-                    (u["display_name"], u["password_hash"], int(u["is_admin"]), u.get("cw_member") or "", row["id"]),
+                    "UPDATE users SET display_name = ?, password_hash = ?, is_admin = ?, active = 1, cw_member = ?,"
+                    " can_upload = ? WHERE id = ?",
+                    (u["display_name"], u["password_hash"], int(u["is_admin"]), u.get("cw_member") or "",
+                     int(u.get("can_upload", False)), row["id"]),
                 )
             for row in db.execute("SELECT id, username FROM users WHERE active = 1").fetchall():
                 if row["username"].lower() not in listed:
@@ -253,7 +268,8 @@ class Store:
         """Username, display name, hash and admin flag for every active login."""
         with self._db() as db:
             rows = db.execute(
-                "SELECT username, display_name, password_hash, is_admin, cw_member FROM users WHERE active = 1"
+                "SELECT username, display_name, password_hash, is_admin, can_upload, cw_member FROM users"
+                " WHERE active = 1"
                 " ORDER BY username"
             ).fetchall()
             return [dict(r) for r in rows]
@@ -297,7 +313,7 @@ class Store:
     def session_user(self, token: str) -> dict | None:
         with self._db() as db:
             row = db.execute(
-                "SELECT u.id, u.username, u.display_name, u.is_admin, u.cw_member FROM sessions s"
+                "SELECT u.id, u.username, u.display_name, u.is_admin, u.can_upload, u.cw_member FROM sessions s"
                 " JOIN users u ON u.id = s.user_id"
                 " WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1",
                 (_token_hash(token), _now()),
@@ -690,3 +706,37 @@ class Store:
             return db.execute(
                 "DELETE FROM conversations WHERE id = ? AND user_id = ?", (conversation_id, user_id)
             ).rowcount > 0
+
+    # --- SpotOn data -----------------------------------------------------
+
+    def save_spoton(self, restaurant: str, files: dict[str, tuple[list, list]], uploaded_by: str) -> None:
+        """Replace everything saved for `restaurant` with `files` ({file name: (columns, rows)})."""
+        now = _now()
+        with self._db(write=True) as db:
+            db.execute("DELETE FROM spoton_files WHERE restaurant = ?", (restaurant,))
+            for name, (columns, rows) in files.items():
+                db.execute(
+                    "INSERT INTO spoton_files (restaurant, file, columns, rows, row_count, uploaded_by, uploaded_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (restaurant, name, json.dumps(columns), json.dumps(rows), len(rows), uploaded_by, now),
+                )
+
+    def spoton_files(self) -> list[dict]:
+        """Every uploaded file (no rows): restaurant, file, columns, row_count, uploaded_by, uploaded_at."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT restaurant, file, columns, row_count, uploaded_by, uploaded_at FROM spoton_files"
+                " ORDER BY restaurant, file"
+            ).fetchall()
+        return [{**dict(r), "columns": json.loads(r["columns"])} for r in rows]
+
+    def spoton_rows(self, restaurant: str, file: str) -> tuple[list, list] | None:
+        """(columns, rows) of one uploaded file, or None."""
+        with self._db() as db:
+            row = db.execute("SELECT columns, rows FROM spoton_files WHERE restaurant = ? AND file = ?",
+                             (restaurant, file)).fetchone()
+        return (json.loads(row["columns"]), json.loads(row["rows"])) if row else None
+
+    def delete_spoton(self, restaurant: str) -> bool:
+        with self._db() as db:
+            return db.execute("DELETE FROM spoton_files WHERE restaurant = ?", (restaurant,)).rowcount > 0

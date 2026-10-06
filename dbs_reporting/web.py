@@ -21,13 +21,13 @@ from pathlib import Path
 
 import anthropic
 import httpx
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel, Field
 
-from . import activity, digest, exports, todo
+from . import activity, digest, exports, spoton, todo
 from .push import Push, PushScheduler
 from .charts import extract_charts
 from .agent import create_agent
@@ -46,7 +46,7 @@ users_file.ensure_exists()
 users_file.refresh()
 cw_settings = ConnectWiseSettings.from_env()
 cw = ConnectWiseClient(cw_settings)
-agent = create_agent(cw)
+agent = create_agent(cw, store)
 push = Push(store)
 
 
@@ -244,7 +244,47 @@ def logout(response: Response, dbs_session: str | None = Cookie(default=None)) -
 @app.get("/api/me")
 def me(user: dict = Depends(current_user)) -> dict:
     return {"username": user["username"], "display_name": user["display_name"], "is_admin": bool(user["is_admin"]),
-            "ticket_url": cw_settings.ticket_url}
+            "can_upload": _can_upload(user), "ticket_url": cw_settings.ticket_url}
+
+
+# --- SpotOn data uploads -------------------------------------------------
+
+
+def _can_upload(user: dict) -> bool:
+    return bool(user["is_admin"] or user.get("can_upload"))
+
+
+def uploader(user: dict = Depends(current_user)) -> dict:
+    if not _can_upload(user):
+        raise HTTPException(403, "Only admins and uploaders can upload SpotOn data.")
+    return user
+
+
+@app.post("/api/spoton/upload")
+async def spoton_upload(request: Request, filename: str, restaurant: str = "",
+                        user: dict = Depends(uploader)) -> dict:
+    """The file itself is the request body (the exporter's zip, or one .csv with ?restaurant=)."""
+    data = await request.body()
+    try:
+        name, files = spoton.parse_upload(filename, data, restaurant)
+    except spoton.UploadError as exc:
+        raise HTTPException(400, str(exc))
+    await run_in_threadpool(store.save_spoton, name, files, user["display_name"])
+    log.info("%s uploaded SpotOn data for %s (%s)", user["username"], name, ", ".join(files))
+    return {"restaurant": name, "files": {k: len(rows) for k, (_, rows) in files.items()}}
+
+
+@app.get("/api/spoton")
+def spoton_list(user: dict = Depends(uploader)) -> list[dict]:
+    return [{k: f[k] for k in ("restaurant", "file", "row_count", "uploaded_by", "uploaded_at")}
+            for f in store.spoton_files()]
+
+
+@app.delete("/api/spoton/{restaurant}")
+def spoton_delete(restaurant: str, user: dict = Depends(uploader)) -> dict:
+    if not store.delete_spoton(restaurant):
+        raise HTTPException(404, "No SpotOn data for that restaurant.")
+    return {"ok": True}
 
 
 # --- Models and chats ----------------------------------------------------

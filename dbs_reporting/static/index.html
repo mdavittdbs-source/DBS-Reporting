@@ -108,6 +108,8 @@
   .icon-link { position: relative; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center;
                color: var(--muted); flex-shrink: 0; transition: transform var(--duration-quick) var(--ease-smooth-out); }
   .icon-link[hidden] { display: none; }
+  button.icon-link { border: 0; background: none; padding: 0; cursor: pointer; }
+  button.icon-link:disabled { opacity: .5; cursor: progress; }
   .name-line { display: flex; align-items: center; gap: 4px; }
   .brand .icon-link { width: 26px; height: 26px; margin: -4px 0; }
   .brand .icon-link svg { width: 15px; height: 15px; }
@@ -691,7 +693,11 @@
       <span class="brand-name"><span class="name-line">David
       <a class="icon-link" id="feedback-link" href="/feedback" hidden aria-label="Feedback from users" title="Feedback from users">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 6.5h6M5 8.8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </a></span><small>DBS ConnectWise Assistant</small></span>
+      </a>
+      <button type="button" class="icon-link" id="spoton-upload" hidden aria-label="Upload SpotOn data" title="Upload SpotOn data (the zip from the SpotOn Exporter)">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v2.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <input type="file" id="spoton-file" accept=".zip,.csv" hidden></span><small>DBS ConnectWise Assistant</small></span>
     </div>
     <button id="new" type="button">
       New chat
@@ -3030,6 +3036,35 @@
   };
 
 
+  // SpotOn data: admins and uploaders send the SpotOn Exporter's zip (or one .csv) for David to answer from.
+  $("spoton-upload").onclick = () => $("spoton-file").click();
+  $("spoton-file").onchange = async () => {
+    const file = $("spoton-file").files[0];
+    $("spoton-file").value = "";
+    if (!file) return;
+    let restaurant = "";
+    if (!/\.zip$/i.test(file.name)) {
+      restaurant = (prompt(`Which restaurant is ${file.name} for?`) || "").trim();
+      if (!restaurant) return;
+    }
+    const button = $("spoton-upload");
+    button.disabled = true;
+    toast(`Uploading ${file.name}…`);
+    try {
+      const q = new URLSearchParams({ filename: file.name, restaurant });
+      const res = await fetch(`/api/spoton/upload?${q}`, { method: "POST", body: file });
+      if (res.status === 401) { location.href = "/login"; return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(errorText(data, res.statusText));
+      const count = Object.keys(data.files).length;
+      toast(`Uploaded SpotOn data for ${data.restaurant}`, null, `${count} file${count === 1 ? "" : "s"}. Ask David about it.`);
+    } catch (err) {
+      toast(`Couldn't upload ${file.name}`, null, err.message);
+    } finally {
+      button.disabled = false;
+    }
+  };
+
   (async () => {
     const [me, models] = await Promise.all([api("/api/me"), api("/api/models")]);
     $("me").textContent = me.display_name;
@@ -3045,6 +3080,7 @@
         }
       }).catch(() => {});
     }
+    if (me.can_upload) $("spoton-upload").hidden = false;
     firstName = me.display_name.trim().split(/\s+/)[0] || "";
     ticketUrl = me.ticket_url || "";
     $("avatar").textContent = me.display_name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();

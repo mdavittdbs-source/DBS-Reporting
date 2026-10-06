@@ -14,6 +14,7 @@ from anthropic import beta_tool
 from . import eastern
 from .charts import validate_chart
 from .connectwise import ConnectWiseClient
+from .spoton import build_spoton_tools
 
 MAX_DAYS = 730
 NOTE_CHARS = 1500
@@ -305,9 +306,10 @@ def wants_chart(question: str) -> bool:
     return bool(CHART_REQUEST.search(question))
 
 
-def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
+def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) -> list:
     """The tools for one question. With charts_allowed=False, create_chart refuses (its
-    definition stays the same, so the prompt cache still matches)."""
+    definition stays the same, so the prompt cache still matches). With a store, the tools for
+    uploaded SpotOn data are included."""
 
     def software_by_company() -> dict[int, str]:
         """Company id -> the POS software in the company's "Software" custom field. Worked out once per
@@ -1458,4 +1460,4 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True) -> list:
 
     return [find_company, get_company_tickets, get_ticket_details, get_company_time, get_ticket_totals,
             get_sla_performance, get_after_hours, get_open_tickets, get_go_lives, get_schedule, get_workload, search_tickets, get_clients_by_software, get_projects,
-            get_project_tickets, create_chart]
+            get_project_tickets, *(build_spoton_tools(store) if store is not None else []), create_chart]
