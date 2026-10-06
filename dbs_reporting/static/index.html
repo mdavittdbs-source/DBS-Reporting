@@ -785,7 +785,7 @@
       <div class="inner">
         <div class="composer"><div class="core">
           <div class="attached" id="attached" hidden></div>
-          <button type="button" class="attach" id="spoton-upload" hidden aria-label="Upload SpotOn data" title="Upload SpotOn data: the zip from the SpotOn Exporter, a .csv or an Excel .xlsx (or drop it here)">
+          <button type="button" class="attach" id="spoton-upload" hidden aria-label="Upload SpotOn data" title="Upload SpotOn data: the zip from the SpotOn Exporter, a .csv or an Excel .xlsx (or drop it here). Kept for 30 days.">
             <svg class="i-clip" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 7.5 8 12.5a3.2 3.2 0 0 1-4.5-4.5l5.3-5.3a2.1 2.1 0 0 1 3 3L6.5 10.9a1 1 0 0 1-1.4-1.4L10 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <svg class="i-spin" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.5" opacity=".25"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             <svg class="i-check" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1100,7 +1100,8 @@
     let found;
     while ((found = text.match(UPLOAD_LINE))) {  // files uploaded for this question show as chips
       const [restaurant, ...rest] = found[1].split(" · "), name = rest.join(" · ");
-      div.append(fileChip(name || restaurant, name ? restaurant : ""), document.createElement("br"));
+      const own = restaurant.toLowerCase() === name.replace(/\.[a-z0-9]+$/i, "").replace(/[_\s]+/g, " ").trim().toLowerCase();
+      div.append(fileChip(name || restaurant, name && !own ? restaurant : ""), document.createElement("br"));
       text = text.slice(found[0].length);
     }
     div.append(text);
@@ -3143,8 +3144,10 @@
   function attach(name, data) {
     const rows = Object.values(data.files).reduce((a, b) => a + b, 0), sheets = Object.keys(data.files).length;
     attachments = attachments.filter((a) => !(a.name === name && a.restaurant === data.restaurant));
+    const own = data.restaurant.toLowerCase() === name.replace(/\.[a-z0-9]+$/i, "").replace(/[_\s]+/g, " ").trim().toLowerCase();
+    const size = `${sheets > 1 ? `${sheets} files, ` : ""}${rows.toLocaleString()} row${rows === 1 ? "" : "s"}`;
     attachments.push({ name: name.replace(/[\]\n]/g, " "), restaurant: data.restaurant.replace(/[\]\n·]/g, " "),
-                       meta: `${data.restaurant} · ${sheets > 1 ? `${sheets} files, ` : ""}${rows.toLocaleString()} row${rows === 1 ? "" : "s"}` });
+                       meta: own ? size : `${data.restaurant} · ${size}` });
     drawAttachments();
     q.focus();
   }
@@ -3160,11 +3163,7 @@
     box.hidden = !attachments.length;
   }
   async function uploadSpotOn(file) {
-    let restaurant = "";
-    if (!/\.zip$/i.test(file.name)) {
-      restaurant = (prompt(`Which restaurant is ${file.name} for?`) || "").trim();
-      if (!restaurant) return;
-    }
+    const restaurant = "";  // David works it out: the zip names it, a single file goes by its file name
     const button = $("spoton-upload");
     button.disabled = true;
     button.classList.remove("done");

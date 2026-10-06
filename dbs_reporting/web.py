@@ -263,13 +263,20 @@ def uploader(user: dict = Depends(current_user)) -> dict:
 @app.post("/api/spoton/upload")
 async def spoton_upload(request: Request, filename: str, restaurant: str = "",
                         user: dict = Depends(uploader)) -> dict:
-    """The file itself is the request body (the exporter's zip, or one .csv with ?restaurant=)."""
+    """The file itself is the request body: the exporter's zip, or one .csv or .xlsx with ?restaurant=.
+    A zip replaces everything saved for its restaurant; a single file adds to it (replacing a file of the same
+    name), so a restaurant's files can be uploaded one at a time."""
     data = await request.body()
+    known = {f["restaurant"].casefold(): f["restaurant"] for f in store.spoton_files()}
+    if not restaurant and not filename.lower().endswith(".zip"):  # no question asked: go by the file name
+        restaurant = spoton.restaurant_for(filename, list(known.values()))
     try:
         name, files = spoton.parse_upload(filename, data, restaurant)
     except spoton.UploadError as exc:
         raise HTTPException(400, str(exc))
-    await run_in_threadpool(store.save_spoton, name, files, user["display_name"])
+    # "taco town" goes with an existing "Taco Town" rather than starting a second restaurant.
+    name = known.get(name.casefold(), name)
+    await run_in_threadpool(store.save_spoton, name, files, user["display_name"], filename.lower().endswith(".zip"))
     log.info("%s uploaded SpotOn data for %s (%s)", user["username"], name, ", ".join(files))
     return {"restaurant": name, "files": {k: len(rows) for k, (_, rows) in files.items()}}
 
@@ -281,10 +288,13 @@ def spoton_list(user: dict = Depends(uploader)) -> list[dict]:
 
 
 @app.delete("/api/spoton/{restaurant}")
-def spoton_delete(restaurant: str, user: dict = Depends(uploader)) -> dict:
-    if not store.delete_spoton(restaurant):
-        raise HTTPException(404, "No SpotOn data for that restaurant.")
+def spoton_delete(restaurant: str, file: str | None = None, user: dict = Depends(uploader)) -> dict:
+    """Delete a restaurant's SpotOn data, or with ?file= just that file."""
+    if not store.delete_spoton(restaurant, file):
+        raise HTTPException(404, "No SpotOn data for that restaurant." if file is None else "No such file.")
+    log.info("%s deleted SpotOn data for %s%s", user["username"], restaurant, f" ({file})" if file else "")
     return {"ok": True}
+
 
 
 # --- Models and chats ----------------------------------------------------

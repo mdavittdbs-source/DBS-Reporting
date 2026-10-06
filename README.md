@@ -82,9 +82,14 @@ gitignored. Back up both.
 David can also answer questions about a restaurant's SpotOn menu, modifiers, employees and Audit Check.
 In the SpotOn Exporter, pick the restaurant and click **Export CSVs**; it downloads one zip. In David,
 admins and uploaders (see Logins) click the paperclip at the start of the question box and choose that
-zip, or drop it on the box. A single .csv or Excel workbook (.xlsx) works too; David asks which restaurant
-it's for, and each sheet of a workbook becomes its own file. A new upload for a restaurant replaces the old
-one. Then anyone can ask, e.g. "Which menu items at Test Pub have no report group?" The data is a copy from
+zip, or drop it on the box. A single .csv or Excel workbook (.xlsx) works too, and each sheet of a workbook
+becomes its own file. David doesn't ask which restaurant a single file is for: if a restaurant already uploaded
+is named in the file name ("Taco Town - Menu Items.xlsx"), it goes with that restaurant; otherwise it's listed
+under its own name. The zip replaces everything for its restaurant; a single file adds to it, replacing only a
+file with the same name. Uploads are snapshots for audits, so each file is deleted 30 days after it was
+uploaded (set `SPOTON_KEEP_DAYS` in `.env` to change that; uploading it again restarts the count), and David says
+which upload his answers come from. To remove a restaurant's data sooner: `DELETE /api/spoton/<restaurant>` (add `?file=menu_items`
+for one file), as an admin or uploader. Then anyone can ask, e.g. "Which menu items at Test Pub have no report group?" The data is a copy from
 the upload, not live SpotOn.
 
 ## Logo
