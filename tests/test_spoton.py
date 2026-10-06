@@ -1,4 +1,7 @@
+import datetime
+import io
 import json
+import zipfile
 
 import pytest
 
@@ -32,7 +35,7 @@ def test_parse_upload_reads_csv_and_needs_a_restaurant():
     with pytest.raises(UploadError):
         parse_upload("menu.csv", MENU)
     with pytest.raises(UploadError):
-        parse_upload("menu.xlsx", MENU, "Joe's")
+        parse_upload("menu.pdf", MENU, "Joe's")
     with pytest.raises(UploadError):
         parse_upload("menu.zip", b"not a zip")
 
@@ -70,3 +73,37 @@ def test_new_upload_replaces_old(tools):
     store.save_spoton("test pub & grill", {"employees": (["FirstName"], [["Pat"]])}, "Alice A")
     files = store.spoton_files()
     assert [(f["file"], f["uploaded_by"]) for f in files] == [("employees", "Alice A")]
+
+
+def _xlsx(sheets: dict) -> bytes:
+    from openpyxl import Workbook
+    book = Workbook()
+    book.remove(book.active)
+    for title, rows in sheets.items():
+        sheet = book.create_sheet(title)
+        for row in rows:
+            sheet.append(row)
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+def test_excel_workbooks():
+    one = _xlsx({"Sheet1": [[], ["Name", "Price", "Added", None], ["Burger", 12.5, datetime.date(2026, 10, 6)],
+                            ["Fries", 4.0, None], [None, None, None], ["IPA", 7, datetime.datetime(2026, 10, 6, 14, 30)]]})
+    name, files = parse_upload("Menu Items.xlsx", one, "Joe's")
+    columns, rows = files["menu_items"]  # one sheet: named after the workbook
+    assert columns == ["Name", "Price", "Added"]  # first non-empty row; empty trailing column dropped
+    assert rows == [["Burger", "12.5", "2026-10-06"], ["Fries", "4", ""], ["IPA", "7", "2026-10-06 14:30"]]
+    two = _xlsx({"Menu Items": [["Name"], ["Burger"]], "Employees": [["First", "Last"], ["Sam", "Ortiz"]], "Notes": []})
+    assert sorted(parse_upload("export.xlsx", two, "Joe's")[1]) == ["employees", "menu_items"]  # one per sheet
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w") as z:
+        z.writestr("about.txt", "Restaurant: Dock Bar\n")
+        z.writestr("employees.xlsx", _xlsx({"Sheet1": [["First"], ["Sam"]]}))
+    name, files = parse_upload("dock.zip", packed.getvalue())
+    assert name == "Dock Bar" and files["employees"][1] == [["Sam"]]
+    with pytest.raises(UploadError, match="can't be opened"):
+        parse_upload("menu.xlsx", MENU, "Joe's")
+    with pytest.raises(UploadError, match="empty"):
+        parse_upload("blank.xlsx", _xlsx({"Sheet1": []}), "Joe's")
