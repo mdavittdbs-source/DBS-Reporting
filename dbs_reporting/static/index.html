@@ -573,7 +573,7 @@
   .composer { border-radius: 26px;
               box-shadow: var(--ambient); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
               transition: box-shadow .2s, border-color .2s; }
-  .composer:focus-within { box-shadow: var(--ambient), var(--ring); }
+  /* No outline when you click in to type: the cursor shows where you are. (Buttons in the box keep theirs.) */
   .composer > .core { display: flex; align-items: flex-end; gap: 10px; padding: 6px 6px 6px 20px; border-radius: 26px; }
   /* Upload (admins and uploaders): a paperclip at the start of the box; a file can also be dropped on the box. */
   .composer > .core:has(.attach:not([hidden])) { padding-left: 6px; gap: 6px; }
@@ -599,7 +599,9 @@
   .composer.dropping { box-shadow: var(--ambient), var(--ring); }
   /* Uploaded files stay in the box, as chips, until the next question is sent (or they're taken off). */
   .composer > .core:has(.attached:not([hidden])) { flex-wrap: wrap; }
-  .attached { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 2px; }
+  /* A hairline keeps the files apart from where you type. */
+  .attached { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 8px; margin: 0 4px 2px;
+              box-shadow: 0 1px 0 var(--hair); }
   .attached[hidden] { display: none; }
   .file-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 5px 6px 5px 10px;
                border-radius: 12px; background: var(--pill);
