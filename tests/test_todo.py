@@ -433,3 +433,41 @@ def test_a_nine_digit_ticket_number_is_accepted(web, monkeypatch):  # noqa: F811
     bob, items = _list(module, monkeypatch)
     mine = {"id": "m-big", "priority": "now", "mine": True, "title": "Big ticket", "ticket": 123456789}
     assert bob.put("/api/todo/items", json={"items": [*items, mine]}).status_code == 200
+
+
+def test_reminders(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    bob, items = _list(module, monkeypatch)
+    blue_fin, taco, dock = items
+    mine = {"id": "m-call-joe", "priority": "now", "mine": True, "title": "Call Joe"}
+    bob.put("/api/todo/items", json={"items": [*items, mine]})
+    soon = (NOW + timedelta(hours=2)).isoformat()
+    past = (NOW - timedelta(minutes=1)).isoformat()
+    remind = lambda item, at: bob.put("/api/todo/reminder", json={"item": item, "at": at})  # noqa: E731
+    assert remind("m-call-joe", past).status_code == 200
+    assert remind(taco["id"], soon).json()["item"]["remind_at"] == (NOW + timedelta(hours=2)).isoformat(timespec="seconds")
+    assert remind(dock["id"], past).status_code == 200
+    bob.post("/api/todo/done", json={"item": dock["id"], "done": True})  # done: no reminder
+    # Saving the arranged list (which doesn't send reminders) keeps them
+    bob.put("/api/todo/items", json={"items": [{**mine, "title": "Call Joe at 3"}, blue_fin, taco, dock]})
+    got = bob.post("/api/todo/reminders").json()
+    assert [i["title"] for i in got["due"]] == ["Call Joe at 3"]
+    assert got["next"] == (NOW + timedelta(hours=2)).isoformat(timespec="seconds")
+    assert bob.post("/api/todo/reminders").json()["due"] == []  # each goes off once
+    assert bob.get("/api/todo").json()["list"]["items"][0]["reminded"] is True
+    # Snoozing sets it again; clearing takes it off
+    remind("m-call-joe", past)
+    assert len(bob.post("/api/todo/reminders").json()["due"]) == 1
+    remind(taco["id"], None)
+    assert "remind_at" not in next(i for i in bob.get("/api/todo").json()["list"]["items"] if i["id"] == taco["id"])
+    # A reminder on David's item follows its ticket to the next list
+    remind(blue_fin["id"], soon)
+    fresh = {i["ticket"]: i for i in bob.post("/api/todo").json()["list"]["items"] if i.get("ticket")}
+    assert fresh[blue_fin["ticket"]]["remind_at"] and fresh[blue_fin["ticket"]]["id"] != blue_fin["id"]
+    assert "remind_at" not in fresh[taco["ticket"]]
+    # Bad input
+    assert remind(taco["id"], "2026-10-06T09:00:00").status_code == 422  # needs a time zone
+    assert remind(taco["id"], (NOW + timedelta(days=400)).isoformat()).status_code == 422
+    assert remind("nope", soon).status_code == 404
+    alice = login(module, "alice", "password-a")
+    assert alice.post("/api/todo/reminders").json() == {"due": [], "next": None}

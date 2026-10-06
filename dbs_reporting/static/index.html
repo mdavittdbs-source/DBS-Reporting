@@ -294,6 +294,49 @@
   .when-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
                background: var(--pill); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   .when-pill svg { width: 12px; height: 12px; }
+  /* Reminders: the time on a to-do, the picker, and the card that pops up when one goes off. */
+  .remind-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 0; border-radius: 999px;
+                 background: var(--pill); color: var(--muted); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums;
+                 position: relative; transition: background .2s var(--ease), color .2s var(--ease); }
+  .remind-pill svg { width: 12px; height: 12px; }
+  .remind-pill:hover { background: var(--hover); color: var(--text); }
+  .remind-pill::after { content: ""; position: absolute; inset: -8px -2px; }
+  .remind-pill.due { background: var(--tag-bg); color: var(--tag-ink); }
+  .remind-pop { position: fixed; right: auto; top: auto; width: 284px; }
+  .remind-pop .eyebrow-row { margin: 6px 10px 4px; font-size: 12px; font-weight: 600; color: var(--faint); }
+  .remind-pop button.pick { display: flex; justify-content: space-between; gap: 12px; }
+  .remind-pop button.pick span { color: var(--faint); font-variant-numeric: tabular-nums; }
+  .remind-pop .custom { display: flex; gap: 6px; margin: 4px 0 0; padding: 8px 4px 4px; box-shadow: 0 -1px 0 var(--hair); }
+  .remind-pop input { flex: 1; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text);
+                      border: 1px solid var(--glass-ring); border-radius: 10px; background: var(--core); color-scheme: light dark; }
+  .remind-pop input:focus { outline: none; box-shadow: var(--ring); }
+  .remind-pop .custom button { width: auto; padding: 6px 12px; background: var(--cta); color: var(--cta-ink); font-weight: 600; text-align: center; }
+  .remind-pop .custom button:hover { background: var(--cta); opacity: .9; }
+  .remind-pop .hint { margin: 8px 10px 4px; font-size: 12px; color: var(--faint); line-height: 1.4; }
+  #reminders { position: fixed; top: 16px; right: 24px; z-index: var(--z-toast); width: min(340px, calc(100vw - 32px));
+               display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .reminder { pointer-events: auto; display: flex; gap: 12px; align-items: flex-start; padding: 12px 8px 10px 14px;
+              background: var(--core); border: 1px solid var(--glass-ring); border-radius: 16px; box-shadow: var(--ambient);
+              animation: rise-in var(--duration-slow) var(--ease-smooth-out) both; }
+  .reminder.leaving { opacity: 0; transform: translateY(-4px); transition: opacity var(--duration-quick) ease-out, transform var(--duration-quick) ease-out; }
+  .reminder > .bell { flex-shrink: 0; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center;
+                      background: var(--tag-bg); color: var(--tag-ink); }
+  .reminder > .bell svg { width: 14px; height: 14px; }
+  .reminder .what { flex: 1; min-width: 0; }
+  .reminder .label { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .reminder .title { display: block; margin-top: 1px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600;
+                     text-align: left; color: var(--text); letter-spacing: -.01em; line-height: 1.35; text-wrap: pretty; }
+  .reminder .title:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .reminder .row { display: flex; gap: 6px; margin-top: 9px; }
+  .reminder .row button { border: 0; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; font-weight: 600; position: relative;
+                          background: var(--pill); color: var(--text);
+                          transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .reminder .row button:first-child { background: var(--cta); color: var(--cta-ink); }
+  .reminder .row button:hover { background: var(--hover); }
+  .reminder .row button:first-child:hover { background: var(--cta); opacity: .9; }
+  .reminder .row button:active, .remind-pill:active { transform: scale(.96); }
+  .reminder .row button::after { content: ""; position: absolute; inset: -6px -2px; }
+  @media (prefers-reduced-motion: reduce) { .reminder { animation: none; } .reminder.leaving { transform: none; } }
   .mine-tag { font-size: 11.5px; font-weight: 500; padding: 1px 8px; border-radius: 999px; background: var(--tag-bg); color: var(--tag-ink); }
   .todo-group.empty h3 { margin-bottom: 2px; }
   .todo-none { display: none; margin: 0 14px 0 64px; padding: 6px 0; font-size: 13px; color: var(--faint); }
@@ -1886,6 +1929,7 @@
   const TICK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const GRIP = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="6" cy="3.5" r="1.2"/><circle cx="10" cy="3.5" r="1.2"/><circle cx="6" cy="8" r="1.2"/><circle cx="10" cy="8" r="1.2"/><circle cx="6" cy="12.5" r="1.2"/><circle cx="10" cy="12.5" r="1.2"/></svg>';
   const CLOCK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const BELL = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 11.5V7.5a4 4 0 0 1 8 0v4l1 1H3l1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 14.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const TRASH = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const TOGGLE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="v" d="M8 3.5v9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const RESTORE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4.5 3.5 7 6 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 7h6a3 3 0 0 1 0 6H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
@@ -2037,9 +2081,13 @@
     }
     if (item.client) tags.append(make("span", null, item.client));
     if (item.when) tags.append(whenPill(item.when));
+    if (item.remind_at) tags.append(remindPill(item));
     if (item.mine) tags.append(make("span", "mine-tag", "Added by you"));
     if (tags.childNodes.length) what.append(tags);
     const actions = make("div", "todo-actions");
+    const bell = iconButton(BELL, `Remind me: ${item.title}`, (e) => openRemindPop(e, bell, item.id));
+    bell.classList.add("remind-btn");
+    actions.append(bell);
     if (item.mine) actions.append(iconButton(EDIT, `Edit: ${item.title}`, () => editTodo(row)));
     actions.append(iconButton(REMOVE, `Remove: ${item.title}`, () => removeTodo(row)));
     row.append(grip, tick, what, actions);
@@ -2082,6 +2130,223 @@
   }
 
   function announce(text) { const live = todoBox.querySelector(".todo-live"); if (live) live.textContent = text; }
+
+  // ----- Reminders -----
+  // Any to-do can have a time. When it comes, David pops up a card (and a desktop notification if the
+  // browser allows them). The page asks David every half minute; each reminder goes off once.
+  const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  // "Today 2:00 PM", "Tomorrow 9:00 AM", "Fri 9:00 AM", "Mon 10/19 9:00 AM", in your own time zone.
+  function remindLabel(iso) {
+    const d = new Date(iso), days = Math.round((dayStart(d) - dayStart(new Date())) / 864e5);
+    const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    if (days === 0) return `Today ${time}`;
+    if (days === 1) return `Tomorrow ${time}`;
+    if (days === -1) return `Yesterday ${time}`;
+    if (days > 1 && days < 7) return `${d.toLocaleDateString("en-US", { weekday: "short" })} ${time}`;
+    return `${d.toLocaleDateString("en-US", { weekday: "short", month: "numeric", day: "numeric" }).replace(",", "")} ${time}`;
+  }
+  function remindPill(item) {
+    const pill = make("button", "remind-pill" + (item.reminded ? " due" : ""));
+    pill.type = "button";
+    pill.innerHTML = BELL;
+    pill.append(remindLabel(item.remind_at));
+    pill.title = item.reminded ? "Reminder went off. Click to change it." : "Reminder. Click to change it.";
+    pill.onclick = (e) => openRemindPop(e, pill, item.id);
+    return pill;
+  }
+  // Quick picks, each skipped when it would be in the past or the same as another.
+  function remindPicks() {
+    const now = new Date(), at = (days, h) => { const d = new Date(now); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0); return d; };
+    const hour = new Date(Math.ceil((now.getTime() + 36e5) / 3e5) * 3e5);  // an hour from now, to the next 5 minutes
+    const monday = at((8 - now.getDay()) % 7 || 7, 9);
+    const picks = [["In 1 hour", hour]];
+    if (now.getHours() < 15) picks.push(["Later today", at(0, 16)]);
+    picks.push(["Tomorrow morning", at(1, 9)]);
+    if (monday.getTime() !== at(1, 9).getTime()) picks.push(["Next Monday", monday]);
+    return picks;
+  }
+  const localInput = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
+  function askToNotify() {  // asked on the first reminder you set, while you're clicking (browsers require that)
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+  }
+
+  let remindPop = null;
+  function closeRemindPop(refocus = false) {
+    if (!remindPop) return;
+    const { pop, anchor } = remindPop;
+    remindPop = null;
+    anchor.setAttribute("aria-expanded", "false");
+    pop.classList.replace("is-open", "is-closing");
+    setTimeout(() => pop.remove(), 150);
+    if (refocus && anchor.isConnected) anchor.focus();
+  }
+  function openRemindPop(e, anchor, id) {
+    e.stopPropagation();
+    const again = remindPop?.anchor === anchor;
+    closePopovers(); closeMeMenu(); closeRemindPop();
+    const item = todoById(id);
+    if (again || !item) return;
+    const pop = make("div", "popover t-dropdown remind-pop");
+    pop.setAttribute("role", "dialog");
+    pop.setAttribute("aria-label", `Remind me: ${item.title}`);
+    pop.onclick = (ev) => ev.stopPropagation();
+    pop.append(make("div", "eyebrow-row", "Remind me"));
+    const choose = (d) => { askToNotify(); closeRemindPop(); setReminder(id, d ? d.toISOString() : null); };
+    for (const [label, d] of remindPicks()) {
+      const b = make("button", "pick");
+      b.type = "button";
+      b.append(label, make("span", null, remindLabel(d.toISOString()).replace(/^(Today|Tomorrow) /, "")));
+      b.onclick = () => choose(d);
+      pop.append(b);
+    }
+    const custom = make("form", "custom");
+    const input = make("input");
+    input.type = "datetime-local";
+    input.required = true;
+    input.setAttribute("aria-label", "Date and time");
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(9, 0, 0, 0);
+    input.value = localInput(item.remind_at ? new Date(item.remind_at) : tomorrow);
+    input.min = localInput(new Date());
+    const set = make("button", null, "Set"); set.type = "submit";
+    custom.append(input, set);
+    custom.onsubmit = (ev) => {
+      ev.preventDefault();
+      const d = new Date(input.value);
+      if (isNaN(d) || d < new Date()) { toast("Pick a time that hasn't passed yet"); return; }
+      choose(d);
+    };
+    pop.append(custom);
+    if (item.remind_at) {
+      const off = make("button", "danger", "Remove reminder");
+      off.type = "button";
+      off.onclick = () => choose(null);
+      pop.append(off);
+    }
+    const blocked = !("Notification" in window) || Notification.permission === "denied";
+    if (blocked) pop.append(make("p", "hint", "Reminders pop up while David is open in a tab."));
+    document.body.append(pop);
+    // Under the button, lined up with its right edge; above it when there's no room below.
+    const r = anchor.getBoundingClientRect(), h = pop.offsetHeight, w = pop.offsetWidth;
+    const below = r.bottom + 6 + h < innerHeight - 8;
+    pop.style.left = `${Math.max(8, Math.min(r.right - w, innerWidth - w - 8))}px`;
+    pop.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - 6 - h)}px`;
+    pop.dataset.origin = below ? "top-right" : "bottom-right";
+    anchor.setAttribute("aria-expanded", "true");
+    remindPop = { pop, anchor };
+    void pop.offsetWidth;
+    pop.classList.add("is-open");
+    pop.querySelector("button").focus();
+    pop.onkeydown = (ev) => { if (ev.key === "Escape") { ev.stopPropagation(); closeRemindPop(true); } };
+  }
+  $("todo").addEventListener("scroll", () => closeRemindPop(), { passive: true });
+
+  // Redraw one row after its reminder changes, keeping focus on its bell.
+  function redrawRow(id) {
+    const row = todoBox.querySelector(`.todo-rows > .todo-item[data-id="${id}"]`), item = todoById(id);
+    if (!row || !item) return;
+    const hadFocus = row.contains(document.activeElement) || remindPop?.anchor && row.contains(remindPop.anchor);
+    const fresh = todoItem(item);
+    row.replaceWith(fresh);
+    if (hadFocus) fresh.querySelector(".remind-btn").focus({ preventScroll: true });
+  }
+  async function setReminder(id, at) {
+    const item = todoState?.list ? todoById(id) : null;
+    const before = item && { remind_at: item.remind_at, reminded: item.reminded };
+    const apply = (r) => { if (!item) return; delete item.remind_at; delete item.reminded; if (r.remind_at) Object.assign(item, r); redrawRow(id); };
+    apply(at ? { remind_at: at, reminded: false } : {});
+    try {
+      await api("/api/todo/reminder", { method: "PUT", body: JSON.stringify({ item: id, at }) });
+      toast(at ? "Reminder set" : "Reminder removed", null, at ? remindLabel(at) : item?.title || "");
+      if (at) wakeAt(at);
+    } catch (err) {
+      if (before) apply(before);
+      toast("Couldn't set the reminder: " + err.message);
+    }
+  }
+
+  // Asking David what's due.
+  let reminderTimer = null, reminderCheck = null;
+  function wakeAt(iso) {  // check right when the next one is due, if that's sooner than the next half-minute poll
+    const wait = new Date(iso).getTime() - Date.now() + 500;
+    if (wait < 30000) { clearTimeout(reminderTimer); reminderTimer = setTimeout(checkReminders, Math.max(0, wait)); }
+  }
+  function checkReminders() {
+    reminderCheck ||= api("/api/todo/reminders", { method: "POST" }).then(({ due, next }) => {
+      for (const item of due) showReminder(item);
+      if (next) wakeAt(next);
+    }).catch(() => {}).finally(() => { reminderCheck = null; });
+    return reminderCheck;
+  }
+  const pageTitle = document.title;
+  let unseenReminders = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    unseenReminders = 0;
+    document.title = pageTitle;
+    checkReminders();
+  });
+  function chime() {
+    try {
+      const ac = chime.ac ||= new AudioContext(), t = ac.currentTime;
+      [880, 1320].forEach((f, i) => {
+        const o = ac.createOscillator(), g = ac.createGain(), s = t + i * 0.13;
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0, s);
+        g.gain.linearRampToValueAtTime(0.07, s + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, s + 0.5);
+        o.connect(g).connect(ac.destination);
+        o.start(s); o.stop(s + 0.55);
+      });
+    } catch { /* no sound is fine */ }
+  }
+  function showReminder(item) {
+    const mine = todoState?.list ? todoById(item.id) : null;
+    if (mine) { mine.reminded = true; mine.remind_at = item.remind_at; redrawRow(item.id); }
+    let stack = $("reminders");
+    if (!stack) { stack = make("div"); stack.id = "reminders"; stack.setAttribute("aria-live", "assertive"); document.body.append(stack); }
+    stack.querySelector(`.reminder[data-id="${item.id}"]`)?.remove();
+    const card = make("div", "reminder");
+    card.dataset.id = item.id;
+    card.setAttribute("role", "alert");
+    const bell = make("span", "bell"); bell.innerHTML = BELL;
+    const what = make("div", "what");
+    const label = make("div", "label", "Reminder · " + remindLabel(item.remind_at) + (item.ticket ? ` · #${item.ticket}` : ""));
+    const title = make("button", "title", item.title);
+    title.type = "button";
+    title.title = "Open To Do";
+    const close = () => { card.classList.add("leaving"); setTimeout(() => card.remove(), 160); };
+    title.onclick = () => { close(); showTodo(); };
+    const row = make("div", "row");
+    const done = make("button", null, "Done"); done.type = "button";
+    done.onclick = async () => {
+      close();
+      if (todoState?.list && todoById(item.id)) return setTodoDone(item.id, true);
+      try {
+        await api("/api/todo/done", { method: "POST", body: JSON.stringify({ item: item.id, done: true }) });
+        toast("Done", null, item.title);
+        if (todoState) loadTodo(true);
+      } catch (err) { toast("Couldn't save that: " + err.message); }
+    };
+    const snooze = make("button", null, "Snooze 15 min"); snooze.type = "button";
+    snooze.onclick = () => { close(); setReminder(item.id, new Date(Date.now() + 15 * 6e4).toISOString()); };
+    const dismiss = iconButton(REMOVE, `Dismiss reminder: ${item.title}`, close);
+    row.append(done, snooze);
+    what.append(label, title, row);
+    card.append(bell, what, dismiss);
+    stack.prepend(card);
+    while (stack.children.length > 4) stack.lastChild.remove();
+    chime();
+    if (document.hidden) {
+      unseenReminders++;
+      document.title = `(${unseenReminders}) Reminder · ${pageTitle}`;
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          const n = new Notification("Reminder from David", { body: item.title, tag: `todo-${item.id}` });
+          n.onclick = () => { focus(); showTodo(); n.close(); };
+        } catch { /* some browsers only allow these from a service worker */ }
+      }
+    }
+  }
 
   // ----- Saving -----
   // The list's order and groups come from the page. Saves are batched so a burst of moves is one request.
@@ -2672,11 +2937,11 @@
   }
   meButton.onclick = (e) => { e.stopPropagation(); closePopovers(); meMenu.classList.contains("is-open") ? closeMeMenu() : openMeMenu(); };
   meMenu.onclick = (e) => e.stopPropagation();
-  document.addEventListener("click", () => { closePopovers(); closeMeMenu(); });
+  document.addEventListener("click", () => { closePopovers(); closeMeMenu(); closeRemindPop(); });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (meMenu.contains(document.activeElement)) meButton.focus();
-    closePopovers(); closeMeMenu(); closeDrawer();
+    closePopovers(); closeMeMenu(); closeDrawer(); closeRemindPop();
   });
   $("logout").onclick = async () => {
     await api("/api/logout", { method: "POST" }).catch(() => {});
@@ -2709,6 +2974,8 @@
     updateSend();
     newChat();
     if (location.hash === "#todo") showTodo();
+    checkReminders();
+    setInterval(checkReminders, 30000);
   })();
 </script>
 </body>

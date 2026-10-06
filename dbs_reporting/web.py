@@ -16,6 +16,7 @@ from typing import Literal
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import anthropic
@@ -24,7 +25,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from . import activity, digest, exports, todo
 from .charts import extract_charts
@@ -383,6 +384,34 @@ def arrange_todo(body: TodoItems, user: dict = Depends(current_user)) -> dict:
     if saved is None:
         raise HTTPException(404, "Make a list first.")
     return {"items": saved}
+
+
+class TodoReminder(BaseModel):
+    item: str = Field(pattern=TODO_ID)
+    at: AwareDatetime | None = None  # None: no reminder
+
+
+@app.put("/api/todo/reminder")
+def set_reminder(body: TodoReminder, user: dict = Depends(current_user)) -> dict:
+    """Set or clear when David reminds you about a to-do."""
+    at = None
+    if body.at is not None:
+        when = body.at.astimezone(timezone.utc)
+        if when > datetime.now(timezone.utc) + timedelta(days=366):
+            raise HTTPException(422, "Pick a time within the next year.")
+        at = when.isoformat(timespec="seconds")
+    item = store.set_todo_reminder(user["id"], body.item, at)
+    if item is None:
+        raise HTTPException(404, "That item isn't on your list any more.")
+    return {"item": item}
+
+
+@app.post("/api/todo/reminders")
+def due_reminders(user: dict = Depends(current_user)) -> dict:
+    """Reminders that are due now (each is handed out once), and when the next one is due. The page asks
+    every half minute."""
+    due, upcoming = store.take_due_reminders(user["id"])
+    return {"due": due, "next": upcoming}
 
 
 class TodoDelete(BaseModel):
