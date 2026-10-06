@@ -610,7 +610,12 @@ def _resolve(user: dict, request: ChatRequest) -> tuple[str | None, str, str]:
     model = request.model or agent.default_model
     if model not in agent.models:
         raise HTTPException(400, f"Model {model!r} isn't enabled.")
-    return None, request.question.strip(), model
+    return None, ATTACHED.sub("", request.question.strip()) or request.question.strip(), model
+
+
+# A question asked right after a SpotOn upload starts with a line per upload, e.g.
+# "[SpotOn upload: Taco Town · Menu Items.xlsx]", so David knows which data it's about. Chat titles skip them.
+ATTACHED = re.compile(r"^(?:\[SpotOn upload: [^\]\n]*\]\n)+")
 
 
 def _run(user: dict, question: str, conversation_id: str | None, title: str, model: str) -> Iterator[dict]:
