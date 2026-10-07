@@ -263,10 +263,13 @@
   .section-input { padding: 5px 12px; border: 0; border-radius: 999px; font: inherit; font-size: 10px; font-weight: 500;
                    letter-spacing: .2em; text-transform: uppercase; color: var(--text); background: var(--core);
                    box-shadow: var(--ring); outline: none; field-sizing: content; min-width: 12ch; max-width: 40ch; }
-  .todo-group h3 .section-del { margin-left: auto; opacity: 0; transition: opacity .2s var(--ease); }
-  .todo-group:is(:hover, :focus-within) h3 .section-del { opacity: 1; }
+  /* Move up / down (and remove, for your own empty sections): at the right, shown only while the mouse is
+     over the section's header (or a key tab lands on one). */
+  .todo-group h3 .section-tools { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .2s var(--ease); }
+  .todo-group h3:hover .section-tools, .section-tools:has(:focus-visible) { opacity: 1; }
   .todo-group:not(.empty) h3 .section-del { display: none; }  /* only an empty section can go */
-  @media (hover: none) { .todo-group h3 .section-del { opacity: 1; } }
+  .section-tools .icon-btn:disabled { opacity: .3; cursor: default; background: none; color: var(--faint); transform: none; }
+  @media (hover: none) { .todo-group h3 .section-tools { opacity: 1; } }
   /* Below the last section, split off by a hairline like the sections themselves. */
   .todo-sheet .add-section { margin: 10px 0 0; border-radius: 0 0 14px 14px; box-shadow: 0 -1px 0 var(--hair); padding-top: 14px; }
   .todo-sheet .add-section[hidden] { display: none; }
@@ -2162,6 +2165,8 @@
   const CLOCK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const BELL = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 11.5V7.5a4 4 0 0 1 8 0v4l1 1H3l1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 14.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const TRASH = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const UP = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 10l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const DOWN = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const TOGGLE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="v" d="M8 3.5v9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const RESTORE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 4.5 3.5 7 6 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 7h6a3 3 0 0 1 0 6H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   const PLUS = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
@@ -2274,11 +2279,18 @@
       card.dataset.key = key;
       const core = make("div", "todo-group-body");
       const h3 = make("h3"); h3.append(sectionName(key, label), make("span", "n"));
-      if (!BUILT_IN_SECTIONS.has(key)) {  // your own section: it can go once it's empty
+      // Any section can move up or down; only your own can go (once it's empty).
+      const tools = make("span", "section-tools");
+      const up = iconButton(UP, `Move the ${label} section up`, () => moveSection(key, -1));
+      const down = iconButton(DOWN, `Move the ${label} section down`, () => moveSection(key, 1));
+      up.classList.add("section-up"); down.classList.add("section-down");
+      tools.append(up, down);
+      if (!BUILT_IN_SECTIONS.has(key)) {
         const del = iconButton(REMOVE, `Remove the ${label} section`, () => removeSection(key));
         del.classList.add("section-del");
-        h3.append(del);
+        tools.append(del);
       }
+      h3.append(tools);
       const rows = make("div", "todo-rows");
       for (const item of list.items.filter((it) => it.priority === key && !isDone(it.id))) rows.append(todoItem(item));
       const none = make("p", "todo-none");
@@ -2286,6 +2298,7 @@
       card.append(core);
       sheetCore.append(card);
     }
+    markSectionEnds();
     const more = make("button", "todo-add add-section");
     more.type = "button";
     more.innerHTML = PLUS;
@@ -3134,6 +3147,44 @@
     card?.scrollIntoView({ block: "nearest" });
     const name = card?.querySelector(".section-name");
     if (name) renameSection(name, key);  // name it right away
+  }
+  // Moving a section: it trades places with its neighbour and both glide there; the order is saved.
+  async function moveSection(key, step) {
+    const sections = todoSections(), at = sections.findIndex((s) => s.key === key), to = at + step;
+    if (at < 0 || to < 0 || to >= sections.length) return;
+    const order = [...sections];
+    [order[at], order[to]] = [order[to], order[at]];
+    const cards = [...todoBox.querySelectorAll(".todo-group")];
+    const card = cards.find((c) => c.dataset.key === key), other = cards.find((c) => c.dataset.key === sections[to].key);
+    const before = new Map(cards.map((c) => [c, c.getBoundingClientRect().top]));
+    step < 0 ? other.before(card) : other.after(card);
+    markSectionEnds();
+    if (!reducedMotion()) {
+      for (const c of [card, other]) {
+        const dy = before.get(c) - c.getBoundingClientRect().top;
+        c.style.transition = "none";
+        c.style.transform = `translateY(${dy}px)`;
+        requestAnimationFrame(() => {
+          c.style.transition = "transform var(--duration-fast) var(--ease-smooth-out)";
+          c.style.transform = "";
+          setTimeout(() => c.style.removeProperty("transition"), 320);
+        });
+      }
+    }
+    const button = card.querySelector(step < 0 ? ".section-up" : ".section-down");
+    (button?.disabled ? card.querySelector(step < 0 ? ".section-down" : ".section-up") : button)?.focus({ preventScroll: true });
+    card.scrollIntoView({ block: "nearest" });
+    announce(`${groupName(key)} moved ${step < 0 ? "up" : "down"}, ${to + 1} of ${order.length}`);
+    if (!await saveSections(order)) drawTodo(null, true);
+  }
+  // The first section can't go up, nor the last down.
+  function markSectionEnds() {
+    const cards = [...todoBox.querySelectorAll(".todo-group")];
+    cards.forEach((c, i) => {
+      const up = c.querySelector(".section-up"), down = c.querySelector(".section-down");
+      if (up) up.disabled = i === 0;
+      if (down) down.disabled = i === cards.length - 1;
+    });
   }
   async function removeSection(key) {
     const section = todoSections().find((s) => s.key === key);
