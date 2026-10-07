@@ -25,10 +25,12 @@ SERVICE = [
      "priority": {"name": "Priority 1 - Critical"}, "owner": {"identifier": "sortiz"},
      "_info": {"dateEntered": stamp(NOW - timedelta(days=2)), "lastUpdated": stamp(NOW - timedelta(days=1))}},
     {"id": 2, "summary": "Handheld won't sync", "company": {"name": "Dock Bar"}, "status": {"name": "Waiting"},
-     "owner": {"identifier": "kchen"}, "resources": "kchen, sortiz",
+     "owner": {"identifier": "sortiz"}, "resources": "sortiz, kchen",
      "_info": {"dateEntered": stamp(NOW - timedelta(days=20)), "lastUpdated": stamp(NOW - timedelta(days=9))}},
     {"id": 3, "summary": "Someone else's", "owner": {"identifier": "kchen"}, "resources": "sortizjr",
-     "_info": {"dateEntered": stamp(NOW)}},  # "like %sortiz%" matches it, but it isn't Sam's
+     "_info": {"dateEntered": stamp(NOW)}},
+    {"id": 4, "summary": "Kim's, Sam helps", "owner": {"identifier": "kchen"}, "resources": "kchen, sortiz",
+     "_info": {"dateEntered": stamp(NOW)}},  # Sam is only a resource: not on his list
 ]
 PROJECT = [{"id": 900, "summary": "Installation", "company": {"name": "Blue Fin"}, "project": {"name": "Blue Fin install"},
             "status": {"name": "Scheduled"}, "resources": "sortiz", "_info": {"dateEntered": stamp(NOW)}}]
@@ -53,8 +55,10 @@ def cw(requests=None):
             words = [w.split("%")[1].lower() for w in conditions.split("like ")[1:]]
             return httpx.Response(200, json=[m for m in STAFF if all(
                 any(w in m[f].lower() for f in ("firstName", "lastName", "identifier")) for w in words)])
-        if path.endswith("/service/tickets"):
-            return httpx.Response(200, json=SERVICE)
+        if path.endswith("/service/tickets"):  # like ConnectWise: the owner filter is applied
+            owner = conditions.split('owner/identifier="')[1].split('"')[0] if "owner/identifier=" in conditions else None
+            return httpx.Response(200, json=[t for t in SERVICE
+                                             if owner is None or t["owner"]["identifier"] == owner])
         if path.endswith("/project/tickets"):
             return httpx.Response(200, json=PROJECT)
         if path.endswith("/schedule/entries"):
@@ -79,13 +83,14 @@ def test_gathering_someones_work():
     requests = []
     work = todo.gather_work(cw(requests), STAFF[0])
     tickets = rows(work["tickets"])
-    assert [t["id"] for t in tickets] == [2, 1, 900]  # service first, oldest first; not #3
-    assert tickets[1]["role"] == "owner" and tickets[0]["role"] == "resource" and tickets[0]["days_since_update"] == 9
+    assert [t["id"] for t in tickets] == [2, 1, 900]  # service first, oldest first; not #3 or #4 (only a resource)
+    assert tickets[0]["days_since_update"] == 9
     calendar = rows(work["calendar_next_7_days"])
     assert [c["title"] for c in calendar] == ["Team meeting", "Blue Fin / Installation", "Blue Fin / Installation"]
-    assert calendar[1]["ticket"] == 900 and work["open_service_tickets"] == 2
+    assert calendar[1]["ticket"] == 900
     service_query = next(r for r in requests if r.url.path.endswith("/service/tickets")).url.params["conditions"]
-    assert 'owner/identifier="sortiz" or resources like "%sortiz%"' in service_query
+    assert service_query == 'closedFlag=false and owner/identifier="sortiz"' and "resources" not in service_query
+    assert "role" not in work["tickets"]["columns"]
 
 
 def fake_claude(sent, reply: dict, stop="end_turn"):

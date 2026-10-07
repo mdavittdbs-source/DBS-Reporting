@@ -36,7 +36,7 @@ TICKET_SUMMARY_FIELDS = (
 # What open-ticket (aging) reports need.
 TICKET_OPEN_FIELDS = (
     "id,summary,closedFlag,company/id,company/name,site/name,board/name,status/name,type/name,"
-    "priority/name,owner/identifier,owner/name,resources,_info/dateEntered,_info/lastUpdated"
+    "priority/name,owner/identifier,owner/name,_info/dateEntered,_info/lastUpdated"
 )
 
 # When each ticket came in and who took it, for after-hours reports.
@@ -392,24 +392,23 @@ class ConnectWiseClient:
             return people
 
     def member_open_tickets(self, identifier: str, limit: int = 300) -> tuple[list[dict], list[dict]]:
-        """One person's open work: (service tickets they own or are a resource on, project tickets
-        they're a resource on), fetched at the same time. "resources" is a list of usernames, so a
-        "like" match is checked here against the exact username ("sam" isn't "samantha")."""
+        """One person's open work: (service tickets they own, project tickets they're assigned to),
+        fetched at the same time. A service ticket where they're only a resource isn't theirs. Project
+        tickets are assigned through "resources", a list of usernames, so a "like" match is checked
+        here against the exact username ("sam" isn't "samantha")."""
         who = quote(identifier)
         like = quote("%" + identifier + "%")
 
-        def mine(t: dict) -> bool:
-            owner = ((t.get("owner") or {}).get("identifier") or "").lower()
+        def assigned(t: dict) -> bool:
             names = {r.strip().lower() for r in (t.get("resources") or "").replace(";", ",").split(",")}
-            return identifier.lower() in names or owner == identifier.lower()
+            return identifier.lower() in names
 
         with ThreadPoolExecutor(2) as pool:
-            service = pool.submit(self._fetch, "/service/tickets",
-                                  f"closedFlag=false and (owner/identifier={who} or resources like {like})",
+            service = pool.submit(self._fetch, "/service/tickets", f"closedFlag=false and owner/identifier={who}",
                                   limit, TICKET_OPEN_FIELDS)
             project = pool.submit(self._fetch, "/project/tickets", f"closedFlag=false and resources like {like}",
                                   limit, PROJECT_TICKET_FIELDS)
-            return [t for t in service.result() if mine(t)], [t for t in project.result() if mine(t)]
+            return service.result(), [t for t in project.result() if assigned(t)]
 
     def member_schedule(self, identifier: str, start: datetime, end: datetime) -> list[dict]:
         """Everything on one person's schedule between `start` and `end`."""
