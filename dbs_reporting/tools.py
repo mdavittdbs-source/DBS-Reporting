@@ -778,7 +778,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
         Use for "oldest open tickets", "what's still open at Jimmy's Grille", "stale tickets",
         "open ticket backlog by board/technician", and with person for one technician's tickets ("review
         Mikey's tickets", "what's on Jon's plate"): the tickets they own and the ones they're a resource
-        on. Unlike get_company_tickets, this isn't limited to
+        on, plus the open project tickets they're a resource on (project_tickets; project work, such as
+        installs, is assigned that way). Unlike get_company_tickets, this isn't limited to
         a date range. Returns the open count, age buckets, median age, counts by status, board,
         priority, owner (and client, when looking at all clients), and the oldest tickets with
         their age in days and days since last update.
@@ -815,6 +816,12 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
                     return any(wanted in _plain(r) or r in usernames for r in resources)
 
                 tickets = [t for t in tickets if wanted and theirs(t)]
+                if not usernames and wanted:  # staff list unreadable: go by what was asked, as a username
+                    usernames = {person.strip().lower()}
+                projects = {}
+                for username in sorted(usernames):
+                    for p in cw.member_project_tickets(username):
+                        projects[p.get("id")] = p
             now = datetime.now(timezone.utc)
 
             def days_since(value) -> int | None:
@@ -868,8 +875,15 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
                 result["software"] = software
             if person:
                 result["person"] = person
-                if not rows:
-                    result["note"] = f'Nobody matching "{person}" owns or is a resource on an open service ticket.'
+                project_rows = [{**summarize_project_ticket(p), "company": _name(p, "company"),
+                                 "age_days": days_since(_date_entered(p))} for p in projects.values()]
+                project_rows.sort(key=lambda r: -(r.get("age_days") if r.get("age_days") is not None else -1))
+                result["project_tickets"] = _table(project_rows, ("id", "summary", "company", "project", "phase",
+                                                                  "status", "priority", "resources", "age_days",
+                                                                  "budget_hours", "actual_hours"))
+                result["open_project_tickets"] = len(project_rows)
+                if not rows and not project_rows:
+                    result["note"] = f'Nobody matching "{person}" owns or is a resource on an open ticket.'
             if capped:
                 result["note"] = "Capped at 5000 open tickets; filter by client or board for exact figures."
             return _dumps(result)

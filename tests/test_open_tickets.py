@@ -65,9 +65,17 @@ def test_one_persons_tickets_are_the_ones_they_own_or_are_a_resource_on():
                        "company": {"name": "Harbor Shack"}, "owner": {"identifier": "mdavitt", "name": "Mikey Davitt"},
                        "resources": "mdavitt, sam", "_info": {"dateEntered": ago(3)}}]
     staff = [{"identifier": "sam", "firstName": "Sam", "lastName": "Ortiz"}]
+    projects = [{"id": 900, "summary": "Installation", "company": {"name": "Blue Fin"}, "project": {"name": "Blue Fin install"},
+                 "status": {"name": "Scheduled"}, "resources": "sam", "_info": {"dateEntered": ago(4)}},
+                {"id": 901, "summary": "Training", "resources": "samantha", "_info": {"dateEntered": ago(1)}}]
+    queries = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=staff if request.url.path.endswith("/system/members") else tickets)
+        path = request.url.path
+        if path.endswith("/project/tickets"):
+            queries.append(request.url.params["conditions"])
+            return httpx.Response(200, json=projects)
+        return httpx.Response(200, json=staff if path.endswith("/system/members") else tickets)
 
     tools = tools_by_name(ConnectWiseClient(SETTINGS, transport=httpx.MockTransport(handler)))
     mikey = json.loads(tools["get_open_tickets"].call({"person": "Mikey"}))
@@ -77,5 +85,8 @@ def test_one_persons_tickets_are_the_ones_they_own_or_are_a_resource_on():
         sam = json.loads(tools["get_open_tickets"].call({"person": asked}))
         assert [t["id"] for t in rows(sam["oldest"])] == [10, 40], asked
     assert rows(sam["oldest"])[1]["resources"] == "mdavitt, sam"
+    # ...and the project tickets he's a resource on (not #901: "samantha" isn't "sam")
+    assert [(t["id"], t["company"], t["status"]) for t in rows(sam["project_tickets"])] == [(900, "Blue Fin", "Scheduled")]
+    assert sam["open_project_tickets"] == 1 and queries[-1] == 'closedFlag=false and resources like "%sam%"'
     nobody = json.loads(tools["get_open_tickets"].call({"person": "Zed"}))
     assert nobody["open_count"] == 0 and "Zed" in nobody["note"]

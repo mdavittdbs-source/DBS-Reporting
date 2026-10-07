@@ -56,6 +56,14 @@ PROJECT_FIELDS = (
     "id,name,closedFlag,company/name,status/name,manager/name,manager/identifier,type/name,board/name,"
     "estimatedStart,estimatedEnd,actualStart,actualEnd,percentComplete,budgetHours,actualHours,scheduledHours"
 )
+def _theirs(t: dict, identifier: str) -> bool:
+    """Whether this username owns the ticket or is one of its resources. "resources" is a list of usernames,
+    and a "like" query also matches longer ones, so it's checked exactly here ("sam" isn't "samantha")."""
+    owner = ((t.get("owner") or {}).get("identifier") or "").lower()
+    names = {r.strip().lower() for r in (t.get("resources") or "").replace(";", ",").split(",")}
+    return identifier.lower() in names or owner == identifier.lower()
+
+
 PROJECT_TICKET_FIELDS = (
     "id,summary,closedFlag,closedDate,company/id,company/name,project/id,project/name,phase/name,"
     "status/name,budgetHours,actualHours,resources,priority/name,type/name,_info/dateEntered,_info/lastUpdated"
@@ -398,18 +406,18 @@ class ConnectWiseClient:
         who = quote(identifier)
         like = quote("%" + identifier + "%")
 
-        def mine(t: dict) -> bool:
-            owner = ((t.get("owner") or {}).get("identifier") or "").lower()
-            names = {r.strip().lower() for r in (t.get("resources") or "").replace(";", ",").split(",")}
-            return identifier.lower() in names or owner == identifier.lower()
-
         with ThreadPoolExecutor(2) as pool:
             service = pool.submit(self._fetch, "/service/tickets",
                                   f"closedFlag=false and (owner/identifier={who} or resources like {like})",
                                   limit, TICKET_OPEN_FIELDS)
-            project = pool.submit(self._fetch, "/project/tickets", f"closedFlag=false and resources like {like}",
-                                  limit, PROJECT_TICKET_FIELDS)
-            return [t for t in service.result() if mine(t)], [t for t in project.result() if mine(t)]
+            project = pool.submit(self.member_project_tickets, identifier, limit)
+            return [t for t in service.result() if _theirs(t, identifier)], project.result()
+
+    def member_project_tickets(self, identifier: str, limit: int = 300) -> list[dict]:
+        """Open project tickets one person is a resource on (project work is assigned that way)."""
+        tickets = self._fetch("/project/tickets", f"closedFlag=false and resources like {quote('%' + identifier + '%')}",
+                              limit, PROJECT_TICKET_FIELDS)
+        return [t for t in tickets if _theirs(t, identifier)]
 
     def member_schedule(self, identifier: str, start: datetime, end: datetime) -> list[dict]:
         """Everything on one person's schedule between `start` and `end`."""
