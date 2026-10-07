@@ -219,9 +219,17 @@
   .nav-tab[aria-current="page"]:focus-visible { box-shadow: inset 0 0 0 1px var(--glass-ring), 0 1px 2px rgba(0, 0, 0, .06), var(--ring); }
   .nav-tab::after { content: ""; position: absolute; inset: -3px 0; }  /* 40px tall to click */
   .nav-tab svg { width: 15px; height: 15px; flex-shrink: 0; }
-  body.todo-view #log, body.todo-view #form { display: none; }
-  #todo .inner { min-height: 100%; display: flex; flex-direction: column; }
-  #todo { flex: 1; overflow-y: auto; padding: 28px 24px 40px;
+  /* Notes and To Do share the row with your name, so they're icons; the name keeps the room. */
+  .me .nav-tab { width: 36px; padding: 0; justify-content: center; }
+  .nav-tips { gap: 6px; flex-shrink: 0; }
+  .nav-tips .t-tt { left: 0; font-size: 12.5px; font-weight: 500; padding: 6px 10px; }
+  .me .nav-tab .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  :is(body.todo-view, body.notes-view) :is(#log, #form) { display: none; }
+  :is(#todo, #notes) .inner { min-height: 100%; display: flex; flex-direction: column; }
+  #notes .inner { max-width: 1060px; }  /* room for the list beside the note */
+  /* Opening Notes or To Do: the page rises a short way into place (panel reveal). */
+  :is(#todo, #notes).t-panel-slide { --panel-translate-y: 14px; }
+  :is(#todo, #notes) { flex: 1; overflow-y: auto; padding: 28px 24px 40px;
           -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
                   mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
   .todo-head h2 { font-size: clamp(30px, 4vw, 44px); font-weight: 600; letter-spacing: -.05em; line-height: 1.04;
@@ -311,6 +319,8 @@
   .remind-pop input { flex: 1; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--text);
                       border: 1px solid var(--glass-ring); border-radius: 8px; background: var(--core); color-scheme: light dark; }
   .remind-pop input:focus { outline: none; box-shadow: var(--ring); }
+  .remind-pop input.is-error { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+  .remind-pop .hint.err { color: var(--danger); margin-top: 6px; }
   .remind-pop .custom button { width: auto; padding: 6px 14px; border-radius: 8px; background: var(--pill); font-weight: 600; text-align: center; }
   .remind-pop .custom button:hover { background: var(--hover); }
   .remind-pop .hint { margin: 8px 10px 4px; font-size: 12px; color: var(--faint); line-height: 1.45; text-wrap: pretty; }
@@ -319,12 +329,11 @@
   .remind-pop .hint button.linkish:hover { background: none; }
   .remind-pop .hint button.linkish { position: relative; }
   .remind-pop .hint button.linkish::after { content: ""; position: absolute; inset: -12px -4px; }
-  #reminders { position: fixed; top: 16px; right: 24px; z-index: var(--z-toast); width: min(340px, calc(100vw - 32px));
-               display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-  .reminder { pointer-events: auto; display: flex; gap: 12px; align-items: flex-start; padding: 12px 8px 10px 14px;
-              background: var(--core); border: 1px solid var(--glass-ring); border-radius: 16px; box-shadow: var(--ambient);
-              animation: rise-in var(--duration-slow) var(--ease-smooth-out) both; }
-  .reminder.leaving { opacity: 0; transform: translateY(-4px); transition: opacity var(--duration-quick) ease-out, transform var(--duration-quick) ease-out; }
+  /* Reminder cards stack (banner stacking): the newest in front, older ones peeking out below; pointing at
+     the stack spreads them out. */
+  #reminders { position: fixed; top: 16px; right: 24px; z-index: var(--z-toast); width: min(340px, calc(100vw - 32px)); }
+  .reminder { display: flex; gap: 12px; align-items: flex-start; padding: 12px 8px 10px 14px;
+              background: var(--core); border: 1px solid var(--glass-ring); border-radius: 16px; box-shadow: var(--ambient); }
   .reminder > .bell { flex-shrink: 0; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center;
                       background: var(--tag-bg); color: var(--tag-ink); }
   .reminder > .bell svg { width: 14px; height: 14px; transform: translateY(-.5px); }
@@ -343,7 +352,6 @@
   .reminder .row button:first-child:hover { background: var(--cta); opacity: .9; }
   .reminder .row button:active, .remind-pill:active { transform: scale(.96); }
   .reminder .row button::after { content: ""; position: absolute; inset: -6px -2px; }
-  @media (prefers-reduced-motion: reduce) { .reminder { animation: none; } .reminder.leaving { transform: none; } }
   .mine-tag { font-size: 11.5px; font-weight: 500; padding: 1px 8px; border-radius: 999px; background: var(--tag-bg); color: var(--tag-ink); }
   .todo-group.empty h3 { margin-bottom: 2px; }
   .todo-none { display: none; margin: 0 14px 0 64px; padding: 6px 0; font-size: 13px; color: var(--faint); }
@@ -416,7 +424,7 @@
                        border-radius: 999px; background: var(--pill); text-align: center; }
   .removed-toggle svg { width: 14px; height: 14px; margin-left: auto; color: var(--faint); }
   .removed-toggle:hover svg { color: var(--text); }
-  .removed-list { padding: 0 0 4px; animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
+  .removed-list { padding: 0 0 4px; }
   .removed-head { display: flex; align-items: center; gap: 14px; margin: 2px 6px 6px 14px; }
   .removed-note { flex: 1; margin: 0; font-size: 13px; color: var(--faint); text-wrap: pretty; }
   .removed-item .icon-btn { flex-shrink: 0; }
@@ -438,8 +446,88 @@
   .todo-note { padding: 16px 20px; border-radius: 18px; background: var(--danger-soft); color: var(--danger);
                margin-bottom: 18px; }
   #todo .usage { display: block; margin: 10px 4px 0; }
+  /* Notes: your notes down the side, the open one beside them. Private to each person. */
+  .notes-wrap { display: grid; grid-template-columns: 228px minmax(0, 1fr); gap: 28px; align-items: start; }
+  .notes-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 12px; }
+  .notes-side { padding-top: 14px; }
+  .notes-side .head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 0 12px; }
+  .notes-side .head .eyebrow { padding: 0; background: none; box-shadow: none; font-size: 11px; color: var(--faint); }
+  .notes-side .head .pill-btn { padding: 5px 12px 5px 10px; font-size: 12.5px; }
+  .pill-btn { position: relative; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 999px;
+              padding: 6px 14px; font-size: 13px; font-weight: 600; background: var(--cta); color: var(--cta-ink);
+              transition: opacity .2s var(--ease), background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .pill-btn svg { width: 14px; height: 14px; }
+  .pill-btn::after { content: ""; position: absolute; inset: -4px 0; }
+  .pill-btn:hover { opacity: .9; }
+  .pill-btn:active { transform: scale(.96); }
+  .pill-btn:disabled { opacity: .5; cursor: default; }
+  .pill-btn.ghost { background: var(--pill); color: var(--text); }
+  .pill-btn.ghost:hover { opacity: 1; background: var(--hover); }
+  .pill-btn.busy { cursor: progress; opacity: 1; }
+  /* "Cleaning up…" shimmers on the dark button (shimmer text). */
+  .pill-btn.busy { --shimmer-base: color-mix(in srgb, var(--cta-ink) 50%, transparent); --shimmer-highlight: var(--cta-ink); }
+  /* While David cleans up: soft bars where the note goes, then the new note fades in over them
+     (skeleton loader and reveal). The bars pulse until he's done. */
+  .note-skel { min-height: 240px; --pulse-count: infinite; }
+  .note-skel .t-skel-skeleton { display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
+  .note-skel .bar { display: block; height: 11px; border-radius: 6px; background: var(--pill); }
+  .note-skel .gap { display: block; height: 10px; }
+  .note-skel:not(.is-revealed) .t-skel-content { visibility: hidden; }
+  .note-actions .t-icon-swap { justify-items: end; align-items: center; }
+  .note-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .note-list button { width: 100%; display: flex; flex-direction: column; gap: 1px; padding: 9px 12px; border: 0; border-radius: 12px;
+                      background: none; color: var(--text); text-align: left;
+                      transition: background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .note-list button:hover { background: var(--hover); }
+  .note-list button:active { transform: scale(.98); }
+  .note-list button[aria-current="true"] { background: var(--hover); }
+  .note-list .t { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note-list .t.untitled { color: var(--faint); }
+  .note-list .m { display: flex; gap: 8px; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; min-width: 0; }
+  .note-list .m .lbl { color: var(--tag-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note-sheet > .core { padding: 18px 26px 26px; }
+  .note-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .note-label { border: 0; border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12px; font-weight: 500;
+                background: var(--tag-bg); color: var(--tag-ink); outline: none;
+                field-sizing: content; min-width: 11ch; max-width: 30ch; }  /* as wide as what's typed */
+  .note-label:placeholder-shown { background: var(--pill); }
+  .note-label::placeholder { color: var(--faint); }
+  .note-label:focus-visible { box-shadow: var(--ring); }
+  .note-status { font-size: 12px; color: var(--faint); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .note-title { width: 100%; border: 0; background: none; outline: none; padding: 0; margin: 6px 0 10px; color: var(--text);
+                font: inherit; font-size: 26px; font-weight: 600; letter-spacing: -.03em; line-height: 1.2; }
+  .note-title::placeholder { color: var(--faint); }
+  .note-body { display: block; width: 100%; min-height: 46vh; border: 0; background: none; outline: none; resize: none; padding: 0;
+               font: inherit; font-size: 15px; line-height: 1.7; color: var(--text); }
+  .note-body::placeholder { color: var(--faint); }
+  .note-body:focus-visible, .note-title:focus-visible { box-shadow: none; }
+  .note-rendered { font-size: 15px; line-height: 1.7; min-height: 20vh; cursor: text; }
+  .note-rendered h2 { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+                      margin: 22px 0 6px; }
+  .note-rendered h2:first-child { margin-top: 4px; }
+  .note-rendered p { margin: 0 0 10px; }
+  .note-rendered ul { margin: 0 0 10px; padding-left: 20px; }
+  .note-cleaned { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 6px; font-size: 13px; color: var(--muted); }
+  .note-cleaned svg { width: 14px; height: 14px; color: var(--tag-ink); }
+  .note-cleaned button { border: 0; background: none; padding: 2px 4px; font: inherit; font-weight: 600; color: var(--text); border-radius: 6px; position: relative; }
+  .note-cleaned button::after { content: ""; position: absolute; inset: -10px -2px; }
+  .note-cleaned button:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .note-actions { margin-top: 22px; padding-top: 16px; box-shadow: 0 -1px 0 var(--hair); }
+  .note-actions .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .note-actions ul { list-style: none; margin: 0; padding: 0; }
+  .note-actions li { display: flex; align-items: center; gap: 12px; padding: 8px 0; font-size: 14.5px; }
+  .note-actions li + li { box-shadow: 0 -1px 0 var(--hair); }
+  .note-actions li .what { flex: 1; min-width: 0; }
+  .note-actions li .when { font-size: 12px; color: var(--faint); white-space: nowrap; }
+  .note-actions li .added { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--tag-ink); white-space: nowrap; }
+  .note-actions li .added svg { width: 13px; height: 13px; }
   @media (max-width: 760px) {
-    #todo { padding: 18px 14px 32px; }
+    .notes-wrap { grid-template-columns: minmax(0, 1fr); }
+    .notes-side { position: static; }
+    .note-sheet > .core { padding: 14px 16px 20px; }
+  }
+  @media (max-width: 760px) {
+    :is(#todo, #notes) { padding: 18px 14px 32px; }
     .todo-sheet > .core { padding: 2px 4px 4px; }
     .todo-item { padding: 11px 10px; gap: 12px; }
   }
@@ -770,10 +858,17 @@
           Sign out
         </button>
       </div>
-      <button id="todo-tab" type="button" class="nav-tab">
+      <span class="t-tt-group nav-tips">
+      <button id="notes-tab" type="button" class="nav-tab t-tt-trigger" data-tooltip="Notes">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 2.5h5.5l2.5 2.5v8.5H4v-11Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 7.5h3.5M6.5 10h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="label">Notes</span>
+      </button>
+      <button id="todo-tab" type="button" class="nav-tab t-tt-trigger" data-tooltip="To Do">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.2 3.7 5.4 6 3M2.5 8.7l1.2 1.2L6 7.5M8.5 4.2h5M8.5 8.7h5M8.5 13h5M2.8 13h2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="label">To Do</span>
       </button>
+      <span class="t-tt" role="tooltip" aria-hidden="true" data-show="false"><span class="t-tt-text"></span></span>
+      </span>
     </div>
   </aside>
   <div class="backdrop" id="backdrop"></div>
@@ -785,7 +880,8 @@
       <span id="chat-title"></span>
     </header>
     <div id="log"><div class="inner"><div id="messages" aria-live="polite"></div></div></div>
-    <section id="todo" hidden aria-label="Your to-do list"><div class="inner" id="todo-inner"></div></section>
+    <section id="todo" class="t-panel-slide" data-open="false" hidden aria-label="Your to-do list"><div class="inner" id="todo-inner"></div></section>
+    <section id="notes" class="t-panel-slide" data-open="false" hidden aria-label="Your notes"><div class="inner" id="notes-inner"></div></section>
     <form id="form">
       <div class="inner">
         <div class="composer"><div class="core">
@@ -1828,6 +1924,7 @@
 
   function newChat() {
     leaveTodo();
+    leaveNotes();
     conversationId = null;
     clearMessages();
     chatTitle.textContent = "";  // a new chat has no title until its first answer
@@ -1841,6 +1938,7 @@
   async function openChat(id) {
     closeDrawer();
     leaveTodo();
+    leaveNotes();
     try {
       const chat = await api(`/api/conversations/${id}`);
       conversationId = chat.id;
@@ -2030,10 +2128,20 @@
   let todoMaking = false;
   const make = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
+  // Notes and To Do slide into place when opened (panel reveal); leaving is instant, since the next view
+  // takes their place.
+  function revealView(section) {
+    if (!section.hidden) return;  // already showing
+    section.hidden = false;
+    section.dataset.open = "false";
+    void section.offsetWidth;
+    section.dataset.open = "true";
+  }
   function inTodo() { return document.body.classList.contains("todo-view"); }
   function showTodo() {
+    leaveNotes();
     document.body.classList.add("todo-view");
-    $("todo").hidden = false;
+    revealView($("todo"));
     todoTab.setAttribute("aria-current", "page");
     chatTitle.textContent = "";  // the page says what it is; no title in the corner
     chatList.querySelectorAll("li.chat.active").forEach((li) => li.classList.remove("active"));
@@ -2106,7 +2214,7 @@
     const head = make("section", "todo-head");
     const pill = make("div"); pill.append(make("span", "eyebrow", listDates(todoState.created_at)));
     head.append(pill, make("h2", null, firstName ? `${firstName}, here's your week` : "Your to-do list"),
-                make("p", null, list.summary));
+                make("p", null, list.summary || "Your own to-dos. Make a list to add your ConnectWise tickets and calendar."));
     const bar = make("div", "todo-bar");
     bar.append(todoButton("Make a new list"), make("span", "meta"));
     const progress = make("div", "progress"); progress.setAttribute("aria-hidden", "true");
@@ -2206,7 +2314,21 @@
     const items = todoState.list.items;
     const doneCount = items.filter((it) => isDone(it.id)).length;
     const meta = todoBox.querySelector(".todo-bar .meta");
-    if (meta) meta.textContent = `Made ${eastern(todoState.created_at)} · ${doneCount} of ${items.length} done`;
+    if (meta) {
+      // The done count rolls to its new value when you tick something off (number pop-in).
+      const before = meta.dataset.done;
+      meta.textContent = `Made ${eastern(todoState.created_at)} · `;
+      const digits = make("span", "t-digit-group");
+      const chars = String(doneCount).split("");
+      chars.forEach((ch, i) => {
+        const d = make("span", "t-digit", ch);
+        if (chars.length > 1 && i === chars.length - 1) d.dataset.stagger = "1";
+        digits.append(d);
+      });
+      meta.append(digits, ` of ${items.length} done`);
+      if (before !== undefined && before !== String(doneCount)) { void digits.offsetWidth; digits.classList.add("is-animating"); }
+      meta.dataset.done = String(doneCount);
+    }
     const fill = todoBox.querySelector(".progress i");
     if (fill) fill.style.width = items.length ? `${(100 * doneCount) / items.length}%` : "0";
     for (const card of todoBox.querySelectorAll(".todo-group")) {
@@ -2289,7 +2411,7 @@
     if (data?.reminder) showReminder(data.reminder);
     if (data?.open === "todo") showTodo();
     if (data?.refresh) {
-      $("reminders")?.querySelector(`.reminder[data-id="${data.item}"]`)?.remove();
+      dismissReminder($("reminders")?.querySelector(`.reminder[data-id="${data.item}"]`));
       if (todoState) loadTodo(true);
     }
   });
@@ -2352,10 +2474,14 @@
       pop.append(b);
     }
     const custom = make("form", "custom");
+    custom.noValidate = true;  // a past or empty time gets the shake below, not the browser's own bubble
     const input = make("input");
     input.type = "datetime-local";
     input.required = true;
     input.setAttribute("aria-label", "Date and time");
+    input.classList.add("t-input");
+    input.oninput = () => { input.classList.remove("is-error"); input.removeAttribute("aria-invalid"); custom.nextElementSibling?.classList.contains("err") && custom.nextElementSibling.remove(); };
+    input.addEventListener("animationend", () => input.classList.remove("is-shaking"));
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(9, 0, 0, 0);
     input.value = localInput(item.remind_at ? new Date(item.remind_at) : tomorrow);
     input.min = localInput(new Date());
@@ -2364,7 +2490,14 @@
     custom.onsubmit = (ev) => {
       ev.preventDefault();
       const d = new Date(input.value);
-      if (isNaN(d) || d < new Date()) { toast("Pick a time that hasn't passed yet"); return; }
+      if (isNaN(d) || d < new Date()) {  // the date box shakes and says why (error state shake)
+        input.classList.remove("is-shaking");
+        void input.offsetWidth;
+        input.classList.add("is-shaking", "is-error");
+        input.setAttribute("aria-invalid", "true");
+        if (!custom.nextElementSibling?.classList.contains("err")) custom.after(make("p", "hint err", "Pick a time that hasn't passed yet."));
+        return;
+      }
       choose(d);
     };
     pop.append(custom);
@@ -2454,16 +2587,56 @@
       });
     } catch { /* no sound is fine */ }
   }
+  function reminderStack() {
+    let stack = $("reminders");
+    if (stack) return stack;
+    stack = make("div", "t-stack");
+    stack.id = "reminders";
+    stack.setAttribute("aria-live", "assertive");
+    document.body.append(stack);
+    // Spread on hover is geometry, not :hover: the gaps between spread cards belong to no element.
+    const gap = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stack-spread-gap")) || 8;
+    const within = (e, below) => {
+      const r = stack.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom + below;
+    };
+    addEventListener("pointermove", (e) => {
+      if (!stack.children.length) return;
+      if (stack.classList.contains("is-spread")) {
+        if (!within(e, (stack.offsetHeight + gap()) * 2)) stack.classList.remove("is-spread");
+      } else if (within(e, 0)) stack.classList.add("is-spread");
+    });
+    return stack;
+  }
+  // Newest card in front (depth 0), the two before it behind; a fourth slips away.
+  function restack() {
+    const stack = $("reminders");
+    if (!stack) return;
+    const cards = [...stack.querySelectorAll(".t-stack-banner:not(.is-leaving)")].reverse();
+    cards.forEach((card, i) => {
+      if (i > 2) dismissReminder(card);
+      else card.dataset.depth = String(i);
+    });
+    stack.style.height = cards[0] ? `${cards[0].offsetHeight}px` : "0px";
+    if (!cards.length) stack.classList.remove("is-spread");
+  }
+  function dismissReminder(card) {
+    if (!card || card.classList.contains("is-leaving")) return;
+    card.classList.add("is-leaving");
+    const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stack-close")) || 250;
+    setTimeout(() => card.remove(), ms + 60);
+    restack();
+  }
   function showReminder(item) {
     const seen = `${item.id}|${item.fired_at || item.remind_at}`;
     if (shownReminders.has(seen)) return;
     shownReminders.add(seen);
     const mine = todoState?.list ? todoById(item.id) : null;
     if (mine) { mine.reminded = true; mine.remind_at = item.remind_at; redrawRow(item.id); }
-    let stack = $("reminders");
-    if (!stack) { stack = make("div"); stack.id = "reminders"; stack.setAttribute("aria-live", "assertive"); document.body.append(stack); }
+    const stack = reminderStack();
     stack.querySelector(`.reminder[data-id="${item.id}"]`)?.remove();
-    const card = make("div", "reminder");
+    const card = make("div", "reminder t-stack-banner is-enter");
+    card.dataset.depth = "0";
     card.dataset.id = item.id;
     card.setAttribute("role", "alert");
     const bell = make("span", "bell"); bell.innerHTML = BELL;
@@ -2473,7 +2646,7 @@
     const title = make("button", "title", item.title);
     title.type = "button";
     title.title = "Open To Do";
-    const close = () => { card.classList.add("leaving"); setTimeout(() => card.remove(), 160); };
+    const close = () => dismissReminder(card);
     title.onclick = () => { close(); showTodo(); };
     const row = make("div", "row");
     const done = make("button", null, "Done"); done.type = "button";
@@ -2492,8 +2665,10 @@
     row.append(done, snooze);
     what.append(label, title, row);
     card.append(bell, what, dismiss);
-    stack.prepend(card);
-    while (stack.children.length > 4) stack.lastChild.remove();
+    stack.append(card);
+    restack();
+    void card.offsetWidth;  // flush the pre-open state, then let it rise in
+    card.classList.remove("is-enter");
     chime();
     if (document.hidden) {
       unseenReminders++;
@@ -2632,7 +2807,7 @@
     const box = todoBox.querySelector(".todo-done");
     if (!box) return;
     const done = todoState.list.items.filter((it) => isDone(it.id) && !todoBox.querySelector(`.todo-rows > .todo-item[data-id="${it.id}"]`));
-    box.querySelector(".done-list")?.remove();
+    box.querySelector(".t-acc-panel")?.remove();
     box.hidden = !done.length;
     if (!done.length) { doneOpen = false; box.replaceChildren(); return; }
     let toggle = box.querySelector(".removed-toggle");
@@ -2641,12 +2816,11 @@
       toggle.type = "button";
       toggle.innerHTML = TOGGLE;
       toggle.prepend(make("span", "label", "Done"), make("span", "n"));
-      toggle.onclick = () => { doneOpen = !doneOpen; drawDone(); };
+      toggle.onclick = () => { doneOpen = !doneOpen; openSection(box, doneOpen); };
       box.append(toggle);
     }
     toggle.setAttribute("aria-expanded", String(doneOpen));
     toggle.querySelector(".n").textContent = String(done.length);
-    if (!doneOpen) return;
     const panel = make("div", "removed-list done-list");
     for (const item of done) {
       const row = make("div", "removed-item done-item");
@@ -2676,7 +2850,23 @@
       row.append(tick, what);
       panel.append(row);
     }
-    box.append(panel);
+    box.append(sectionPanel(panel));
+    openSection(box, doneOpen);
+  }
+
+  // Done and Removed open and close as accordions: the panel stays in the page and its height
+  // animates (grid rows 0fr <-> 1fr), so the rows below glide instead of jumping.
+  function sectionPanel(panel) {
+    const outer = make("div", "t-acc-panel"), inner = make("div", "t-acc-panel-inner");
+    inner.append(panel);
+    outer.append(inner);
+    return outer;
+  }
+  function openSection(box, open) {
+    box.classList.add("t-acc");
+    box.dataset.open = String(open);
+    box.querySelector(".removed-toggle")?.setAttribute("aria-expanded", String(open));
+    box.querySelector(".t-acc-panel-inner").inert = !open;  // nothing in a closed section takes focus
   }
 
   // ----- Removed: what you took off, for 30 days, with Put back -----
@@ -2687,7 +2877,7 @@
     const box = todoBox.querySelector(".todo-removed");
     if (!box) return;
     const removed = todoState.removed || [];
-    box.querySelector(".removed-list")?.remove();
+    box.querySelector(".t-acc-panel")?.remove();
     box.hidden = !removed.length;
     if (!removed.length) { removedOpen = false; box.replaceChildren(); return; }
     // The toggle stays put between redraws, so its icon can turn from + to - instead of swapping.
@@ -2697,12 +2887,11 @@
       toggle.type = "button";
       toggle.innerHTML = TOGGLE;
       toggle.prepend(make("span", "label", "Removed"), make("span", "n"));
-      toggle.onclick = () => { removedOpen = !removedOpen; drawRemoved(); };
+      toggle.onclick = () => { removedOpen = !removedOpen; openSection(box, removedOpen); };
       box.append(toggle);
     }
     toggle.setAttribute("aria-expanded", String(removedOpen));
     toggle.querySelector(".n").textContent = String(removed.length);
-    if (!removedOpen) return;
     const panel = make("div", "removed-list");
     const head = make("div", "removed-head");
     head.append(make("p", "removed-note", "Kept for 30 days. These tickets stay off new lists unless they're updated " +
@@ -2739,7 +2928,8 @@
       row.append(what, back, del);
       panel.append(row);
     }
-    box.append(panel);
+    box.append(sectionPanel(panel));
+    openSection(box, removedOpen);
   }
 
   // Delete from Removed (ids null: all of them), with Undo. The tickets still stay off new lists.
@@ -3036,10 +3226,414 @@
   }
 
   todoTab.onclick = showTodo;
+
+  // ---------- Notes ----------
+  // Anyone can jot notes here (meetings, calls, site visits). Each note saves as you type. "Clean up" has David
+  // tidy it under short headings, keeping every fact, and pull out the action items for To Do; Undo puts
+  // back what you wrote. Notes are private.
+  const notesTab = $("notes-tab"), notesBox = $("notes-inner");
+  const SPARKLE = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5 9.2 6.8 13.5 8 9.2 9.2 8 13.5 6.8 9.2 2.5 8 6.8 6.8 8 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  let notesList = null;      // [{id, title, label, preview, cleaned_at, updated_at}], newest first
+  let note = null;           // the open note, in full
+  let noteEditing = false;   // a cleaned-up note shows formatted until you click Edit
+  let noteTimer = null, noteSaving = Promise.resolve(), noteCleaning = false, noteRevealing = false;
+  const newNoteId = () => "n-" + Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const noteDay = (iso) => {
+    const d = new Date(iso), days = Math.round((dayStart(new Date()) - dayStart(d)) / 864e5);
+    if (days === 0) return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    if (days === 1) return "Yesterday";
+    return d.toLocaleDateString("en-US", days < 7 ? { weekday: "short" } : { month: "numeric", day: "numeric" });
+  };
+  function pillButton(label, icon, onclick, ghost = false) {
+    const b = make("button", "pill-btn" + (ghost ? " ghost" : ""));
+    b.type = "button";
+    b.innerHTML = icon || "";
+    b.append(make("span", null, label));
+    b.onclick = onclick;
+    return b;
+  }
+
+  function inNotes() { return document.body.classList.contains("notes-view"); }
+  function showNotes() {
+    leaveTodo();
+    document.body.classList.add("notes-view");
+    revealView($("notes"));
+    notesTab.setAttribute("aria-current", "page");
+    chatTitle.textContent = "";
+    chatList.querySelectorAll("li.chat.active").forEach((li) => li.classList.remove("active"));
+    if (location.hash !== "#notes") history.replaceState(null, "", "#notes");
+    closeDrawer();
+    notesList ? drawNotes() : loadNotes();
+  }
+  function leaveNotes() {
+    if (!inNotes()) return;
+    flushNote();
+    document.body.classList.remove("notes-view");
+    $("notes").hidden = true;
+    notesTab.removeAttribute("aria-current");
+    history.replaceState(null, "", location.pathname);
+  }
+  async function loadNotes() {
+    try {
+      notesList = await api("/api/notes");
+    } catch (err) {
+      notesBox.replaceChildren(make("p", "todo-note", "Couldn't load your notes: " + err.message));
+      return;
+    }
+    if (!note && notesList.length) return openNote(notesList[0].id);
+    drawNotes();
+  }
+  async function openNote(id) {
+    await flushNote();
+    try {
+      note = await api(`/api/notes/${id}`);
+    } catch (err) {
+      toast("Couldn't open that note: " + err.message);
+      return;
+    }
+    noteEditing = !note.cleaned_at;
+    drawNotes();
+  }
+  async function newNote() {
+    await flushNote();
+    note = { id: newNoteId(), title: "", label: "", body: "", actions: [], cleaned_at: null, original: null, fresh: true };
+    noteEditing = true;
+    drawNotes();
+    notesBox.querySelector(".note-body")?.focus();
+  }
+
+  // ----- Drawing -----
+  function drawNotes(quiet = false) {
+    const scroller = $("notes"), scrollTop = scroller.scrollTop;
+    notesBox.classList.toggle("quiet", quiet);
+    if (!note && !notesList?.length) {  // first visit: what this is, and the button
+      const start = make("section", "todo-empty todo-head");
+      const pill = make("div"); pill.append(make("span", "eyebrow", "Notes"));
+      const cta = make("button", "cta");
+      cta.type = "button";
+      cta.innerHTML = `<span></span><span class="ico">${PLUS}</span>`;
+      cta.firstChild.textContent = "New note";
+      cta.onclick = newNote;
+      const bar = make("div", "todo-bar"); bar.append(cta);
+      start.append(pill, make("h2", null, "Jot it down. David tidies it up."),
+        make("p", null, "Take notes in meetings, on calls or on site, as rough as you like. When you're done, David " +
+          "cleans them up, organizes them and pulls out the action items for your To Do list. Only you can see your notes."),
+        bar);
+      notesBox.replaceChildren(start);
+      return;
+    }
+    const wrap = make("div", "notes-wrap");
+    wrap.append(make("nav", "notes-side"), noteSheet());
+    notesBox.replaceChildren(wrap);
+    drawNoteList();
+    if (quiet) scroller.scrollTop = scrollTop;
+  }
+  function drawNoteList() {
+    const side = notesBox.querySelector(".notes-side");
+    if (!side) return;
+    const head = make("div", "head");
+    head.append(make("span", "eyebrow", "Notes"), pillButton("New", PLUS, newNote, true));
+    const rows = [...(notesList || [])];
+    if (note && !rows.some((n) => n.id === note.id) && !note.fresh) rows.unshift(note);
+    if (note?.fresh) rows.unshift(note);
+    const ul = make("ul", "note-list");
+    for (const n of rows) {
+      const shown = note && n.id === note.id ? note : n;
+      const b = make("button");
+      b.type = "button";
+      if (note && n.id === note.id) b.setAttribute("aria-current", "true");
+      b.append(make("span", "t" + (shown.title ? "" : " untitled"), shown.title || firstLine(shown.body ?? shown.preview) || "New note"));
+      const meta = make("span", "m");
+      meta.append(make("span", null, shown.updated_at ? noteDay(shown.updated_at) : "Not saved yet"));
+      if (shown.label) meta.append(make("span", "lbl", shown.label));
+      b.append(meta);
+      b.onclick = () => { if (!note || n.id !== note.id) openNote(n.id); };
+      const li = make("li"); li.append(b); ul.append(li);
+    }
+    side.replaceChildren(head, ul);
+  }
+  const firstLine = (text) => (text || "").split("\n").map((l) => l.replace(/^[#\-\s]+/, "").trim()).find(Boolean) || "";
+
+  function noteSheet() {
+    const sheet = make("div", "shell note-sheet"), core = make("div", "core");
+    sheet.append(core);
+    const top = make("div", "note-top");
+    const label = make("input", "note-label");
+    label.placeholder = "Add a label";
+    label.value = note.label;
+    label.maxLength = 60;
+    label.setAttribute("aria-label", "Label, e.g. 9/13 meeting");
+    label.oninput = () => { note.label = label.value; noteChanged(); };
+    const status = make("span", "note-status", note.fresh ? "" : `Saved ${noteDay(note.updated_at)}`);
+    const clean = pillButton(note.cleaned_at ? "Clean up again" : "Clean up", SPARKLE, cleanUpNote);
+    clean.classList.add("note-clean");
+    clean.title = "David fixes typos, organizes the note and finds the action items. You can undo it.";
+    clean.disabled = !note.body.trim() || noteCleaning;
+    if (noteCleaning) {
+      clean.classList.add("busy");
+      clean.lastChild.textContent = "Cleaning up…";
+      clean.lastChild.className = "t-shimmer";
+      clean.lastChild.dataset.text = "Cleaning up…";
+    }
+    const del = iconButton(TRASH, "Delete note", deleteNote);
+    top.append(label, status, clean, del);
+    core.append(top);
+    if (note.cleaned_at) {
+      const done = make("div", "note-cleaned");
+      done.innerHTML = SPARKLE;
+      done.append(make("span", null, "Cleaned up by David"));
+      if (note.original) {
+        const undo = make("button", null, "Undo"); undo.type = "button"; undo.onclick = undoCleanUp;
+        undo.title = "Back to what you wrote";
+        done.append(undo);
+      }
+      if (!noteEditing) {
+        const edit = make("button", null, "Edit"); edit.type = "button";
+        edit.onclick = () => { noteEditing = true; drawNotes(true); notesBox.querySelector(".note-body")?.focus(); };
+        done.append(edit);
+      }
+      core.append(done);
+    }
+    const title = make("input", "note-title");
+    title.placeholder = "Title";
+    title.value = note.title;
+    title.maxLength = 200;
+    title.setAttribute("aria-label", "Title");
+    title.oninput = () => { note.title = title.value; noteChanged(); };
+    core.append(title);
+    if (noteCleaning || noteRevealing) {
+      const shown = make("div", "note-rendered");
+      if (noteRevealing) renderMarkdown(shown, note.body);
+      core.append(noteSkeleton(noteRevealing ? shown : null));
+    } else if (noteEditing) {
+      const body = make("textarea", "note-body");
+      body.placeholder = "Start typing. Rough is fine: David can clean it up when you're done.";
+      body.value = note.body;
+      body.setAttribute("aria-label", "Note");
+      const grow = () => { body.style.height = "auto"; body.style.height = body.scrollHeight + "px"; };
+      body.oninput = () => { note.body = body.value; grow(); noteChanged(); clean.disabled = !note.body.trim() || noteCleaning; };
+      requestAnimationFrame(grow);
+      core.append(body);
+    } else {
+      const shown = make("div", "note-rendered");
+      renderMarkdown(shown, note.body);
+      shown.title = "Double-click to edit";
+      shown.ondblclick = () => { noteEditing = true; drawNotes(true); };
+      core.append(shown);
+    }
+    if (note.actions?.length) core.append(noteActions());
+    return sheet;
+  }
+
+  function noteSkeleton(content) {
+    const wrap = make("div", "t-skel note-skel");
+    const skeleton = make("div", "t-skel-skeleton" + (content ? "" : " is-pulsing"));
+    skeleton.setAttribute("aria-hidden", "true");
+    for (const w of [94, 82, 0, 30, 88, 76, 64, 0, 34, 80, 70]) {
+      const bar = make("i", w ? "bar" : "gap");
+      if (w) bar.style.width = `${w}%`;
+      skeleton.append(bar);
+    }
+    wrap.append(skeleton);
+    if (content) { content.classList.add("t-skel-content"); wrap.append(content); }
+    return wrap;
+  }
+
+  function noteActions() {
+    const box = make("section", "note-actions");
+    const head = make("div", "head");
+    head.append(make("span", "eyebrow", "Action items"));
+    const left = note.actions.filter((a) => !a.added).length;
+    if (left) head.append(pillButton(left > 1 ? `Add all ${left} to To Do` : "Add to To Do", PLUS, () => actionsToTodo(null), true));
+    const ul = make("ul");
+    note.actions.forEach((a, i) => {
+      const li = make("li");
+      li.append(make("span", "what", a.title), make("span", "when", groupName(a.priority)));
+      // + and "In To Do" share one spot and cross-fade (icon swap).
+      const swap = make("span", "t-icon-swap");
+      swap.dataset.state = a.added ? "b" : "a";
+      const add = iconButton(PLUS, `Add to To Do: ${a.title}`, () => actionsToTodo([i]));
+      add.classList.add("t-icon");
+      add.dataset.icon = "a";
+      add.disabled = !!a.added;
+      const added = make("span", "added t-icon");
+      added.dataset.icon = "b";
+      added.setAttribute("aria-hidden", String(!a.added));
+      added.innerHTML = TICK;
+      added.append("In To Do");
+      swap.append(add, added);
+      li.append(swap);
+      ul.append(li);
+    });
+    box.append(head, ul);
+    return box;
+  }
+
+  // ----- Saving -----
+  function noteChanged() {
+    const status = notesBox.querySelector(".note-status");
+    if (status) status.textContent = "Saving…";
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(saveNote, 600);
+    drawNoteList();
+  }
+  function noteRequest(current) {
+    return JSON.stringify({ title: current.title.slice(0, 200), label: current.label.slice(0, 60), body: current.body });
+  }
+  function saveNote() {
+    clearTimeout(noteTimer);
+    noteTimer = null;
+    const current = note;
+    if (!current || (current.fresh && !current.title.trim() && !current.label.trim() && !current.body.trim())) return noteSaving;
+    noteSaving = api(`/api/notes/${current.id}`, { method: "PUT", body: noteRequest(current), keepalive: true }).then((saved) => {
+      Object.assign(current, { updated_at: saved.updated_at, created_at: saved.created_at, fresh: false });
+      const entry = { id: saved.id, title: saved.title, label: saved.label, preview: saved.body.slice(0, 160),
+                      cleaned_at: saved.cleaned_at, updated_at: saved.updated_at };
+      notesList = [entry, ...(notesList || []).filter((n) => n.id !== saved.id)];
+      if (note === current) {
+        const status = notesBox.querySelector(".note-status");
+        if (status && !noteTimer) status.textContent = `Saved ${noteDay(saved.updated_at)}`;
+        drawNoteList();
+      }
+    }).catch((err) => {
+      const status = notesBox.querySelector(".note-status");
+      if (status) status.textContent = "Not saved";
+      toast("Couldn't save your note", null, err.message);
+    });
+    return noteSaving;
+  }
+  function flushNote() { return noteTimer ? saveNote() : noteSaving; }
+  addEventListener("pagehide", () => {
+    if (noteTimer && note) fetch(`/api/notes/${note.id}`, { method: "PUT", body: noteRequest(note), keepalive: true,
+                                                         headers: { "Content-Type": "application/json" } }).catch(() => {});
+  });
+
+  // ----- David's clean-up -----
+  async function cleanUpNote() {
+    if (noteCleaning || !note?.body.trim()) return;
+    const current = note;
+    await flushNote();
+    noteCleaning = true;
+    drawNotes(true);
+    try {
+      const cleaned = await api(`/api/notes/${current.id}/cleanup`, { method: "POST" });
+      if (note === current) { note = cleaned; noteEditing = false; noteRevealing = true; }
+      updateListEntry(cleaned);
+      toast("Cleaned up", { label: "Undo", run: undoCleanUp }, cleaned.title);
+    } catch (err) {
+      toast("Couldn't clean up the note", null, err.message);
+    } finally {
+      noteCleaning = false;
+      if (inNotes()) drawNotes(true);
+      noteRevealing = false;
+      // The cleaned-up note fades in over the bars, which fade out.
+      const skel = notesBox.querySelector(".note-skel");
+      if (skel) {
+        void skel.offsetWidth;
+        skel.classList.add("is-revealed");
+      }
+    }
+  }
+  async function undoCleanUp() {
+    const current = note;
+    try {
+      const back = await api(`/api/notes/${current.id}/undo`, { method: "POST" });
+      if (note === current) { note = back; noteEditing = true; }
+      updateListEntry(back);
+      drawNotes(true);
+    } catch (err) {
+      toast("Couldn't undo: " + err.message);
+    }
+  }
+  function updateListEntry(n) {
+    notesList = (notesList || []).map((x) => x.id === n.id ? { ...x, title: n.title, label: n.label, preview: n.body.slice(0, 160),
+                                                                   cleaned_at: n.cleaned_at, updated_at: n.updated_at } : x);
+  }
+  async function actionsToTodo(picks) {
+    const current = note;
+    try {
+      const updated = await api(`/api/notes/${current.id}/todo`, { method: "POST", body: JSON.stringify({ picks }) });
+      if (note === current) {
+        note.actions = updated.actions;
+        // Swap each + to "In To Do" in place, so the cross-fade plays.
+        const box = notesBox.querySelector(".note-actions");
+        box?.querySelectorAll("li").forEach((li, i) => {
+          const swap = li.querySelector(".t-icon-swap");
+          if (swap && note.actions[i]?.added) { swap.dataset.state = "b"; swap.querySelector("button").disabled = true; swap.querySelector(".added").removeAttribute("aria-hidden"); }
+        });
+        const left = note.actions.filter((a) => !a.added).length, all = box?.querySelector(".head .pill-btn");
+        if (all && !left) all.remove();
+        else if (all) all.lastChild.textContent = left > 1 ? `Add all ${left} to To Do` : "Add to To Do";
+      }
+      todoState = null;  // To Do reloads with the new items next time it's opened
+      toast("Added to To Do", { label: "Open", run: showTodo });
+    } catch (err) {
+      toast("Couldn't add to To Do: " + err.message);
+    }
+  }
+  async function deleteNote() {
+    const gone = note;
+    clearTimeout(noteTimer); noteTimer = null;
+    if (!gone.fresh) {
+      try { await api(`/api/notes/${gone.id}`, { method: "DELETE" }); }
+      catch (err) { toast("Couldn't delete: " + err.message); return; }
+    }
+    notesList = (notesList || []).filter((n) => n.id !== gone.id);
+    note = null;
+    if (notesList.length) await openNote(notesList[0].id); else drawNotes();
+    if (!gone.fresh) toast("Note deleted", { label: "Undo", run: async () => {
+      // Brings back what it said (a clean-up's Undo history isn't kept).
+      try {
+        const back = await api(`/api/notes/${gone.id}`, { method: "PUT", body: noteRequest(gone) });
+        notesList = [{ ...back, preview: back.body.slice(0, 160) }, ...notesList];
+        await openNote(back.id);
+      } catch (err) { toast("Couldn't bring it back: " + err.message); }
+    } }, gone.title || firstLine(gone.body));
+  }
+  notesTab.onclick = showNotes;
+
+  // Names for the Notes and To Do icons (tooltip): one bubble that travels between them, a beat after you
+  // point at one, and gone as soon as you leave.
+  (() => {
+    const group = document.querySelector(".nav-tips"), tip = group.querySelector(".t-tt"), text = tip.querySelector(".t-tt-text");
+    const hide = () => { tip.dataset.show = "false"; tip.setAttribute("aria-hidden", "true"); };
+    const place = (trigger) => {
+      const showing = tip.dataset.show === "true";
+      text.textContent = trigger.dataset.tooltip || "";
+      const cs = getComputedStyle(tip);
+      const width = Math.ceil(text.scrollWidth + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight));
+      const g = group.getBoundingClientRect(), r = trigger.getBoundingClientRect();
+      const x = Math.min(r.left - g.left + r.width / 2 - width / 2, g.width - width);  // keep it inside the sidebar
+      if (!showing) {
+        tip.style.transition = "none";
+        tip.style.width = `${width}px`;
+        tip.style.setProperty("--tt-x", `${x}px`);
+        void tip.offsetWidth;
+        tip.style.transition = "";
+      } else {
+        tip.style.width = `${width}px`;
+        tip.style.setProperty("--tt-x", `${x}px`);
+      }
+      tip.dataset.show = "true";
+      tip.setAttribute("aria-hidden", "false");
+    };
+    for (const t of group.querySelectorAll(".t-tt-trigger")) {
+      t.addEventListener("pointerenter", () => place(t));
+      t.addEventListener("focus", () => { if (t.matches(":focus-visible")) place(t); });
+      t.addEventListener("blur", hide);
+      t.addEventListener("click", hide);
+    }
+    group.addEventListener("pointerleave", hide);
+  })();
+
   // Entrance animations are one-off: clear them once played, or their final frame keeps overriding the row's
   // later transitions (sliding away when ticked, fading when removed).
   todoBox.addEventListener("animationend", (e) => { if (e.target.classList?.contains("arriving")) e.target.classList.remove("arriving"); });
-  addEventListener("hashchange", () => { if (location.hash === "#todo") showTodo(); else if (inTodo()) newChat(); });
+  addEventListener("hashchange", () => {
+    if (location.hash === "#todo") showTodo();
+    else if (location.hash === "#notes") showNotes();
+    else if (inTodo() || inNotes()) newChat();
+  });
 
   // Phones get a shorter hint and short model names, so neither gets cut off.
   const narrowQuery = window.matchMedia("(max-width: 760px)");
@@ -3157,7 +3751,23 @@
     drawAttachments();
     q.focus();
   }
-  function drawAttachments() {
+  // The question box tweens its height when chips come and go (card resize), instead of jumping.
+  function resizeComposer(change) {
+    const box = document.querySelector(".composer"), from = box.offsetHeight;
+    change();
+    const to = box.offsetHeight;
+    if (from === to || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    clearTimeout(box.resizeTimer);
+    box.classList.remove("t-resize");
+    Object.assign(box.style, { height: `${from}px`, overflow: "hidden" });
+    void box.offsetHeight;
+    box.classList.add("t-resize");
+    box.style.height = `${to}px`;
+    const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--resize-dur")) || 300;
+    box.resizeTimer = setTimeout(() => { box.classList.remove("t-resize"); Object.assign(box.style, { height: "", overflow: "" }); }, ms + 30);
+  }
+  function drawAttachments() { resizeComposer(drawAttachmentsNow); }
+  function drawAttachmentsNow() {
     const box = $("attached");
     box.replaceChildren(...attachments.map((a) => fileChip(a.name, a.meta, (e) => {
       e.stopPropagation();
@@ -3225,6 +3835,7 @@
     updateSend();
     newChat();
     if (location.hash === "#todo") showTodo();
+    if (location.hash === "#notes") showNotes();
     setupPush();
     checkReminders();
     setInterval(checkReminders, 30000);

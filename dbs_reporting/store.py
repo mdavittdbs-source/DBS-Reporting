@@ -85,6 +85,21 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 -- Small bits of app state, e.g. which week's email digest has been sent.
 CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- Each person's notes (private). After David cleans one up, "original" keeps what they wrote, for Undo,
+-- and "actions" the action items he found.
+CREATE TABLE IF NOT EXISTS notes (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    label TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    original TEXT,
+    actions TEXT,
+    cleaned_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS notes_by_user ON notes(user_id, updated_at);
 -- SpotOn data uploaded from the SpotOn Exporter: one row per CSV file per restaurant. A new upload for a
 -- restaurant replaces all of its files. columns and rows are JSON lists.
 CREATE TABLE IF NOT EXISTS spoton_files (
@@ -590,6 +605,109 @@ class Store:
                               + (" WHERE user_id = ?" if user_id is not None else ""),
                               () if user_id is None else (user_id,)).fetchall()
         return [(row["user_id"], json.loads(row["data"])) for row in rows]
+
+    # --- Notes -------------------------------------------------------------
+
+    @staticmethod
+    def _note(row) -> dict:
+        note = dict(row)
+        note["actions"] = json.loads(note["actions"]) if note.get("actions") else []
+        note.pop("user_id", None)
+        return note
+
+    def list_notes(self, user_id: int) -> list[dict]:
+        """This person's notes, newest first, with the start of each as a preview."""
+        with self._db() as db:
+            rows = db.execute("SELECT id, title, label, substr(body, 1, 160) AS preview, cleaned_at, created_at,"
+                              " updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC", (user_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_note(self, user_id: int, note_id: str) -> dict | None:
+        with self._db() as db:
+            row = db.execute("SELECT * FROM notes WHERE id = ? AND user_id = ?", (note_id, user_id)).fetchone()
+        return self._note(row) if row else None
+
+    def save_note(self, user_id: int, note_id: str, title: str, label: str, body: str) -> dict | None:
+        """Create or update a note. None if that id is someone else's."""
+        now = _now()
+        with self._db(write=True) as db:
+            row = db.execute("SELECT user_id FROM notes WHERE id = ?", (note_id,)).fetchone()
+            if row is None:
+                db.execute("INSERT INTO notes (id, user_id, title, label, body, created_at, updated_at)"
+                           " VALUES (?, ?, ?, ?, ?, ?, ?)", (note_id, user_id, title, label, body, now, now))
+            elif row["user_id"] != user_id:
+                return None
+            else:
+                db.execute("UPDATE notes SET title = ?, label = ?, body = ?, updated_at = ? WHERE id = ?",
+                           (title, label, body, now, note_id))
+            return self._note(db.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone())
+
+    def save_cleanup(self, user_id: int, note_id: str, title: str, body: str, actions: list[dict]) -> dict | None:
+        """Put David's cleaned-up version in place, keeping what the person wrote (for Undo)."""
+        now = _now()
+        with self._db(write=True) as db:
+            row = db.execute("SELECT * FROM notes WHERE id = ? AND user_id = ?", (note_id, user_id)).fetchone()
+            if row is None:
+                return None
+            original = row["original"] if row["original"] is not None else json.dumps(
+                {"title": row["title"], "body": row["body"]})
+            db.execute("UPDATE notes SET title = ?, body = ?, original = ?, actions = ?, cleaned_at = ?, updated_at = ?"
+                       " WHERE id = ?", (title, body, original, json.dumps(actions), now, now, note_id))
+            return self._note(db.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone())
+
+    def undo_cleanup(self, user_id: int, note_id: str) -> dict | None:
+        """Back to what the person wrote before David cleaned it up."""
+        with self._db(write=True) as db:
+            row = db.execute("SELECT * FROM notes WHERE id = ? AND user_id = ?", (note_id, user_id)).fetchone()
+            if row is None or row["original"] is None:
+                return None
+            original = json.loads(row["original"])
+            db.execute("UPDATE notes SET title = ?, body = ?, original = NULL, actions = NULL, cleaned_at = NULL,"
+                       " updated_at = ? WHERE id = ?", (original["title"], original["body"], _now(), note_id))
+            return self._note(db.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone())
+
+    def actions_to_todo(self, user_id: int, note_id: str, picks: list[int] | None, member: str = "") -> dict | None:
+        """Add a note's action items (all, or the ones at `picks`) to the person's To Do list, once each: they're
+        marked "added". Returns the note, or None if there's no such note."""
+        note = self.get_note(user_id, note_id)
+        if note is None:
+            return None
+        actions = note["actions"]
+        chosen = [i for i in (range(len(actions)) if picks is None else picks)
+                  if 0 <= i < len(actions) and not actions[i].get("added")]
+        if chosen:
+            label = note["label"] or note["title"]
+            self.add_todo_items(user_id, [{"title": actions[i]["title"], "priority": actions[i].get("priority") or "this_week",
+                                           "why": f"From your note: {label}" if label else "From your notes"}
+                                          for i in chosen], member)
+            for i in chosen:
+                actions[i]["added"] = True
+            with self._db() as db:
+                db.execute("UPDATE notes SET actions = ? WHERE id = ? AND user_id = ?",
+                           (json.dumps(actions), note_id, user_id))
+        return {**note, "actions": actions}
+
+    def delete_note(self, user_id: int, note_id: str) -> bool:
+        with self._db() as db:
+            return db.execute("DELETE FROM notes WHERE id = ? AND user_id = ?", (note_id, user_id)).rowcount > 0
+
+    def add_todo_items(self, user_id: int, items: list[dict], member: str = "") -> list[dict]:
+        """Add items of the person's own to their To Do list (in their groups), starting a list if they have none.
+        Returns the items added."""
+        added = [{"id": _todo_id("m-"), "title": i["title"][:200], "why": (i.get("why") or "")[:500],
+                  "priority": i.get("priority") or "today", "ticket": None, "client": None, "when": None, "mine": True}
+                 for i in items]
+        with self._db(write=True) as db:
+            row = db.execute("SELECT data FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+            if row is None:
+                data = {"member": member, "username": "", "summary": "", "counts": {}, "items": added}
+                db.execute("INSERT INTO todo_lists (user_id, data, done, created_at) VALUES (?, ?, '[]', ?)",
+                           (user_id, json.dumps(data), _now()))
+            else:
+                data = json.loads(row["data"])
+                data["items"] = data.get("items", []) + added
+                db.execute("UPDATE todo_lists SET data = ? WHERE user_id = ?", (json.dumps(data), user_id))
+        return added
 
     # --- App state ---------------------------------------------------------
 

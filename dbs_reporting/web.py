@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel, Field
 
-from . import activity, digest, exports, spoton, todo
+from . import activity, digest, exports, notes, spoton, todo
 from .push import Push, PushScheduler
 from .charts import extract_charts
 from .agent import create_agent
@@ -531,6 +531,134 @@ def delete_removed(body: TodoDelete, user: dict = Depends(current_user)) -> dict
     if removed is None:
         raise HTTPException(404, "Make a list first.")
     return {"removed": removed}
+
+
+# --- Notes -----------------------------------------------------------------
+
+NOTE_ID = r"^n-[A-Za-z0-9_-]{4,40}$"
+
+
+class NoteBody(BaseModel):
+    title: str = Field(default="", max_length=200)
+    label: str = Field(default="", max_length=60)
+    body: str = Field(default="", max_length=notes.MAX_NOTE)
+
+
+def _check_note_id(note_id: str) -> None:
+    if not re.match(NOTE_ID, note_id):
+        raise HTTPException(404, "No such note.")
+
+
+@app.get("/api/notes")
+def list_notes(user: dict = Depends(current_user)) -> list[dict]:
+    """Your notes, newest first (title, label, the start of each)."""
+    return store.list_notes(user["id"])
+
+
+@app.get("/api/notes/{note_id}")
+def get_note(note_id: str, user: dict = Depends(current_user)) -> dict:
+    _check_note_id(note_id)
+    note = store.get_note(user["id"], note_id)
+    if note is None:
+        raise HTTPException(404, "No such note.")
+    return note
+
+
+@app.put("/api/notes/{note_id}")
+def save_note(note_id: str, body: NoteBody, user: dict = Depends(current_user)) -> dict:
+    """Create or update one of your notes. The page picks the id, so a new note saves like any other."""
+    _check_note_id(note_id)
+    note = store.save_note(user["id"], note_id, body.title.strip(), body.label.strip(), body.body)
+    if note is None:
+        raise HTTPException(404, "No such note.")
+    return note
+
+
+@app.delete("/api/notes/{note_id}")
+def delete_note(note_id: str, user: dict = Depends(current_user)) -> dict:
+    _check_note_id(note_id)
+    if not store.delete_note(user["id"], note_id):
+        raise HTTPException(404, "No such note.")
+    return {"ok": True}
+
+
+_note_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+
+
+def _clean_up(user: dict, note_id: str) -> dict:
+    with _note_locks[note_id]:  # one at a time per note, so a double click doesn't pay twice
+        note = store.get_note(user["id"], note_id)
+        if note is None:
+            raise HTTPException(404, "No such note.")
+        model = os.environ.get("TODO_MODEL", "").strip() or agent.default_model
+        started = time.monotonic()
+        cleaned, used = notes.clean_up(agent.client, model, note["title"], note["label"], note["body"])
+        log.info("%s cleaned up a note (%s, %.0fs, %s)", user["username"], model, time.monotonic() - started,
+                 activity.usage_line(used))
+        return store.save_cleanup(user["id"], note_id, cleaned["title"], cleaned["body"], cleaned["action_items"])
+
+
+@app.post("/api/notes/{note_id}/cleanup")
+async def clean_up_note(note_id: str, user: dict = Depends(current_user)) -> dict:
+    """David tidies the note and finds its action items. What you wrote is kept, for Undo."""
+    _check_note_id(note_id)
+    try:
+        return await run_in_threadpool(_clean_up, user, note_id)
+    except notes.NoteError as exc:
+        raise HTTPException(400, str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        status, message = _friendly_error(exc)
+        raise HTTPException(status, message)
+
+
+@app.post("/api/notes/{note_id}/undo")
+def undo_clean_up(note_id: str, user: dict = Depends(current_user)) -> dict:
+    """Back to what you wrote before David cleaned it up."""
+    _check_note_id(note_id)
+    note = store.undo_cleanup(user["id"], note_id)
+    if note is None:
+        raise HTTPException(404, "Nothing to undo.")
+    return note
+
+
+class NotePicks(BaseModel):
+    picks: list[int] | None = Field(default=None, max_length=20)  # None: all of them
+
+
+@app.post("/api/notes/{note_id}/todo")
+def note_actions_to_todo(note_id: str, body: NotePicks, user: dict = Depends(current_user)) -> dict:
+    """Add a note's action items to your To Do list (each only once)."""
+    _check_note_id(note_id)
+    note = store.actions_to_todo(user["id"], note_id, body.picks, user["display_name"])
+    if note is None:
+        raise HTTPException(404, "No such note.")
+    return note
+
+
+class NewTodo(BaseModel):
+    title: str = Field(max_length=200)
+    why: str = Field(default="", max_length=500)
+    priority: Literal["now", "today", "this_week", "later"] = "this_week"
+
+
+class NewTodos(BaseModel):
+    items: list[NewTodo] = Field(min_length=1, max_length=20)
+
+
+@app.post("/api/todo/add")
+def add_todos(body: NewTodos, user: dict = Depends(current_user)) -> dict:
+    """Add your own items to your To Do list (e.g. a note's action items), starting a list if you have none."""
+    items = [{"title": i.title.strip(), "why": i.why.strip(), "priority": i.priority} for i in body.items]
+    if any(not i["title"] for i in items):
+        raise HTTPException(422, "Give the to-do a title.")
+    return {"items": store.add_todo_items(user["id"], items, user["display_name"])}
+
+
+@app.get("/notes")
+def notes_page():
+    return RedirectResponse("/#notes")
 
 
 @app.get("/todo")

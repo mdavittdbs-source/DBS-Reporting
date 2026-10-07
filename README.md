@@ -158,6 +158,17 @@ Every answer records the tokens it used (across all of its steps) and an estimat
 Costs are estimates from list prices in `dbs_reporting/usage.py`; the Anthropic console
 (Settings → Usage / Cost) has exact billing.
 
+## Notes
+
+Anyone can click **Notes** (the page icon at the bottom of the sidebar) to take notes: meetings, calls, site
+visits, as rough as they like. Each note has a title and an optional label (e.g. "9/13 meeting") and saves as
+you type. Notes are private: only the person who wrote them sees them.
+
+**Clean up** has David tidy a note: typos and shorthand fixed, organized under short headings (Summary,
+Discussed, Decisions, Next steps), every fact kept and nothing added. He also lists the note's action items;
+**Add to To Do** puts one or all of them on your To Do list (each only once). **Undo** puts back what you wrote.
+Each clean-up is one Claude request (`TODO_MODEL`, or the default model); writing and saving notes costs nothing.
+
 ## To Do tab
 
 Anyone can click **To Do** (bottom of the sidebar, next to their name) and click **Make my list**. David pulls
