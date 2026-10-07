@@ -219,3 +219,16 @@ def test_long_note_history_keeps_first_latest_and_resolution():
     assert "note 40" in texts and kept[5]["kind"] == "resolution"
     assert left_out == 100 - 21
     assert _key_notes(notes[:25])[1] == 0
+
+
+def test_card_details_are_taken_out_of_notes():
+    from dbs_reporting.tools import CARD_REMOVED, clean_note_text
+    note = ("Client approved the RMA charge. Card: 4111 1111 1111 1111 exp 08/27 CVV 123, name Joe Smith.\n"
+            "Ticket #194261, call back at 302-555-0199. Serial 1234567890123 stays.")
+    cleaned = clean_note_text(note)
+    assert "4111" not in cleaned and "08/27" not in cleaned and "123," not in cleaned
+    assert cleaned.count(CARD_REMOVED) == 3
+    # Ticket numbers, phone numbers and serials that aren't card numbers are left alone
+    assert "#194261" in cleaned and "302-555-0199" in cleaned and "1234567890123" in cleaned
+    assert clean_note_text("Visa 4242-4242-4242-4242 declined") == f"Visa {CARD_REMOVED} declined"
+    assert clean_note_text("Batch 12/25 settled, code 123") == "Batch 12/25 settled, code 123"  # no card mentioned
