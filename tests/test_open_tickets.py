@@ -58,3 +58,22 @@ def test_open_tickets_for_one_client_and_board_with_field_fallback():
     assert len(rows(result["oldest"])) == 1 and "by_company" not in result
     assert requests[-1].url.params["conditions"] == 'closedFlag=false and company/id=42 and board/name="Help Desk"'
     assert "fields" not in requests[-1].url.params
+
+
+def test_one_persons_tickets_are_the_ones_they_own():
+    tickets = OPEN + [{"id": 40, "summary": "Handheld not taking cards", "closedFlag": False,
+                       "company": {"name": "Harbor Shack"}, "owner": {"identifier": "mdavitt", "name": "Mikey Davitt"},
+                       "resources": "mdavitt, sam", "_info": {"dateEntered": ago(3)}}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=tickets)
+
+    tools = tools_by_name(ConnectWiseClient(SETTINGS, transport=httpx.MockTransport(handler)))
+    mikey = json.loads(tools["get_open_tickets"].call({"person": "Mikey"}))
+    assert [t["id"] for t in rows(mikey["oldest"])] == [40] and mikey["open_count"] == 1
+    assert "resources" not in mikey["oldest"]["columns"]
+    # Sam owns #10 and is only a resource on #40: just #10 is his
+    sam = json.loads(tools["get_open_tickets"].call({"person": "sam"}))
+    assert [t["id"] for t in rows(sam["oldest"])] == [10]
+    nobody = json.loads(tools["get_open_tickets"].call({"person": "Zed"}))
+    assert nobody["open_count"] == 0 and "Zed" in nobody["note"]

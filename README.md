@@ -172,7 +172,7 @@ Each clean-up is one Claude request (`TODO_MODEL`, or the default model); writin
 ## To Do tab
 
 Anyone can click **To Do** (bottom of the sidebar, next to their name) and click **Make my list**. David pulls
-their open service tickets (as owner or resource), the project tickets they're a resource on, and their calendar
+the open service tickets they own, the project tickets they're assigned to, and their calendar
 for the next 7 days, and one Claude request puts them in order: **Now**, **Today**, **This week** and **Later**,
 each with the reason and the ticket number (which opens in ConnectWise).
 
