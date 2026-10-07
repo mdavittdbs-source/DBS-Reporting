@@ -92,9 +92,9 @@
   --digit-dir-y: 1;
   /* Icon swap (09) */
   --icon-swap-dur: 250ms;
-  --icon-swap-blur: 2px;
+  --icon-swap-blur: 4px;
   --icon-swap-start-scale: 0.25;
-  --icon-swap-ease: ease-in-out;
+  --icon-swap-ease: cubic-bezier(0.2, 0, 0, 1);
   /* Skeleton loader and reveal (14) */
   --pulse-dur: 1000ms;
   --pulse-count: 1;
@@ -277,8 +277,8 @@
 }
 
 /* --- Error state shake ---------------------------------------------------------------------- */
-.t-input { will-change: transform; }
 .t-input.is-shaking {
+  will-change: transform;
   animation: t-input-shake calc(
       var(--shake-dur-a) * 2 + var(--shake-dur-b) * 2
     ) linear;
@@ -352,7 +352,6 @@
   transition:
     width  var(--resize-dur) var(--resize-ease),
     height var(--resize-dur) var(--resize-ease);
-  will-change: width, height;
 }
 
 /* --- Number pop-in: the To Do "N of M done" count rolls to its new value -------------------- */
@@ -368,8 +367,8 @@
   100% { transform: translate(0, 0); opacity: 1; filter: blur(0); }
 }
 .t-digit-group { display: inline; }
-.t-digit { display: inline-block; will-change: transform, opacity, filter; }
-.t-digit-group.is-animating .t-digit { animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both; }
+.t-digit { display: inline-block; }
+.t-digit-group.is-animating .t-digit { will-change: transform, opacity, filter; animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both; }
 .t-digit-group.is-animating .t-digit[data-stagger="1"] { animation-delay: var(--digit-stagger); }
 .t-digit-group.is-animating .t-digit[data-stagger="2"] { animation-delay: calc(var(--digit-stagger) * 2); }
 
