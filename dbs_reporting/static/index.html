@@ -253,6 +253,23 @@
   .todo-group h3 { margin: 0 14px 6px; display: flex; align-items: center; gap: 10px; }
   .todo-group h3 .n { font-size: 12px; color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
   .todo-group.now .eyebrow { color: var(--danger); background: var(--danger-soft); }
+  /* A section's name is a button: click it to rename (it becomes a text box in place). */
+  .section-name { position: relative; border: 0; font: inherit; font-size: 10px; cursor: text;
+                  transition: box-shadow .2s var(--ease), background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
+  .section-name:hover { box-shadow: inset 0 0 0 1px var(--glass-ring); }
+  .section-name:active { transform: scale(.96); }
+  .section-name::after { content: ""; position: absolute; inset: -7px -4px -6px; }  /* ~40px tall to click, clear of the row below */
+  .section-name:focus-visible { outline: none; box-shadow: var(--ring); }
+  .section-input { padding: 5px 12px; border: 0; border-radius: 999px; font: inherit; font-size: 10px; font-weight: 500;
+                   letter-spacing: .2em; text-transform: uppercase; color: var(--text); background: var(--core);
+                   box-shadow: var(--ring); outline: none; field-sizing: content; min-width: 12ch; max-width: 40ch; }
+  .todo-group h3 .section-del { margin-left: auto; opacity: 0; transition: opacity .2s var(--ease); }
+  .todo-group:is(:hover, :focus-within) h3 .section-del { opacity: 1; }
+  .todo-group:not(.empty) h3 .section-del { display: none; }  /* only an empty section can go */
+  @media (hover: none) { .todo-group h3 .section-del { opacity: 1; } }
+  /* Below the last section, split off by a hairline like the sections themselves. */
+  .todo-sheet .add-section { margin: 10px 0 0; border-radius: 0 0 14px 14px; box-shadow: 0 -1px 0 var(--hair); padding-top: 14px; }
+  .todo-sheet .add-section[hidden] { display: none; }
   .todo-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; border-radius: 14px;
                transition: background .2s var(--ease); }
   .todo-item + .todo-item { box-shadow: 0 -1px 0 var(--hair); }
@@ -368,14 +385,34 @@
   .todo-group:hover .todo-add, .todo-group:focus-within .todo-add, .todo-group.empty .todo-add { opacity: 1; }
   @media (hover: none) { .todo-group .todo-add { opacity: 1; } }
   .todo-add[hidden] { display: none; }
-  .todo-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 6px 6px; animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
-  .todo-form input { min-width: 0; padding: 8px 12px; border: 1px solid var(--glass-ring); border-radius: 10px; background: var(--core);
-                     color: var(--text); font: inherit; font-size: 14px; }
-  .todo-form input:focus { outline: none; box-shadow: var(--ring); }
-  .todo-form input[name=title] { flex: 1 1 260px; }
-  .todo-form input[name=ticket] { flex: 0 0 96px; font-variant-numeric: tabular-nums; }
-  .todo-form .cta { border: 0; padding: 8px 16px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
+  /* Adding or editing a to-do: one card shaped like the row it becomes (title, a quieter details line,
+     then the ticket number and the buttons). The card shows focus, not each field. */
+  .todo-form { display: flex; flex-direction: column; margin: 4px 0 8px; padding: 12px 14px 10px 64px; border-radius: 14px;
+               background: var(--core); box-shadow: inset 0 0 0 1px var(--glass-ring);
+               animation: rise var(--duration-fast) var(--ease-smooth-out) both; transition: box-shadow .2s var(--ease); }
+  .todo-form:focus-within { box-shadow: inset 0 0 0 1px var(--glass-ring), var(--ring); }
+  .todo-form { cursor: text; }  /* a click anywhere on the card goes to the title */
+  .todo-form :is(.ticket, .cta, .ghost-btn) { position: relative; }
+  .todo-form .ticket::after { content: ""; position: absolute; inset: -7px 0; }
+  .todo-form .cta::after { content: ""; position: absolute; inset: -3px 0; }
+  .todo-form .ghost-btn::after { content: ""; position: absolute; inset: -1px 0; }
+  .todo-form button { cursor: pointer; }
+  .todo-form input { min-width: 0; padding: 0; border: 0; background: none; color: var(--text); font: inherit; outline: none; }
+  .todo-form input:focus-visible { box-shadow: none; }
+  .todo-form input[name=title] { font-size: 15px; font-weight: 500; letter-spacing: -.01em; line-height: 1.4; padding: 2px 0; }
+  .todo-form input[name=title]::placeholder { color: var(--muted); font-weight: 400; }
+  .todo-form input[name=why] { font-size: 13.5px; color: var(--muted); line-height: 1.5; padding: 3px 0 2px; }
+  .todo-form input[name=why]::placeholder { color: var(--faint); }
+  .todo-form .bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .todo-form .ticket { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; background: var(--tag-bg);
+                       color: var(--tag-ink); font-family: var(--mono); font-size: 12.5px; cursor: text; }
+  .todo-form .ticket input { width: 9ch; font-family: var(--mono); font-size: 12.5px; color: var(--tag-ink);
+                             font-variant-numeric: tabular-nums; }
+  .todo-form .ticket input::placeholder { color: var(--tag-ink); opacity: .55; }
+  .todo-form .bar .gap { flex: 1; }
+  .todo-form .cta { border: 0; padding: 7px 16px; transition: transform var(--duration-quick) var(--ease-smooth-out); }
   .todo-form .cta:active { transform: scale(.96); }
+  @media (max-width: 760px) { .todo-form { padding-left: 14px; } }
   .ghost-btn { border: 0; border-radius: 999px; padding: 8px 12px; background: none; color: var(--muted); font-size: 13.5px;
                transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
   .ghost-btn:active { transform: scale(.96); }
@@ -389,7 +426,7 @@
   .todo-item + .todo-drop, .todo-drop + .todo-item { box-shadow: none; }
   .todo-item.leaving { opacity: 0; transform: translateY(4px);
                        transition: opacity var(--duration-quick) var(--ease-smooth-out), transform var(--duration-quick) var(--ease-smooth-out); }
-  .todo-item.arriving { animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
+  .todo-item.arriving, .todo-group.arriving > .todo-group-body { animation: rise var(--duration-fast) var(--ease-smooth-out) both; }
   .todo-item.finishing { opacity: 0; transform: translateX(24px);
                          transition: opacity 260ms var(--ease-smooth-out), transform 260ms var(--ease-smooth-out); }
   @media (prefers-reduced-motion: reduce) {
@@ -2232,11 +2269,16 @@
     const sheet = make("div", "shell todo-sheet"), sheetCore = make("div", "core");
     sheet.append(sheetCore);
     todoBox.append(sheet);
-    for (const [key, label] of TODO_GROUPS) {
+    for (const { key, name: label } of todoSections()) {
       const card = make("section", `todo-group ${key}`);
       card.dataset.key = key;
       const core = make("div", "todo-group-body");
-      const h3 = make("h3"); h3.append(make("span", "eyebrow", label), make("span", "n"));
+      const h3 = make("h3"); h3.append(sectionName(key, label), make("span", "n"));
+      if (!BUILT_IN_SECTIONS.has(key)) {  // your own section: it can go once it's empty
+        const del = iconButton(REMOVE, `Remove the ${label} section`, () => removeSection(key));
+        del.classList.add("section-del");
+        h3.append(del);
+      }
       const rows = make("div", "todo-rows");
       for (const item of list.items.filter((it) => it.priority === key && !isDone(it.id))) rows.append(todoItem(item));
       const none = make("p", "todo-none");
@@ -2244,6 +2286,13 @@
       card.append(core);
       sheetCore.append(card);
     }
+    const more = make("button", "todo-add add-section");
+    more.type = "button";
+    more.innerHTML = PLUS;
+    more.append("Add a section");
+    more.onclick = addSection;
+    if (todoSections().length >= MAX_SECTIONS) more.hidden = true;
+    sheetCore.append(more);
     todoBox.append(make("section", "todo-done"), make("section", "todo-removed"));
     drawDone();
     drawRemoved();
@@ -2292,7 +2341,7 @@
     const bell = iconButton(BELL, `Remind me: ${item.title}`, (e) => openRemindPop(e, bell, item.id));
     bell.classList.add("remind-btn");
     if (!item.remind_at) actions.append(bell);  // with a reminder, its time is the button
-    if (item.mine) actions.append(iconButton(EDIT, `Edit: ${item.title}`, () => editTodo(row)));
+    actions.append(iconButton(EDIT, `Edit: ${item.title}`, () => editTodo(row)));
     actions.append(iconButton(REMOVE, `Remove: ${item.title}`, () => removeTodo(row)));
     row.append(grip, tick, what, actions);
     return row;
@@ -2877,7 +2926,8 @@
 
   // ----- Removed: what you took off, for 30 days, with Put back -----
   let removedOpen = false;
-  const groupName = (key) => (TODO_GROUPS.find(([k]) => k === key) || [, "Later"])[1];
+  const groupName = (key) => (todoSections().find((s) => s.key === key) || todoSections().find((s) => s.key === "later")
+                               || { name: "Later" }).name;
 
   function drawRemoved() {
     const box = todoBox.querySelector(".todo-removed");
@@ -3015,6 +3065,91 @@
   }
 
   // ----- Add and edit your own -----
+  // ----- Sections: David's four (fixed), and your own, which you can rename and take out -----
+  const BUILT_IN_SECTIONS = new Set(TODO_GROUPS.map(([k]) => k));
+  const MAX_SECTIONS = 12;
+  function todoSections() {
+    return todoState?.list?.sections || TODO_GROUPS.map(([key, name]) => ({ key, name }));
+  }
+  function sectionName(key, label) {
+    if (BUILT_IN_SECTIONS.has(key)) return make("span", "eyebrow", label);  // David sorts into these: fixed
+    const b = make("button", "eyebrow section-name", label);
+    b.type = "button";
+    b.title = "Rename";
+    b.setAttribute("aria-label", `${label} section. Rename`);
+    b.onclick = () => renameSection(b, key);
+    return b;
+  }
+  async function saveSections(sections) {
+    const before = todoState.list.sections;
+    todoState.list.sections = sections;
+    try {
+      await flushTodo();  // moves already made land before the sections change
+      const saved = await api("/api/todo/sections", { method: "PUT", body: JSON.stringify({ sections }) });
+      todoState.list.sections = saved.sections;
+      return true;
+    } catch (err) {
+      todoState.list.sections = before;
+      toast("Couldn't save that: " + err.message);
+      return false;
+    }
+  }
+  function renameSection(button, key) {
+    const section = todoSections().find((s) => s.key === key);
+    if (!section) return;
+    const input = make("input", "section-input");
+    input.value = section.name;
+    input.maxLength = 40;
+    input.setAttribute("aria-label", "Section name");
+    button.replaceWith(input);
+    input.focus();
+    input.select();
+    let finished = false;
+    const finish = async (keep) => {
+      if (finished) return;
+      finished = true;
+      const name = input.value.replace(/\s+/g, " ").trim();
+      const fresh = sectionName(key, section.name);
+      input.replaceWith(fresh);
+      if (!keep || !name || name === section.name) { fresh.focus({ preventScroll: true }); return; }
+      fresh.textContent = name;
+      if (await saveSections(todoSections().map((s) => s.key === key ? { ...s, name } : s))) {
+        announce(`Renamed to ${name}`);
+      }
+      drawTodo(null, true);
+      todoBox.querySelector(`.todo-group[data-key="${key}"] .section-name`)?.focus({ preventScroll: true });
+    };
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") { e.preventDefault(); finish(true); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+    };
+    input.onblur = () => finish(true);
+  }
+  async function addSection() {
+    const key = "s-" + Math.random().toString(36).slice(2, 10).replace(/[^a-z0-9]/g, "0").padEnd(8, "0");
+    if (!await saveSections([...todoSections(), { key, name: "New section" }])) return;
+    drawTodo(null, true);
+    const card = todoBox.querySelector(`.todo-group[data-key="${key}"]`);
+    card?.classList.add("arriving");
+    card?.scrollIntoView({ block: "nearest" });
+    const name = card?.querySelector(".section-name");
+    if (name) renameSection(name, key);  // name it right away
+  }
+  async function removeSection(key) {
+    const section = todoSections().find((s) => s.key === key);
+    if (!section) return;
+    if (todoState.list.items.some((it) => it.priority === key && !isDone(it.id))) {
+      toast("Move or finish its to-dos first", null, section.name);
+      return;
+    }
+    const before = todoSections();
+    if (!await saveSections(before.filter((s) => s.key !== key))) return;
+    for (const it of todoState.list.items) if (it.priority === key) it.priority = "later";  // ticked ones
+    drawTodo(null, true);
+    toast("Section removed", { label: "Undo", run: async () => {
+      if (await saveSections(before)) drawTodo(null, true);
+    } }, section.name);
+  }
   function addButton(key) {
     const b = make("button", "todo-add");
     b.type = "button";
@@ -3033,18 +3168,25 @@
     title.placeholder = "What do you need to do?"; title.setAttribute("aria-label", "To-do");
     title.value = item?.title || "";
     const ticket = make("input"); ticket.name = "ticket"; ticket.inputMode = "numeric"; ticket.maxLength = 9;
-    ticket.placeholder = "Ticket #"; ticket.setAttribute("aria-label", "Ticket number (optional)");
+    ticket.placeholder = "Ticket"; ticket.setAttribute("aria-label", "Ticket number (optional)");
     ticket.value = item?.ticket || "";
+    const ticketTag = make("label", "ticket", "#"); ticketTag.append(ticket);  // looks like the row's ticket tag
+    // The smaller line under the title, like the reason David gives for his items.
+    const details = make("input"); details.name = "why"; details.maxLength = 500;
+    details.placeholder = "Add details (optional)"; details.setAttribute("aria-label", "Details (optional)");
+    details.value = item?.why || "";
     const save = make("button", "cta small", item ? "Save" : "Add"); save.type = "submit";
     const cancel = make("button", "ghost-btn", "Cancel"); cancel.type = "button";
-    form.append(title, ticket, save, cancel);
+    const bar = make("div", "bar"); bar.append(ticketTag, make("span", "gap"), cancel, save);
+    form.append(title, details, bar);
     form.onsubmit = (e) => {
       e.preventDefault();
       const text = title.value.trim();
       if (!text) { title.focus(); return; }
       const number = parseInt(ticket.value.replace(/[^0-9]/g, ""), 10) || null;
+      const why = details.value.trim();
       if (item) {
-        Object.assign(item, { title: text, ticket: number });
+        Object.assign(item, { title: text, ticket: number, why });
         const fresh = todoItem(item);
         row.replaceWith(fresh);
         closeTodoForm();
@@ -3052,7 +3194,7 @@
         fresh.querySelector(".grip").focus({ preventScroll: true });
         return;
       }
-      const added = { id: "m-" + Math.random().toString(36).slice(2, 12), title: text, why: "", priority: card.dataset.key,
+      const added = { id: "m-" + Math.random().toString(36).slice(2, 12), title: text, why, priority: card.dataset.key,
                       ticket: number, client: null, when: null, mine: true };
       todoState.list.items.push(added);
       const fresh = todoItem(added);
@@ -3060,11 +3202,12 @@
       card.querySelector(".todo-rows").append(fresh);
       saveTodo(true);
       announce(`Added "${text}"`);
-      title.value = ""; ticket.value = "";
+      title.value = ""; ticket.value = ""; details.value = "";
       title.focus();  // ready for the next one
     };
     cancel.onclick = () => closeTodoForm(true);
     form.onkeydown = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeTodoForm(true); } };
+    form.onpointerdown = (e) => { if (e.target === form || e.target === bar) { e.preventDefault(); title.focus(); } };
     if (row) { row.hidden = true; row.after(form); form.dataset.editing = row.dataset.id; }
     else { card.querySelector(".todo-add").hidden = true; card.querySelector(".todo-rows").after(form); }
     title.focus();
@@ -3126,7 +3269,7 @@
     saveTodo();
     row.querySelector(".grip").focus({ preventScroll: true });
     row.scrollIntoView({ block: "nearest" });
-    announce(`${todoById(row.dataset.id)?.title}: ${TODO_GROUPS.find(([k]) => k === card.dataset.key)[1]}, ` +
+    announce(`${todoById(row.dataset.id)?.title}: ${groupName(card.dataset.key)}, ` +
              `${[...card.querySelectorAll(".todo-rows > .todo-item")].indexOf(row) + 1} of ${card.querySelectorAll(".todo-rows > .todo-item").length}`);
   }
 
@@ -3197,7 +3340,7 @@
       }
       const card = row.closest(".todo-group");
       const moved = todoById(row.dataset.id);
-      if (moved && moved.priority !== card.dataset.key) announce(`Moved to ${TODO_GROUPS.find(([k]) => k === card.dataset.key)[1]}`);
+      if (moved && moved.priority !== card.dataset.key) announce(`Moved to ${groupName(card.dataset.key)}`);
       saveTodo();
       grip.focus({ preventScroll: true });
     };

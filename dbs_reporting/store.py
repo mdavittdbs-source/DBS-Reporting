@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import uuid
@@ -146,6 +147,31 @@ def _removed(data: dict, made_at: str) -> list[dict]:
             kept.append({**item, "removed_at": item.get("removed_at") or made_at})
             ids.add(item["id"])
     return kept[:REMOVED_MAX]
+
+
+# The list's sections, in order. David sorts his items into the four built-in ones, whose names are fixed;
+# people add their own (keys "s-…"), which they can rename or take out, and which last across new lists.
+SECTIONS = [{"key": "now", "name": "Now"}, {"key": "today", "name": "Today"},
+            {"key": "this_week", "name": "This week"}, {"key": "later", "name": "Later"}]
+BUILT_IN = {s["key"] for s in SECTIONS}
+SECTION_KEY = re.compile(r"^s-[a-z0-9]{4,12}$")
+MAX_SECTIONS = 12
+
+
+def _sections(data: dict | None) -> list[dict]:
+    """The list's sections: what the person saved (clean), with any built-in one that's missing put back."""
+    saved, seen = [], set()
+    for s in (data or {}).get("sections") or []:
+        key, name = s.get("key"), " ".join(str(s.get("name") or "").split())[:40]
+        if key in seen or not (key in BUILT_IN or SECTION_KEY.match(key or "")):
+            continue
+        seen.add(key)
+        built_in = next((b["name"] for b in SECTIONS if b["key"] == key), None)
+        saved.append({"key": key, "name": built_in or name or "Untitled"})
+    for i, s in enumerate(SECTIONS):
+        if s["key"] not in seen:
+            saved.insert(min(i, len(saved)), dict(s))
+    return saved[:MAX_SECTIONS]
 
 
 REMINDER = ("remind_at", "reminded", "fired_at")  # an item's reminder: when (UTC), whether and when it went off
@@ -429,6 +455,7 @@ class Store:
                 data["items"] = [{**item, **timed.pop(item.get("ticket") or item.get("title"), {})}
                                  for item in data["items"]]
                 data["items"] += [item for item in items if item.get("mine") and item["id"] not in done]
+                data["sections"] = _sections(old_data)  # their own sections and names carry over
                 # Removed items stay in Removed, except a ticket that's back on the new list (it changed since).
                 back = {item.get("ticket") for item in data["items"] if item.get("ticket")}
                 data["removed"] = [item for item in _removed(old_data, old["created_at"])
@@ -459,6 +486,7 @@ class Store:
         data["items"], done = _with_ids(data.get("items", []), json.loads(row["done"]))
         removed = [item for item in _removed(data, row["created_at"]) if not item.get("deleted")]
         data.pop("removed", None), data.pop("dismissed", None)
+        data["sections"] = _sections(data)
         return {"data": data, "done": done, "removed": removed, "model": row["model"],
                 "usage": json.loads(row["usage"]) if row["usage"] else None, "created_at": row["created_at"]}
 
@@ -479,7 +507,8 @@ class Store:
 
     def set_todo_items(self, user_id: int, items: list[dict], remove: list[str] = ()) -> list[dict] | None:
         """Save the list as the person arranged it: their order and groups, their own items added or edited, and
-        the items in `remove` taken off. David's items keep their own wording; only their group can change.
+        the items in `remove` taken off. David's items can be edited too (title, details, ticket); a page that
+        sends one without a title (e.g. putting it back) leaves his wording as it was.
         An item that's on the list but not in `items` stays (at the end of its group): the page that sent
         this may not have seen it yet, e.g. one added just before a reload or in another tab. Returns the
         saved items, or None if there's no list."""
@@ -494,16 +523,20 @@ class Store:
             removed = _removed(data, row["created_at"])
             davids = {item["id"]: item for item in removed + stored if not item.get("mine")}
             known = {item["id"]: item for item in removed + stored}
+            keys = {s["key"] for s in _sections(data)}
             saved, seen = [], set()
             for item in items:
                 if item["id"] in seen:
                     continue
+                section = item["priority"] if item["priority"] in keys else "later"
                 if item.get("mine"):
                     saved.append({"id": item["id"], "title": item["title"], "why": item.get("why") or "",
-                                  "priority": item["priority"], "ticket": item.get("ticket"), "client": None,
+                                  "priority": section, "ticket": item.get("ticket"), "client": None,
                                   "when": None, "mine": True, **_reminder(known.get(item["id"]))})
                 elif item["id"] in davids:
-                    saved.append({k: v for k, v in {**davids[item["id"]], "priority": item["priority"]}.items()
+                    edits = ({"title": item["title"], "why": item.get("why") or "", "ticket": item.get("ticket")}
+                             if item.get("title") else {})
+                    saved.append({k: v for k, v in {**davids[item["id"]], **edits, "priority": section}.items()
                                   if k not in ("removed_at", "deleted")})
                 else:
                     continue  # not one of David's, and not marked as theirs: ignore it
@@ -518,6 +551,22 @@ class Store:
             db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
                        (json.dumps(data), json.dumps([i for i in ticked if i in seen]), user_id))
             return saved
+
+    def set_todo_sections(self, user_id: int, sections: list[dict]) -> list[dict] | None:
+        """Save the list's sections (order and names; new ones added, own ones taken out). Items in a section
+        that's gone move to Later. Returns the sections, or None if there's no list."""
+        with self._db(write=True) as db:
+            row = db.execute("SELECT data FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+            if row is None:
+                return None
+            data = json.loads(row["data"])
+            data["sections"] = _sections({"sections": sections})
+            keys = {s["key"] for s in data["sections"]}
+            for item in data.get("items", []) + data.get("removed", []):
+                if item.get("priority") not in keys:
+                    item["priority"] = "later"
+            db.execute("UPDATE todo_lists SET data = ? WHERE user_id = ?", (json.dumps(data), user_id))
+            return data["sections"]
 
     def delete_removed(self, user_id: int, ids: list[str] | None, undo: bool = False) -> list[dict] | None:
         """Delete items from Removed (all of them when `ids` is None), or bring them back with undo=True.
