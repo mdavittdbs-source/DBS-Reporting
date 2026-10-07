@@ -506,3 +506,14 @@ def test_own_sections_can_be_added_renamed_and_taken_out(web, monkeypatch):  # n
     assert "s-calls1" not in [s["key"] for s in got["sections"]]
     assert next(i for i in got["items"] if i["id"] == "m-call")["priority"] == "later"
     assert login(module, "alice", "password-a").put("/api/todo/sections", json={"sections": sections}).status_code == 404
+
+
+def test_sections_can_be_put_in_any_order(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    bob, _ = _list(module, monkeypatch)
+    order = [{"key": "s-calls1", "name": "Calls"}, {"key": "later", "name": "Later"}, {"key": "now", "name": "Now"},
+             {"key": "this_week", "name": "This week"}, {"key": "today", "name": "Today"}]
+    saved = bob.put("/api/todo/sections", json={"sections": order}).json()["sections"]
+    assert [s["key"] for s in saved] == ["s-calls1", "later", "now", "this_week", "today"]  # David's and yours, any order
+    fresh = bob.post("/api/todo").json()["list"]  # and it lasts across a new list
+    assert [s["key"] for s in fresh["sections"]] == ["s-calls1", "later", "now", "this_week", "today"]
