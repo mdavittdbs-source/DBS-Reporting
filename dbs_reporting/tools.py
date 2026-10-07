@@ -93,7 +93,7 @@ def summarize_ticket(ticket: dict) -> dict:
 
 TICKET_COLUMNS = ("id", "summary", "entered", "closed", "board", "status", "type", "subtype", "item", "priority",
                   "source", "contact", "hours")
-OPEN_COLUMNS = ("id", "summary", "company", "site", "board", "status", "priority", "type", "owner",
+OPEN_COLUMNS = ("id", "summary", "company", "site", "board", "status", "priority", "type", "owner", "resources",
                 "entered", "age_days", "days_since_update")
 GO_LIVE_COLUMNS = ("date", "weekday", "time", "company", "project", "project_id", "ticket_id", "ticket", "status",
                    "software", "installers", "other_scheduled_days", "past", "tickets_after", "examples_after",
@@ -777,8 +777,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
 
         Use for "oldest open tickets", "what's still open at Jimmy's Grille", "stale tickets",
         "open ticket backlog by board/technician", and with person for one technician's tickets ("review
-        Mikey's tickets", "what's on Jon's plate"). A person's tickets are the ones they own; don't count
-        or mention tickets where someone is only a resource. Unlike get_company_tickets, this isn't limited to
+        Mikey's tickets", "what's on Jon's plate"): the tickets they own and the ones they're a resource
+        on. Unlike get_company_tickets, this isn't limited to
         a date range. Returns the open count, age buckets, median age, counts by status, board,
         priority, owner (and client, when looking at all clients), and the oldest tickets with
         their age in days and days since last update.
@@ -788,7 +788,8 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
             board_name: Optional exact service board name, e.g. "Help Desk".
             oldest: How many of the oldest tickets to list (most 200).
             software: Optional: only clients whose POS software matches, e.g. "SkyTab".
-            person: Optional: only tickets owned by people whose name or username contains this, e.g. "Mikey".
+            person: Optional: only tickets this person owns or is a resource on (name or username contains this,
+                e.g. "Mikey").
         """
         try:
             # The software filter needs the lookup; for all clients it's an extra breakdown, skipped if unreadable.
@@ -801,9 +802,19 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
                 tickets = [t for t in tickets if software_matches(of(t), software)]
             if person:
                 wanted = _plain(person)
-                tickets = [t for t in tickets
-                           if wanted and wanted in _plain(f"{(t.get('owner') or {}).get('name') or ''} "
-                                                          f"{(t.get('owner') or {}).get('identifier') or ''}")]
+                # Resources are listed by username only, so a name ("Mikey Davitt") is turned into usernames too.
+                usernames = {(m.get("identifier") or "").lower() for m in staff_if_readable() or []
+                             if wanted in _plain(f"{member_name(m)} {m.get('identifier') or ''}")} - {""}
+
+                def theirs(t: dict) -> bool:
+                    owner = t.get("owner") or {}
+                    ident = (owner.get("identifier") or "").lower()
+                    if wanted in _plain(f"{owner.get('name') or ''} {ident}") or ident in usernames:
+                        return True
+                    resources = {r.strip().lower() for r in re.split(r"[,;]", t.get("resources") or "") if r.strip()}
+                    return any(wanted in _plain(r) or r in usernames for r in resources)
+
+                tickets = [t for t in tickets if wanted and theirs(t)]
             now = datetime.now(timezone.utc)
 
             def days_since(value) -> int | None:
@@ -823,6 +834,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
                     "priority": _name(t, "priority"),
                     "type": _name(t, "type"),
                     "owner": owner.get("name") or owner.get("identifier"),
+                    "resources": t.get("resources"),
                     "entered": _date_entered(t),
                     "age_days": days_since(_date_entered(t)),
                     "days_since_update": days_since((t.get("_info") or {}).get("lastUpdated")),
@@ -857,7 +869,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
             if person:
                 result["person"] = person
                 if not rows:
-                    result["note"] = f'Nobody matching "{person}" owns an open service ticket.'
+                    result["note"] = f'Nobody matching "{person}" owns or is a resource on an open service ticket.'
             if capped:
                 result["note"] = "Capped at 5000 open tickets; filter by client or board for exact figures."
             return _dumps(result)
@@ -1352,8 +1364,9 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
     def get_workload(start_day: int = 0, days: int = 7, person: str = "", logged_days: int = 7) -> str:
         """Technician workload: who's booked and who has room. For everyone on staff (people with
         nothing booked show at 0%, the most room): hours scheduled in the period against their office hours
-        (percent booked), time off, open service tickets they own (with the oldest one's age), and hours
-        logged over the last logged_days days. To list someone's tickets, use get_open_tickets with person.
+        (percent booked), time off, open service tickets they own and open tickets they're a resource
+        on (with the oldest one's age), and hours logged over the last logged_days days. To list someone's
+        tickets, use get_open_tickets with person.
 
         Use for "who has room this week", "who's overloaded", "how booked is Sam next week", "who has
         the most open tickets". Office hours are Mon and Wed-Fri 8:30 AM-5:00 PM, Tue 9:00 AM-5:00 PM.
@@ -1384,7 +1397,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
                 if not key:
                     return None
                 row = people.setdefault(key, {"name": None, "username": member.get("identifier"), "scheduled": 0.0,
-                                              "time_off": 0.0, "owned": 0, "oldest": None,
+                                              "time_off": 0.0, "owned": 0, "assigned": 0, "oldest": None,
                                               "logged": 0.0})
                 row["name"] = row["name"] or member.get("name")
                 return row
@@ -1409,18 +1422,25 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
                 kind = f"{(e.get('type') or {}).get('name') or ''} {e.get('name') or ''}"
                 row["time_off" if TIME_OFF.search(kind) else "scheduled"] += share
 
-            # Open service tickets count for their owner only (not for people listed as resources).
+            # Open service tickets: the owner, and everyone listed as a resource.
             now = datetime.now(timezone.utc)
             for t in open_tickets:
-                owner = t.get("owner") or {}
-                if not (owner.get("identifier") or "").strip():
-                    continue
                 entered = parse_dt(_date_entered(t))
                 age = (now - entered).days if entered else None
-                row = person_row(owner)
-                row["owned"] += 1
-                if age is not None and (row["oldest"] is None or age > row["oldest"]):
-                    row["oldest"] = age
+                owner = t.get("owner") or {}
+                owner_key = (owner.get("identifier") or "").lower()
+                involved = set()
+                if owner_key:
+                    row = person_row(owner)
+                    row["owned"] += 1
+                    involved.add(owner_key)
+                for ident in re.split(r"[,;\s]+", t.get("resources") or ""):
+                    if ident and ident.lower() not in involved:
+                        involved.add(ident.lower())
+                        person_row({"identifier": ident})["assigned"] += 1
+                for key in involved:
+                    if age is not None and (people[key]["oldest"] is None or age > people[key]["oldest"]):
+                        people[key]["oldest"] = age
 
             for e in logged:
                 row = person_row(e.get("member"))
@@ -1442,7 +1462,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
                     "scheduled_hours": round(p["scheduled"], 1), "time_off_hours": round(p["time_off"], 1) or None,
                     "available_hours": round(available, 1),
                     "booked_pct": round(100 * p["scheduled"] / available) if available else None,
-                    "open_owned": p["owned"],
+                    "open_owned": p["owned"], "open_as_resource": p["assigned"],
                     "oldest_open_days": p["oldest"],
                     "logged_hours": round(p["logged"], 1) if logged_days else None,
                 })
@@ -1454,7 +1474,7 @@ def build_tools(cw: ConnectWiseClient, charts_allowed: bool = True, store=None) 
                 "office_hours_in_period": round(office, 1),
                 "people": len(rows),
                 "workload": _table(rows, ("name", "username", "scheduled_hours", "time_off_hours", "available_hours",
-                                          "booked_pct", "open_owned", "oldest_open_days",
+                                          "booked_pct", "open_owned", "open_as_resource", "oldest_open_days",
                                           "logged_hours")),
                 "note": ("booked_pct is scheduled hours over office hours less time off. Open tickets are service "
                          "tickets; project work shows up as scheduled hours. "

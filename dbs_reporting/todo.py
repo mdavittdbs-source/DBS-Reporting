@@ -1,7 +1,7 @@
 """To-do lists: David turns one person's open ConnectWise work into a short, prioritized list.
 
-What's pulled costs no tokens: the open service tickets the person owns, the project tickets
-they're assigned to, and their calendar for the next 7 days. Then one Claude request,
+What's pulled costs no tokens: the person's open service tickets (as owner or resource), the project
+tickets they're a resource on, and their calendar for the next 7 days. Then one Claude request,
 with the reply held to a JSON schema, ranks it into Now / Today / This week / Later.
 
 Each David login is matched to a ConnectWise member by display name, or by the ConnectWise username
@@ -89,10 +89,11 @@ def gather_work(cw, member: dict, now: datetime | None = None, dismissed: list[d
 
     rows = []
     for t in service:
+        owner = ((t.get("owner") or {}).get("identifier") or "").lower()
         rows.append({
             "id": t.get("id"), "kind": "service", "summary": t.get("summary"), "client": _name(t, "company"),
             "site": _name(t, "site"), "status": _name(t, "status"), "priority": _name(t, "priority"),
-            "board": _name(t, "board"),
+            "role": "owner" if owner == ident.lower() else "resource", "board": _name(t, "board"),
             "age_days": days_since(_date_entered(t)),
             "days_since_update": days_since((t.get("_info") or {}).get("lastUpdated")),
         })
@@ -100,7 +101,7 @@ def gather_work(cw, member: dict, now: datetime | None = None, dismissed: list[d
         rows.append({
             "id": t.get("id"), "kind": "project", "summary": t.get("summary"), "client": _name(t, "company"),
             "project": (t.get("project") or {}).get("name"), "phase": _name(t, "phase"),
-            "status": _name(t, "status"), "priority": _name(t, "priority"),
+            "status": _name(t, "status"), "priority": _name(t, "priority"), "role": "resource",
             "age_days": days_since(_date_entered(t)),
         })
     rows.sort(key=lambda r: (r["kind"] != "service", -(r.get("age_days") or 0)))
@@ -132,7 +133,7 @@ def gather_work(cw, member: dict, now: datetime | None = None, dismissed: list[d
         "open_project_tickets": open_project,
         "left_out": left_out or None,  # tickets the person removed before; the summary can say so
         "tickets": _table(rows[:MAX_TICKETS], ("id", "kind", "summary", "client", "site", "project", "phase", "status",
-                                               "priority", "board", "age_days", "days_since_update")),
+                                               "priority", "role", "board", "age_days", "days_since_update")),
         "calendar_next_7_days": _table(calendar, ("day", "time", "title", "kind", "ticket", "where")),
         "note": f"Listing {MAX_TICKETS} of {len(rows)} tickets." if len(rows) > MAX_TICKETS else None,
     })
@@ -142,7 +143,7 @@ SYSTEM = """You turn one DBS staff member's open ConnectWise work into a short t
 DBS is a point-of-sale (POS) dealer: it installs and supports POS systems, mostly for restaurants and \
 bars, whose busiest times are lunch, dinner and weekends.
 
-You get the open service tickets they own, project tickets they're assigned to, and \
+You get their open service tickets (as owner or resource), project tickets they're a resource on, and \
 their calendar for the next 7 days, as tables ("columns" names the fields once; each row gives the \
 values in that order; "every_row" holds fields that are the same on every row).
 

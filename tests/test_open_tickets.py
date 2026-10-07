@@ -60,20 +60,22 @@ def test_open_tickets_for_one_client_and_board_with_field_fallback():
     assert "fields" not in requests[-1].url.params
 
 
-def test_one_persons_tickets_are_the_ones_they_own():
+def test_one_persons_tickets_are_the_ones_they_own_or_are_a_resource_on():
     tickets = OPEN + [{"id": 40, "summary": "Handheld not taking cards", "closedFlag": False,
                        "company": {"name": "Harbor Shack"}, "owner": {"identifier": "mdavitt", "name": "Mikey Davitt"},
                        "resources": "mdavitt, sam", "_info": {"dateEntered": ago(3)}}]
+    staff = [{"identifier": "sam", "firstName": "Sam", "lastName": "Ortiz"}]
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=tickets)
+        return httpx.Response(200, json=staff if request.url.path.endswith("/system/members") else tickets)
 
     tools = tools_by_name(ConnectWiseClient(SETTINGS, transport=httpx.MockTransport(handler)))
     mikey = json.loads(tools["get_open_tickets"].call({"person": "Mikey"}))
     assert [t["id"] for t in rows(mikey["oldest"])] == [40] and mikey["open_count"] == 1
-    assert "resources" not in mikey["oldest"]["columns"]
-    # Sam owns #10 and is only a resource on #40: just #10 is his
-    sam = json.loads(tools["get_open_tickets"].call({"person": "sam"}))
-    assert [t["id"] for t in rows(sam["oldest"])] == [10]
+    # Sam owns #10 and is a resource on #40; by his full name too (resources are listed by username only)
+    for asked in ("sam", "Sam Ortiz"):
+        sam = json.loads(tools["get_open_tickets"].call({"person": asked}))
+        assert [t["id"] for t in rows(sam["oldest"])] == [10, 40], asked
+    assert rows(sam["oldest"])[1]["resources"] == "mdavitt, sam"
     nobody = json.loads(tools["get_open_tickets"].call({"person": "Zed"}))
     assert nobody["open_count"] == 0 and "Zed" in nobody["note"]

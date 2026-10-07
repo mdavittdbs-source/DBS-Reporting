@@ -75,8 +75,7 @@ def test_workload_for_a_week():
     assert sam["booked_pct"] == 57 and sam["open_owned"] == 2 and sam["oldest_open_days"] == 100
     assert sam["logged_hours"] == 5.0
     assert ana["scheduled_hours"] == 7.0 and ana["booked_pct"] == 17  # 2 h meeting + Monday's half of the install
-    # Kim is only a resource on Sam's ticket: that isn't hers, so it isn't counted or mentioned
-    assert kim["name"] == "Kim Chen" and kim.get("open_owned") == 0 and "open_as_resource" not in result["workload"]["columns"]
+    assert kim["name"] == "Kim Chen" and kim["open_as_resource"] == 1 and kim.get("open_owned") == 0
     assert [p["username"] for p in rows(result["workload"])] == ["sortiz", "aruiz", "kchen"]  # most booked first
     conditions = next(r for r in requests if r.url.path.endswith("/schedule/entries")).url.params["conditions"]
     assert "dateStart<" in conditions and "dateEnd>" in conditions
