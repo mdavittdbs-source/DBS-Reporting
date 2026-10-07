@@ -548,6 +548,13 @@ def test_only_admins_and_uploaders_can_upload_spoton_data(web):
     assert [f["restaurant"] for f in admin.get("/api/spoton").json()] == ["Other"]
     assert user.get("/api/spoton").status_code == 403
 
+    # Too big: refused without reading it all; a broken file is a readable 400, not a crash
+    big = uploader.post("/api/spoton/upload?filename=menu.csv",
+                        content=b"x" * (module.spoton.MAX_UPLOAD_BYTES + 1))
+    assert big.status_code == 413 and "over 25 MB" in big.json()["detail"]
+    broken = uploader.post("/api/spoton/upload?filename=menu.xlsx", content=b"not a workbook")
+    assert broken.status_code == 400 and "Excel" in broken.json()["detail"]
+
 
 def test_a_question_about_an_upload_keeps_a_clean_title(web):
     module, calls = web

@@ -565,23 +565,30 @@ class Store:
         those that went off at or after `since`, e.g. sent as a push to a page that asked before then; when the
         next one is due, or None)."""
         now = _now()
-        with self._db(write=True) as db:
-            row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
-            if row is None:
-                return [], [], None
-            data = json.loads(row["data"])
-            data["items"], ticked = _with_ids(data.get("items", []), json.loads(row["done"]))
-            waiting = [i for i in data["items"] if i.get("remind_at") and not i.get("reminded") and i["id"] not in ticked]
-            due = [i for i in waiting if i["remind_at"] <= now]
-            later = [i["remind_at"] for i in waiting if i["remind_at"] > now]
-            recent = [i for i in data["items"] if since and i.get("reminded") and (i.get("fired_at") or "") >= since
-                      and i["id"] not in ticked]
-            if due:
-                for item in due:
-                    item.update(reminded=True, fired_at=now)
-                db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
-                           (json.dumps(data), json.dumps(ticked), user_id))
-            return due, recent, min(later, default=None)
+        # Pages ask every half minute and the push check every 15 seconds, and almost always nothing is due:
+        # look first, and take the write lock only to mark one as gone off (looking again under the lock, so
+        # two checks at once can't both fire it).
+        for write in (False, True):
+            with self._db(write=write) as db:
+                row = db.execute("SELECT data, done FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+                if row is None:
+                    return [], [], None
+                data = json.loads(row["data"])
+                data["items"], ticked = _with_ids(data.get("items", []), json.loads(row["done"]))
+                waiting = [i for i in data["items"]
+                           if i.get("remind_at") and not i.get("reminded") and i["id"] not in ticked]
+                due = [i for i in waiting if i["remind_at"] <= now]
+                later = [i["remind_at"] for i in waiting if i["remind_at"] > now]
+                recent = [i for i in data["items"] if since and i.get("reminded")
+                          and (i.get("fired_at") or "") >= since and i["id"] not in ticked]
+                if due and write:
+                    for item in due:
+                        item.update(reminded=True, fired_at=now)
+                    db.execute("UPDATE todo_lists SET data = ?, done = ? WHERE user_id = ?",
+                               (json.dumps(data), json.dumps(ticked), user_id))
+                if not due or write:
+                    return due, recent, min(later, default=None)
+        raise AssertionError("unreachable")
 
     # --- Push subscriptions ----------------------------------------------------
 
@@ -669,20 +676,23 @@ class Store:
     def actions_to_todo(self, user_id: int, note_id: str, picks: list[int] | None, member: str = "") -> dict | None:
         """Add a note's action items (all, or the ones at `picks`) to the person's To Do list, once each: they're
         marked "added". Returns the note, or None if there's no such note."""
-        note = self.get_note(user_id, note_id)
-        if note is None:
-            return None
-        actions = note["actions"]
-        chosen = [i for i in (range(len(actions)) if picks is None else picks)
-                  if 0 <= i < len(actions) and not actions[i].get("added")]
-        if chosen:
-            label = note["label"] or note["title"]
-            self.add_todo_items(user_id, [{"title": actions[i]["title"], "priority": actions[i].get("priority") or "this_week",
-                                           "why": f"From your note: {label}" if label else "From your notes"}
-                                          for i in chosen], member)
-            for i in chosen:
-                actions[i]["added"] = True
-            with self._db() as db:
+        # One transaction, so two clicks at once can't add the same item twice.
+        with self._db(write=True) as db:
+            row = db.execute("SELECT * FROM notes WHERE id = ? AND user_id = ?", (note_id, user_id)).fetchone()
+            if row is None:
+                return None
+            note = self._note(row)
+            actions = note["actions"]
+            chosen = sorted({i for i in (range(len(actions)) if picks is None else picks)
+                             if 0 <= i < len(actions) and not actions[i].get("added")})
+            if chosen:
+                label = note["label"] or note["title"]
+                self._add_todo_items(db, user_id, [{"title": actions[i]["title"],
+                                                    "priority": actions[i].get("priority") or "this_week",
+                                                    "why": f"From your note: {label}" if label else "From your notes"}
+                                                   for i in chosen], member)
+                for i in chosen:
+                    actions[i]["added"] = True
                 db.execute("UPDATE notes SET actions = ? WHERE id = ? AND user_id = ?",
                            (json.dumps(actions), note_id, user_id))
         return {**note, "actions": actions}
@@ -694,19 +704,23 @@ class Store:
     def add_todo_items(self, user_id: int, items: list[dict], member: str = "") -> list[dict]:
         """Add items of the person's own to their To Do list (in their groups), starting a list if they have none.
         Returns the items added."""
+        with self._db(write=True) as db:
+            return self._add_todo_items(db, user_id, items, member)
+
+    @staticmethod
+    def _add_todo_items(db, user_id: int, items: list[dict], member: str) -> list[dict]:
         added = [{"id": _todo_id("m-"), "title": i["title"][:200], "why": (i.get("why") or "")[:500],
                   "priority": i.get("priority") or "today", "ticket": None, "client": None, "when": None, "mine": True}
                  for i in items]
-        with self._db(write=True) as db:
-            row = db.execute("SELECT data FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
-            if row is None:
-                data = {"member": member, "username": "", "summary": "", "counts": {}, "items": added}
-                db.execute("INSERT INTO todo_lists (user_id, data, done, created_at) VALUES (?, ?, '[]', ?)",
-                           (user_id, json.dumps(data), _now()))
-            else:
-                data = json.loads(row["data"])
-                data["items"] = data.get("items", []) + added
-                db.execute("UPDATE todo_lists SET data = ? WHERE user_id = ?", (json.dumps(data), user_id))
+        row = db.execute("SELECT data FROM todo_lists WHERE user_id = ?", (user_id,)).fetchone()
+        if row is None:
+            data = {"member": member, "username": "", "summary": "", "counts": {}, "items": added}
+            db.execute("INSERT INTO todo_lists (user_id, data, done, created_at) VALUES (?, ?, '[]', ?)",
+                       (user_id, json.dumps(data), _now()))
+        else:
+            data = json.loads(row["data"])
+            data["items"] = data.get("items", []) + added
+            db.execute("UPDATE todo_lists SET data = ? WHERE user_id = ?", (json.dumps(data), user_id))
         return added
 
     # --- App state ---------------------------------------------------------

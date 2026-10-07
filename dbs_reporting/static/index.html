@@ -962,12 +962,13 @@
     return (typeof detail === "string" && detail) || fallback;
   }
 
+  const smallEnough = (body) => new Blob([body || ""]).size < 60000;  // for keepalive: browsers refuse over 64 KB
   async function api(path, options = {}) {
     let res;
     try {
       // keepalive (finish even if the page closes) only works for small bodies: browsers refuse
       // keepalive requests over 64 KB, which would turn a big save into a "can't reach David" error.
-      const keepalive = options.keepalive && (options.body || "").length < 60000;
+      const keepalive = options.keepalive && smallEnough(options.body);
       res = await fetch(path, {
         ...options,
         keepalive,
@@ -2723,7 +2724,7 @@
     const body = JSON.stringify({ items, remove: [...toRemove] });
     toRemove.clear();
     if (leaving) {  // the page is going away: keepalive lets the save finish after it's gone
-      fetch("/api/todo/items", { method: "PUT", body, keepalive: body.length < 60000,
+      fetch("/api/todo/items", { method: "PUT", body, keepalive: smallEnough(body),
                                  headers: { "Content-Type": "application/json" } }).catch(() => {});
       return Promise.resolve();
     }
@@ -3242,6 +3243,7 @@
   let note = null;           // the open note, in full
   let noteEditing = false;   // a cleaned-up note shows formatted until you click Edit
   let noteTimer = null, noteSaving = Promise.resolve(), noteCleaning = false, noteRevealing = false;
+  let noteOpening = 0;       // counts note switches, so a slow open can't replace a note picked after it
   const newNoteId = () => "n-" + Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("");
   const noteDay = (iso) => {
     const d = new Date(iso), days = Math.round((dayStart(new Date()) - dayStart(d)) / 864e5);
@@ -3289,18 +3291,24 @@
     drawNotes();
   }
   async function openNote(id) {
+    const ask = ++noteOpening;
     await flushNote();
+    let opened;
     try {
-      note = await api(`/api/notes/${id}`);
+      opened = await api(`/api/notes/${id}`);
     } catch (err) {
-      toast("Couldn't open that note: " + err.message);
+      if (ask === noteOpening) toast("Couldn't open that note: " + err.message);
       return;
     }
+    if (ask !== noteOpening) return;  // another note was picked meanwhile
+    note = opened;
     noteEditing = !note.cleaned_at;
     drawNotes();
   }
   async function newNote() {
+    const ask = ++noteOpening;
     await flushNote();
+    if (ask !== noteOpening) return;
     note = { id: newNoteId(), title: "", label: "", body: "", actions: [], cleaned_at: null, original: null, fresh: true };
     noteEditing = true;
     drawNotes();
@@ -3343,19 +3351,21 @@
     if (note?.fresh) rows.unshift(note);
     const ul = make("ul", "note-list");
     for (const n of rows) {
-      const shown = note && n.id === note.id ? note : n;
       const b = make("button");
       b.type = "button";
       if (note && n.id === note.id) b.setAttribute("aria-current", "true");
-      b.append(make("span", "t" + (shown.title ? "" : " untitled"), shown.title || firstLine(shown.body ?? shown.preview) || "New note"));
-      const meta = make("span", "m");
-      meta.append(make("span", null, shown.updated_at ? noteDay(shown.updated_at) : "Not saved yet"));
-      if (shown.label) meta.append(make("span", "lbl", shown.label));
-      b.append(meta);
+      fillNoteRow(b, note && n.id === note.id ? note : n);
       b.onclick = () => { if (!note || n.id !== note.id) openNote(n.id); };
       const li = make("li"); li.append(b); ul.append(li);
     }
     side.replaceChildren(head, ul);
+  }
+  function fillNoteRow(b, shown) {
+    const meta = make("span", "m");
+    meta.append(make("span", null, shown.updated_at ? noteDay(shown.updated_at) : "Not saved yet"));
+    if (shown.label) meta.append(make("span", "lbl", shown.label));
+    b.replaceChildren(make("span", "t" + (shown.title ? "" : " untitled"),
+                           shown.title || firstLine(shown.body ?? shown.preview) || "New note"), meta);
   }
   const firstLine = (text) => (text || "").split("\n").map((l) => l.replace(/^[#\-\s]+/, "").trim()).find(Boolean) || "";
 
@@ -3369,6 +3379,7 @@
     label.maxLength = 60;
     label.setAttribute("aria-label", "Label, e.g. 9/13 meeting");
     label.oninput = () => { note.label = label.value; noteChanged(); };
+    label.readOnly = noteCleaning;
     const status = make("span", "note-status", note.fresh ? "" : `Saved ${noteDay(note.updated_at)}`);
     const clean = pillButton(note.cleaned_at ? "Clean up again" : "Clean up", SPARKLE, cleanUpNote);
     clean.classList.add("note-clean");
@@ -3405,6 +3416,7 @@
     title.maxLength = 200;
     title.setAttribute("aria-label", "Title");
     title.oninput = () => { note.title = title.value; noteChanged(); };
+    title.readOnly = noteCleaning;
     core.append(title);
     if (noteCleaning || noteRevealing) {
       const shown = make("div", "note-rendered");
@@ -3449,7 +3461,13 @@
     const head = make("div", "head");
     head.append(make("span", "eyebrow", "Action items"));
     const left = note.actions.filter((a) => !a.added).length;
-    if (left) head.append(pillButton(left > 1 ? `Add all ${left} to To Do` : "Add to To Do", PLUS, () => actionsToTodo(null), true));
+    if (left) {
+      const all = pillButton(left > 1 ? `Add all ${left} to To Do` : "Add to To Do", PLUS, async () => {
+        all.disabled = true;
+        if (!await actionsToTodo(null)) all.disabled = false;
+      }, true);
+      head.append(all);
+    }
     const ul = make("ul");
     note.actions.forEach((a, i) => {
       const li = make("li");
@@ -3457,7 +3475,10 @@
       // + and "In To Do" share one spot and cross-fade (icon swap).
       const swap = make("span", "t-icon-swap");
       swap.dataset.state = a.added ? "b" : "a";
-      const add = iconButton(PLUS, `Add to To Do: ${a.title}`, () => actionsToTodo([i]));
+      const add = iconButton(PLUS, `Add to To Do: ${a.title}`, async () => {
+        add.disabled = true;
+        if (!await actionsToTodo([i])) add.disabled = false;
+      });
       add.classList.add("t-icon");
       add.dataset.icon = "a";
       add.disabled = !!a.added;
@@ -3480,7 +3501,8 @@
     if (status) status.textContent = "Saving…";
     clearTimeout(noteTimer);
     noteTimer = setTimeout(saveNote, 600);
-    drawNoteList();
+    const row = notesBox.querySelector('.note-list button[aria-current="true"]');
+    if (row) fillNoteRow(row, note); else drawNoteList();
   }
   function noteRequest(current) {
     return JSON.stringify({ title: current.title.slice(0, 200), label: current.label.slice(0, 60), body: current.body });
@@ -3490,7 +3512,8 @@
     noteTimer = null;
     const current = note;
     if (!current || (current.fresh && !current.title.trim() && !current.label.trim() && !current.body.trim())) return noteSaving;
-    noteSaving = api(`/api/notes/${current.id}`, { method: "PUT", body: noteRequest(current), keepalive: true }).then((saved) => {
+    noteSaving = noteSaving.then(() => api(`/api/notes/${current.id}`, { method: "PUT", body: noteRequest(current),
+                                                                         keepalive: true })).then((saved) => {
       Object.assign(current, { updated_at: saved.updated_at, created_at: saved.created_at, fresh: false });
       const entry = { id: saved.id, title: saved.title, label: saved.label, preview: saved.body.slice(0, 160),
                       cleaned_at: saved.cleaned_at, updated_at: saved.updated_at };
@@ -3509,8 +3532,10 @@
   }
   function flushNote() { return noteTimer ? saveNote() : noteSaving; }
   addEventListener("pagehide", () => {
-    if (noteTimer && note) fetch(`/api/notes/${note.id}`, { method: "PUT", body: noteRequest(note), keepalive: true,
-                                                         headers: { "Content-Type": "application/json" } }).catch(() => {});
+    if (!noteTimer || !note) return;
+    const body = noteRequest(note);
+    fetch(`/api/notes/${note.id}`, { method: "PUT", body, keepalive: smallEnough(body),
+                                     headers: { "Content-Type": "application/json" } }).catch(() => {});
   });
 
   // ----- David's clean-up -----
@@ -3572,16 +3597,21 @@
       }
       todoState = null;  // To Do reloads with the new items next time it's opened
       toast("Added to To Do", { label: "Open", run: showTodo });
+      return true;
     } catch (err) {
       toast("Couldn't add to To Do: " + err.message);
+      return false;
     }
   }
   async function deleteNote() {
     const gone = note;
+    if (!gone || gone.deleting) return;
+    gone.deleting = true;
     clearTimeout(noteTimer); noteTimer = null;
+    await noteSaving;
     if (!gone.fresh) {
       try { await api(`/api/notes/${gone.id}`, { method: "DELETE" }); }
-      catch (err) { toast("Couldn't delete: " + err.message); return; }
+      catch (err) { gone.deleting = false; toast("Couldn't delete: " + err.message); return; }
     }
     notesList = (notesList || []).filter((n) => n.id !== gone.id);
     note = null;

@@ -272,7 +272,18 @@ async def spoton_upload(request: Request, filename: str, restaurant: str = "",
     """The file itself is the request body: the exporter's zip, or one .csv or .xlsx with ?restaurant=.
     A zip replaces everything saved for its restaurant; a single file adds to it (replacing a file of the same
     name), so a restaurant's files can be uploaded one at a time."""
-    data = await request.body()
+    too_big = f"That file is over {spoton.MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
+    if int(request.headers.get("content-length") or 0) > spoton.MAX_UPLOAD_BYTES:
+        raise HTTPException(413, too_big)
+    data = bytearray()
+    async for chunk in request.stream():
+        data += chunk
+        if len(data) > spoton.MAX_UPLOAD_BYTES:
+            raise HTTPException(413, too_big)
+    return await run_in_threadpool(_save_upload, bytes(data), filename, restaurant, user)
+
+
+def _save_upload(data: bytes, filename: str, restaurant: str, user: dict) -> dict:
     known = {f["restaurant"].casefold(): f["restaurant"] for f in store.spoton_files()}
     if not restaurant and not filename.lower().endswith(".zip"):  # no question asked: go by the file name
         restaurant = spoton.restaurant_for(filename, list(known.values()))
@@ -282,7 +293,7 @@ async def spoton_upload(request: Request, filename: str, restaurant: str = "",
         raise HTTPException(400, str(exc))
     # "taco town" goes with an existing "Taco Town" rather than starting a second restaurant.
     name = known.get(name.casefold(), name)
-    await run_in_threadpool(store.save_spoton, name, files, user["display_name"], filename.lower().endswith(".zip"))
+    store.save_spoton(name, files, user["display_name"], filename.lower().endswith(".zip"))
     log.info("%s uploaded SpotOn data for %s (%s)", user["username"], name, ", ".join(files))
     return {"restaurant": name, "files": {k: len(rows) for k, (_, rows) in files.items()}}
 
@@ -592,10 +603,13 @@ _note_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
 
 
 def _clean_up(user: dict, note_id: str) -> dict:
+    asked = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with _note_locks[note_id]:  # one at a time per note, so a double click doesn't pay twice
         note = store.get_note(user["id"], note_id)
         if note is None:
             raise HTTPException(404, "No such note.")
+        if (note.get("cleaned_at") or "") >= asked:  # cleaned up while this one waited: that's the answer
+            return note
         model = os.environ.get("TODO_MODEL", "").strip() or agent.default_model
         started = time.monotonic()
         cleaned, used = notes.clean_up(agent.client, model, note["title"], note["label"], note["body"])
