@@ -136,3 +136,27 @@ def test_uploads_are_deleted_after_30_days(tmp_path):
     assert [f["restaurant"] for f in store.spoton_files()] == ["New Pub"]
     listed = call({t.name: t for t in build_spoton_tools(store)}["list_spoton_data"])
     assert "30 days" in listed["note"] and listed["restaurants"][0]["files"][0]["uploaded_at"]
+
+
+def test_files_that_arent_csv_get_a_readable_error():
+    with pytest.raises(UploadError, match="isn't a CSV"):
+        parse_upload("menu.csv", b"PK\x03\x04\x00\x00binary", "Joe's")
+    # Bytes that aren't text in UTF-8 or Windows-1252 (0x81) are still read, not a crash
+    name, files = parse_upload("menu.csv", b"Name,Price\nCaf\x81,3\n", "Joe's")
+    assert files["menu"][1][0][1] == "3"
+    with pytest.raises(UploadError, match="can't be read as a CSV"):
+        parse_upload("menu.csv", b"Name\n\"" + b"x" * 200_000 + b"\"\n", "Joe's")  # a field over the csv limit
+    with pytest.raises(UploadError, match="can't be opened as an Excel"):
+        parse_upload("menu.xlsx", b"not a workbook", "Joe's")
+
+
+def test_a_zip_that_unpacks_too_big_is_refused(monkeypatch):
+    import dbs_reporting.spoton as spoton
+    monkeypatch.setattr(spoton, "MAX_UNZIPPED_BYTES", 150)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("about.txt", "Restaurant: Big Pub\n")
+        z.writestr("menu_items.csv", MENU)
+        z.writestr("modifiers.csv", MENU)
+    with pytest.raises(UploadError, match="too big"):
+        parse_upload("big.zip", buffer.getvalue())

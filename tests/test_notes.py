@@ -68,3 +68,37 @@ def test_action_items_go_to_to_do(web):  # noqa: F811
     bob.post("/api/todo/add", json={"items": [{"title": "Book the install", "priority": "later"}]})
     assert len(bob.get("/api/todo").json()["list"]["items"]) == 2
     assert bob.post("/api/todo/add", json={"items": [{"title": "  "}]}).status_code == 422
+
+
+def test_two_clicks_at_once_dont_add_or_pay_twice(web, monkeypatch):  # noqa: F811
+    import threading
+    import time
+
+    module, _ = web
+    bob = login(module, "bob", "password-b")
+    bob.put("/api/notes/n-race01", json={"body": "kds moved to tues. send joe menu pdf"})
+    calls = []
+    real = notes.clean_up
+
+    def slow(_client, *args):
+        calls.append(1)
+        time.sleep(0.3)
+        return real(fake_claude([], CLEANED), *args)
+
+    monkeypatch.setattr(module.notes, "clean_up", slow)
+    answers = []
+    clicks = [threading.Thread(target=lambda: answers.append(bob.post("/api/notes/n-race01/cleanup").json()))
+              for _ in range(2)]
+    for t in clicks:
+        t.start()
+    for t in clicks:
+        t.join()
+    assert len(calls) == 1 and [a["title"] for a in answers] == ["Taco Town KDS call"] * 2  # the second waits for the first
+
+    adds = [threading.Thread(target=lambda: bob.post("/api/notes/n-race01/todo", json={"picks": [0, 0]}))
+            for _ in range(4)]
+    for t in adds:
+        t.start()
+    for t in adds:
+        t.join()
+    assert [i["title"] for i in bob.get("/api/todo").json()["list"]["items"]] == ["Send Joe the menu PDF"]

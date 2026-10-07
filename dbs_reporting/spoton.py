@@ -21,6 +21,7 @@ from anthropic import beta_tool
 from .store import SPOTON_KEEP_DAYS, Store
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_UNZIPPED_BYTES = 200 * 1024 * 1024  # everything in one zip, unpacked (a tiny zip can unpack to gigabytes)
 MAX_ROWS = 50_000  # per file
 MAX_RESULT_ROWS = 1000
 # Columns the exporter fills with comma-separated lists; group_by counts each entry on its own.
@@ -39,13 +40,18 @@ def file_key(name: str) -> str:
 
 
 def read_csv(data: bytes, name: str) -> tuple[list[str], list[list[str]]]:
-    for encoding in ("utf-8-sig", "cp1252"):
+    if b"\0" in data[:4096]:  # a spreadsheet or other binary file renamed .csv
+        raise UploadError(f"{name} isn't a CSV file. Upload it as it came from the SpotOn Exporter, or as .xlsx.")
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):  # latin-1 reads any bytes
         try:
             text = data.decode(encoding)
             break
         except UnicodeDecodeError:
             continue
-    return _table(csv.reader(io.StringIO(text, newline="")), name)
+    try:
+        return _table(csv.reader(io.StringIO(text, newline="")), name)
+    except csv.Error as exc:  # e.g. a field over the csv module's size limit
+        raise UploadError(f"{name} can't be read as a CSV file ({exc}).") from None
 
 
 def _cell(value) -> str:
@@ -71,18 +77,26 @@ def read_xlsx(data: bytes, name: str) -> dict[str, tuple[list[str], list[list[st
     except Exception:
         raise UploadError(f"{name} can't be opened as an Excel workbook (.xlsx).")
     try:
-        sheets = {}
-        for sheet in book.worksheets:
-            rows = ([_cell(v) for v in row] for row in sheet.iter_rows(values_only=True))
-            rows = (row for row in rows if any(row))
-            first = next(rows, None)
-            if first is None:
-                continue
-            while first and not first[-1]:  # Excel often reports empty columns past the data
-                first.pop()
-            sheets[sheet.title] = _table(_chain([first], rows), f"{name} ({sheet.title})")
+        return _read_sheets(book, name)
+    except UploadError:
+        raise
+    except Exception:
+        raise UploadError(f"{name} can't be read as an Excel workbook (.xlsx).") from None
     finally:
         book.close()
+
+
+def _read_sheets(book, name: str) -> dict[str, tuple[list[str], list[list[str]]]]:
+    sheets = {}
+    for sheet in book.worksheets:
+        rows = ([_cell(v) for v in row] for row in sheet.iter_rows(values_only=True))
+        rows = (row for row in rows if any(row))
+        first = next(rows, None)
+        if first is None:
+            continue
+        while first and not first[-1]:  # Excel often reports empty columns past the data
+            first.pop()
+        sheets[sheet.title] = _table(_chain([first], rows), f"{name} ({sheet.title})")
     if not sheets:
         raise UploadError(f"{name} is empty.")
     if len(sheets) == 1:
@@ -155,11 +169,13 @@ def parse_upload(filename: str, data: bytes, restaurant: str = "") -> tuple[str,
             archive = zipfile.ZipFile(io.BytesIO(data))
         except zipfile.BadZipFile:
             raise UploadError("That zip file can't be opened.")
+        unpacked = 0
         for info in archive.infolist():
             name = info.filename
             if info.is_dir() or name.rsplit("/", 1)[-1].startswith("."):
                 continue
-            if info.file_size > MAX_UPLOAD_BYTES:
+            unpacked += info.file_size
+            if info.file_size > MAX_UPLOAD_BYTES or unpacked > MAX_UNZIPPED_BYTES:
                 raise UploadError(f"{name} is too big.")
             if name.lower().endswith("about.txt") and not restaurant:
                 about = archive.read(info).decode("utf-8-sig", "replace")
@@ -196,8 +212,8 @@ def _match(cell: str, wanted: str) -> bool:
 
 
 def build_spoton_tools(store: Store) -> list:
-    def find_restaurant(name: str) -> tuple[str | None, list[str]]:
-        names = sorted({f["restaurant"] for f in store.spoton_files()})
+    def find_restaurant(name: str, uploaded: list[dict]) -> tuple[str | None, list[str]]:
+        names = sorted({f["restaurant"] for f in uploaded})
         exact = [n for n in names if n.lower() == name.strip().lower()]
         partial = [n for n in names if name.strip().lower() in n.lower()]
         found = exact or partial
@@ -245,13 +261,15 @@ def build_spoton_tools(store: Store) -> list:
             limit: Most rows to return (max 1000). The result says how many matched in total.
         """
         try:
-            name, options = find_restaurant(restaurant)
+            uploaded = store.spoton_files()
+            name, options = find_restaurant(restaurant, uploaded)
             if name is None:
                 return json.dumps({"error": f"No single uploaded restaurant matches {restaurant!r}.",
                                    "restaurants": options})
-            saved = store.spoton_rows(name, file_key(file))
+            this = next((f for f in uploaded if f["restaurant"] == name and f["file"] == file_key(file)), None)
+            saved = store.spoton_rows(name, file_key(file)) if this else None
             if saved is None:
-                have = [f["file"] for f in store.spoton_files() if f["restaurant"] == name]
+                have = [f["file"] for f in uploaded if f["restaurant"] == name]
                 return json.dumps({"error": f"{name} has no {file!r} file.", "files": have})
             all_columns, rows = saved
             index = {c.lower(): i for i, c in enumerate(all_columns)}
@@ -262,12 +280,11 @@ def build_spoton_tools(store: Store) -> list:
                 return index[c.lower()]
 
             filters = [(col(c), v) for c, v in (where or {}).items()]
+            needle = search.lower()
             matched = [r for r in rows
-                       if (not search or any(search.lower() in cell.lower() for cell in r))
+                       if (not needle or any(needle in cell.lower() for cell in r))
                        and all(_match(r[i], v) for i, v in filters)]
-            uploaded = next((f["uploaded_at"] for f in store.spoton_files()
-                             if f["restaurant"] == name and f["file"] == file_key(file)), None)
-            result = {"restaurant": name, "file": file_key(file), "uploaded_at": uploaded,
+            result = {"restaurant": name, "file": file_key(file), "uploaded_at": this["uploaded_at"],
                       "total_rows": len(rows), "matched": len(matched)}
             if group_by:
                 i = col(group_by)
