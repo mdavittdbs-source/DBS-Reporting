@@ -136,17 +136,23 @@ def _logo_src(path: Path, url: str) -> str:
 
 
 _pages: dict[str, tuple[tuple, str]] = {}
+# Linked as /static/<name>?v=<when it last changed>, so browsers fetch the new file after an update
+# instead of keeping an old copy (an old motion.css left new pieces of the page unstyled).
+VERSIONED = ("theme.js", "theme.css", "motion.css")
 
 
 def _page(name: str) -> HTMLResponse:
     """Serve a page with the branding logo already in place. Without this, the built-in icon
     showed for a moment before a script swapped the logo in. Rebuilt when any file changes."""
     page, light, dark = STATIC / name, _logo_path("logo"), _logo_path("logo-dark")
-    key = tuple((p, p.stat().st_mtime) for p in (page, light, dark) if p)
+    assets = [STATIC / a for a in VERSIONED]
+    key = tuple((p, p.stat().st_mtime) for p in (page, light, dark, *assets) if p)
     cached = _pages.get(name)
     if cached and cached[0] == key:
         return HTMLResponse(cached[1], headers={"Cache-Control": "no-cache"})
     html = page.read_text(encoding="utf-8")
+    for asset in assets:
+        html = html.replace(f'"/static/{asset.name}"', f'"/static/{asset.name}?v={asset.stat().st_mtime_ns // 1_000_000}"')
     if light:
         source = (f'<source data-dark srcset="{_logo_src(dark, "/logo-dark")}" media="(prefers-color-scheme: dark)">'
                   if dark else "")

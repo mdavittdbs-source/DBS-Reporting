@@ -575,3 +575,14 @@ def test_single_files_add_to_a_restaurant_and_a_zip_replaces_it(web):
     up("Wings.csv", b"Name\nWings\n", "Test Pub")
     up("Test_Pub.zip", spoton_zip())  # a full export replaces everything for its restaurant
     assert files() == [("Taco Town", "menu_items", 1), ("Test Pub", "menu_items", 2)]
+
+
+def test_pages_link_styles_by_version(web):
+    """A changed stylesheet gets a new URL, so browsers don't keep using an old copy."""
+    import re
+
+    module, _ = web
+    page = TestClient(module.app).get("/login").text
+    for name in module.VERSIONED:
+        assert re.search(rf'"/static/{re.escape(name)}\?v=\d+"', page), name
+    assert TestClient(module.app).get(re.search(r'"(/static/motion\.css\?v=\d+)"', page)[1]).status_code == 200
