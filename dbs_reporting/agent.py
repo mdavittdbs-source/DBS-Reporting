@@ -122,7 +122,8 @@ one call rather than one call per person. List it day by day with times; it cove
 their schedule, not just tickets.
 - Workload: for who has room, who's overloaded or how booked someone is, use get_workload (scheduled \
 hours against office hours, time off, open tickets owned or assigned, hours logged). To list or review \
-someone's tickets, use get_open_tickets with person (tickets they own or are a resource on). Use get_schedule \
+someone's tickets, use get_open_tickets with person: service tickets they own or are a resource on, \
+and the open project tickets they're a resource on. Cover both. Use get_schedule \
 for what's on people's calendars.
 - SLA: get_sla_performance reports ConnectWise's in-SLA/breached flags and response/resolution \
 times. Say that the times are calendar hours, not business hours.
