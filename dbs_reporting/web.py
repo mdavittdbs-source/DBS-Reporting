@@ -432,9 +432,12 @@ def tick_todo(body: TodoTick, user: dict = Depends(current_user)) -> dict:
     return {"ok": True}
 
 
+SECTION = r"^(now|today|this_week|later|s-[a-z0-9]{4,12})$"  # a built-in section, or one of the person's own
+
+
 class TodoItem(BaseModel):
     id: str = Field(pattern=TODO_ID)
-    priority: Literal["now", "today", "this_week", "later"]
+    priority: str = Field(pattern=SECTION)
     mine: bool = False
     title: str = Field(default="", max_length=200)
     why: str = Field(default="", max_length=500)
@@ -444,6 +447,25 @@ class TodoItem(BaseModel):
 class TodoItems(BaseModel):
     items: list[TodoItem] = Field(max_length=100)
     remove: list[str] = Field(default=[], max_length=100)  # ids taken off; anything else not listed stays
+
+
+class TodoSection(BaseModel):
+    key: str = Field(pattern=SECTION)
+    name: str = Field(max_length=40)
+
+
+class TodoSections(BaseModel):
+    sections: list[TodoSection] = Field(min_length=1, max_length=12)
+
+
+@app.put("/api/todo/sections")
+def set_sections(body: TodoSections, user: dict = Depends(current_user)) -> dict:
+    """Add, rename or take out your own sections (David's four always stay, with their names; items in one
+    taken out go to Later)."""
+    sections = store.set_todo_sections(user["id"], [s.model_dump() for s in body.sections])
+    if sections is None:
+        raise HTTPException(404, "Make a list first.")
+    return {"sections": sections}
 
 
 @app.put("/api/todo/items")

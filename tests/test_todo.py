@@ -182,8 +182,10 @@ def test_arranging_the_list(web, monkeypatch):  # noqa: F811
     assert saved.status_code == 200
     got = bob.get("/api/todo").json()
     titles = [(i["title"], i["priority"]) for i in got["list"]["items"]]
-    # Order as arranged, Taco Town removed, David's wording kept though his item moved group, own item trimmed
-    assert titles == [("Call Joe back", "now"), ("Prep for Blue Fin install", "today"), ("Follow up with Dock Bar", "today")]
+    # Order as arranged, Taco Town removed, David's item moved and edited (his other fields kept), own item trimmed
+    assert titles == [("Call Joe back", "now"), ("Renamed by hand", "today"), ("Follow up with Dock Bar", "today")]
+    edited = got["list"]["items"][1]
+    assert edited["why"] == "edited" and edited["client"] == blue_fin["client"] and edited["ticket"] == blue_fin["ticket"]
     assert got["list"]["items"][0] == {"id": "m-call-joe", "title": "Call Joe back", "why": "", "priority": "now",
                                        "ticket": 4821, "client": None, "when": None, "mine": True}
     assert got["done"] == [dock["id"]]  # the removed item's tick went with it
@@ -472,3 +474,35 @@ def test_reminders(web, monkeypatch):  # noqa: F811
     alice = login(module, "alice", "password-a")
     got = alice.post("/api/todo/reminders").json()
     assert got["due"] == [] and got["next"] is None and got["now"]
+
+
+def test_own_sections_can_be_added_renamed_and_taken_out(web, monkeypatch):  # noqa: F811
+    module, _ = web
+    bob, items = _list(module, monkeypatch)
+    assert [s["name"] for s in bob.get("/api/todo").json()["list"]["sections"]] == ["Now", "Today", "This week", "Later"]
+    sections = [{"key": "now", "name": "Urgent"}, {"key": "today", "name": "Today"},
+                {"key": "s-calls1", "name": "  Calls   to make "}, {"key": "later", "name": "Someday"}]  # This week left out
+    saved = bob.put("/api/todo/sections", json={"sections": sections}).json()["sections"]
+    # David's four can't be renamed or taken out ("This week" comes back); your own name is tidied
+    assert [(s["key"], s["name"]) for s in saved] == [("now", "Now"), ("today", "Today"), ("this_week", "This week"),
+                                                       ("s-calls1", "Calls to make"), ("later", "Later")]
+    # Items go into your own section, and stay there
+    mine = {"id": "m-call", "priority": "s-calls1", "mine": True, "title": "Call Joe"}
+    moved = {**items[1], "priority": "s-calls1"}
+    bob.put("/api/todo/items", json={"items": [mine, moved, items[0], items[2]]})
+    got = bob.get("/api/todo").json()["list"]
+    assert [(i["title"], i["priority"]) for i in got["items"][:2]] == [("Call Joe", "s-calls1"), (items[1]["title"], "s-calls1")]
+    # A section that doesn't exist puts the item in Later; a bad key is refused
+    bob.put("/api/todo/items", json={"items": [{**mine, "priority": "s-nowhere"}]})
+    assert bob.get("/api/todo").json()["list"]["items"][0]["priority"] == "later"
+    assert bob.put("/api/todo/items", json={"items": [{**mine, "priority": "bogus"}]}).status_code == 422
+    # Your sections and names last across a new list
+    fresh = bob.post("/api/todo").json()["list"]
+    assert [s["name"] for s in fresh["sections"]] == ["Now", "Today", "This week", "Calls to make", "Later"]
+    # Taking your own section out moves what's in it to Later
+    bob.put("/api/todo/items", json={"items": [{**mine, "priority": "s-calls1"}]})
+    bob.put("/api/todo/sections", json={"sections": [s for s in saved if s["key"] != "s-calls1"]})
+    got = bob.get("/api/todo").json()["list"]
+    assert "s-calls1" not in [s["key"] for s in got["sections"]]
+    assert next(i for i in got["items"] if i["id"] == "m-call")["priority"] == "later"
+    assert login(module, "alice", "password-a").put("/api/todo/sections", json={"sections": sections}).status_code == 404
