@@ -274,8 +274,11 @@
   .section-tools .icon-btn:disabled { opacity: .3; cursor: default; background: none; color: var(--faint); transform: none; }
   @media (hover: none) { .todo-group h3 .section-tools { opacity: 1; } }
   /* Below the last section, split off by a hairline like the sections themselves. */
-  .todo-sheet .add-section { margin: 10px 0 0; border-radius: 0 0 14px 14px; box-shadow: 0 -1px 0 var(--hair); padding-top: 14px; }
-  .todo-sheet .add-section[hidden] { display: none; }
+  /* "New section": a small pill under the list card, lined up with the section names. */
+  .todo-more { margin: -4px 0 22px; padding-left: 22px; }
+  .todo-more .add-section { padding: 6px 14px 6px 11px; font-size: 13px; font-weight: 500; }
+  .todo-more .add-section svg { width: 13px; height: 13px; }
+  .todo-more .add-section[hidden] { display: none; }
   .todo-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; border-radius: 14px;
                transition: background .2s var(--ease); }
   .todo-item + .todo-item { box-shadow: 0 -1px 0 var(--hair); }
@@ -2301,13 +2304,13 @@
       sheetCore.append(card);
     }
     markSectionEnds();
-    const more = make("button", "todo-add add-section");
-    more.type = "button";
-    more.innerHTML = PLUS;
-    more.append("Add a section");
-    more.onclick = addSection;
-    if (todoSections().length >= MAX_SECTIONS) more.hidden = true;
-    sheetCore.append(more);
+    // Outside the card, so every + inside it means "add a to-do here" and this one means a new section.
+    const more = make("div", "todo-more");
+    const newSection = pillButton("New section", PLUS, addSection, true);
+    newSection.classList.add("add-section");
+    newSection.hidden = todoSections().length >= MAX_SECTIONS;
+    more.append(newSection);
+    todoBox.append(more);
     todoBox.append(make("section", "todo-done"), make("section", "todo-removed"));
     drawDone();
     drawRemoved();
