@@ -200,7 +200,7 @@ The list is theirs to change, and every change is saved (no Claude request, so n
   is open. A reminder that came due while nothing could show it shows the next
   time David is opened. A reminder on one of David's items moves to the same ticket when a new list is made.
 
-The list doesn't reset by itself; it stays until they click **Make a new list**, which rebuilds David's items
+The list doesn't reset by itself; it stays until they click **Update list**, which rebuilds David's items
 from fresh ConnectWise data. Items they added and haven't ticked carry over to the new list. Tickets they removed
 stay off new lists for 30 days, unless the ticket is updated in ConnectWise after they removed it, even if they
 delete them from Removed. Putting one back ends that.

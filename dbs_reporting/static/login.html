@@ -175,7 +175,8 @@
   const fields = [document.getElementById("username"), document.getElementById("password")];
 
   fields.forEach((f) => f.addEventListener("input", () => f.removeAttribute("aria-invalid")));
-  // After 5 seconds, David says hello: once per visit (even mid sign-in), not with reduced motion.
+  // 2.5 seconds in (once the card has settled), David says hello: once per visit, even mid sign-in, and not
+  // with reduced motion.
   const main = document.querySelector("main");
   const placeBuddy = () => main.style.setProperty("--card-top", document.querySelector(".card").offsetTop + "px");
   placeBuddy();
@@ -184,7 +185,7 @@
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     placeBuddy();
     main.classList.add("waving");
-  }, 5000);
+  }, 2500);
 
   const css = (name, fallback) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || fallback;
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;

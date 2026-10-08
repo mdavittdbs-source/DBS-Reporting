@@ -2271,7 +2271,7 @@
     head.append(pill, make("h2", null, firstName ? `${firstName}, here's your week` : "Your to-do list"),
                 make("p", null, list.summary || "Your own to-dos. Make a list to add your ConnectWise tickets and calendar."));
     const bar = make("div", "todo-bar");
-    bar.append(todoButton("Make a new list"), make("span", "meta"));
+    bar.append(todoButton("Update list"), make("span", "meta"));
     const progress = make("div", "progress"); progress.setAttribute("aria-hidden", "true");
     progress.append(make("i")); bar.append(progress);
     head.append(bar);
@@ -2779,7 +2779,7 @@
     clearTimeout(saveTimer);
     if (now) sendTodo(); else saveTimer = setTimeout(() => sendTodo(), 300);
   }
-  let saving = null;  // the save in flight, so Make a new list can wait for it
+  let saving = null;  // the save in flight, so Update list can wait for it
   // Items taken off since the last save. Only these are removed: an item the server has that this page
   // never saw (added just before a reload, or in another tab) is kept.
   const toRemove = new Set();
