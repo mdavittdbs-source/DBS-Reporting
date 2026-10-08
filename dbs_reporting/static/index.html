@@ -255,11 +255,14 @@
   .todo-group.now .eyebrow { color: var(--danger); background: var(--danger-soft); }
   /* A section's name is a button: click it to rename (it becomes a text box in place). */
   .section-name { position: relative; border: 0; font: inherit; font-size: 10px; cursor: text;
-                  transition: box-shadow .2s var(--ease), background .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
-  .section-name:hover { box-shadow: inset 0 0 0 1px var(--glass-ring); }
+                  transition: box-shadow .2s var(--ease), background .2s var(--ease), color .2s var(--ease),
+                              transform var(--duration-quick) var(--ease-smooth-out); }
+  /* Your own sections: a plain outlined label, so they read as yours next to David's tinted ones. */
+  .todo-group.own .section-name { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--hair); }
+  .section-name:hover, .todo-group.own .section-name:hover { box-shadow: inset 0 0 0 1px var(--glass-ring); color: var(--text); }
   .section-name:active { transform: scale(.96); }
   .section-name::after { content: ""; position: absolute; inset: -7px -4px -6px; }  /* ~40px tall to click, clear of the row below */
-  .section-name:focus-visible { outline: none; box-shadow: var(--ring); }
+  .section-name:focus-visible, .todo-group.own .section-name:focus-visible { outline: none; box-shadow: var(--ring); }
   .section-input { padding: 5px 12px; border: 0; border-radius: 999px; font: inherit; font-size: 10px; font-weight: 500;
                    letter-spacing: .2em; text-transform: uppercase; color: var(--text); background: var(--core);
                    box-shadow: var(--ring); outline: none; field-sizing: content; min-width: 12ch; max-width: 40ch; }
@@ -376,6 +379,7 @@
   .todo-group.empty h3 { margin-bottom: 2px; }
   .todo-none { display: none; margin: 0 14px 0 64px; padding: 6px 0; font-size: 13px; color: var(--faint); }
   .todo-group.empty .todo-none { display: block; }
+  .todo-group.empty .todo-none:empty { display: none; }
   .todo-add { display: flex; align-items: center; gap: 18px; width: 100%; margin-top: 2px; padding: 9px 14px 9px 32px; border: 0;
               border-radius: 14px; background: none; color: var(--faint); font-size: 13.5px; text-align: left;
               transition: background .2s var(--ease), color .2s var(--ease), transform var(--duration-quick) var(--ease-smooth-out); }
@@ -2275,22 +2279,20 @@
     sheet.append(sheetCore);
     todoBox.append(sheet);
     for (const { key, name: label } of todoSections()) {
-      const card = make("section", `todo-group ${key}`);
+      const card = make("section", `todo-group ${key}` + (BUILT_IN_SECTIONS.has(key) ? "" : " own"));
       card.dataset.key = key;
       const core = make("div", "todo-group-body");
       const h3 = make("h3"); h3.append(sectionName(key, label), make("span", "n"));
-      // Any section can move up or down; only your own can go (once it's empty).
-      const tools = make("span", "section-tools");
-      const up = iconButton(UP, `Move the ${label} section up`, () => moveSection(key, -1));
-      const down = iconButton(DOWN, `Move the ${label} section down`, () => moveSection(key, 1));
-      up.classList.add("section-up"); down.classList.add("section-down");
-      tools.append(up, down);
+      // Your own sections move up and down (past David's too) and can go once they're empty. David's stay put.
       if (!BUILT_IN_SECTIONS.has(key)) {
+        const tools = make("span", "section-tools");
+        const up = iconButton(UP, `Move the ${label} section up`, () => moveSection(key, -1));
+        const down = iconButton(DOWN, `Move the ${label} section down`, () => moveSection(key, 1));
         const del = iconButton(REMOVE, `Remove the ${label} section`, () => removeSection(key));
-        del.classList.add("section-del");
-        tools.append(del);
+        up.classList.add("section-up"); down.classList.add("section-down"); del.classList.add("section-del");
+        tools.append(up, down, del);
+        h3.append(tools);
       }
-      h3.append(tools);
       const rows = make("div", "todo-rows");
       for (const item of list.items.filter((it) => it.priority === key && !isDone(it.id))) rows.append(todoItem(item));
       const none = make("p", "todo-none");
@@ -2404,8 +2406,8 @@
       const left = inGroup.filter((it) => !isDone(it.id)).length;
       card.querySelector("h3 .n").textContent = !inGroup.length ? "" : left ? `${left} to do` : "All done";
       card.classList.toggle("empty", !card.querySelector(".todo-rows").children.length);
-      card.querySelector(".todo-none").textContent = inGroup.length && !left
-        ? "All done here." : "Nothing here. Drag a to-do in, or add one.";
+      // An empty section just has its Add row; "All done here." only once everything in it is ticked.
+      card.querySelector(".todo-none").textContent = inGroup.length && !left ? "All done here." : "";
     }
   }
 
@@ -3148,7 +3150,8 @@
     const name = card?.querySelector(".section-name");
     if (name) renameSection(name, key);  // name it right away
   }
-  // Moving a section: it trades places with its neighbour and both glide there; the order is saved.
+  // Moving one of your sections: it trades places with its neighbour (yours or David's) and both glide there;
+  // the order is saved. David's own sections never move, so their order among themselves stays.
   async function moveSection(key, step) {
     const sections = todoSections(), at = sections.findIndex((s) => s.key === key), to = at + step;
     if (at < 0 || to < 0 || to >= sections.length) return;
@@ -3164,10 +3167,14 @@
         const dy = before.get(c) - c.getBoundingClientRect().top;
         c.style.transition = "none";
         c.style.transform = `translateY(${dy}px)`;
+        // A quick second click starts a new glide from wherever this one is; only the latest glide's timer
+        // tidies up, so an older one can't cut the new one short.
+        const glide = (c.glide || 0) + 1;
+        c.glide = glide;
         requestAnimationFrame(() => {
           c.style.transition = "transform var(--duration-fast) var(--ease-smooth-out)";
           c.style.transform = "";
-          setTimeout(() => c.style.removeProperty("transition"), 320);
+          setTimeout(() => { if (c.glide === glide) c.style.removeProperty("transition"); }, 320);
         });
       }
     }

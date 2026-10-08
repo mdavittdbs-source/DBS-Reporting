@@ -483,7 +483,7 @@ def test_own_sections_can_be_added_renamed_and_taken_out(web, monkeypatch):  # n
     sections = [{"key": "now", "name": "Urgent"}, {"key": "today", "name": "Today"},
                 {"key": "s-calls1", "name": "  Calls   to make "}, {"key": "later", "name": "Someday"}]  # This week left out
     saved = bob.put("/api/todo/sections", json={"sections": sections}).json()["sections"]
-    # David's four can't be renamed or taken out ("This week" comes back); your own name is tidied
+    # David's four can't be renamed or taken out ("This week" comes back); yours stays where you put it, name tidied
     assert [(s["key"], s["name"]) for s in saved] == [("now", "Now"), ("today", "Today"), ("this_week", "This week"),
                                                        ("s-calls1", "Calls to make"), ("later", "Later")]
     # Items go into your own section, and stay there
@@ -508,12 +508,13 @@ def test_own_sections_can_be_added_renamed_and_taken_out(web, monkeypatch):  # n
     assert login(module, "alice", "password-a").put("/api/todo/sections", json={"sections": sections}).status_code == 404
 
 
-def test_sections_can_be_put_in_any_order(web, monkeypatch):  # noqa: F811
+def test_own_sections_go_anywhere_but_davids_keep_their_order(web, monkeypatch):  # noqa: F811
     module, _ = web
     bob, _ = _list(module, monkeypatch)
-    order = [{"key": "s-calls1", "name": "Calls"}, {"key": "later", "name": "Later"}, {"key": "now", "name": "Now"},
-             {"key": "this_week", "name": "This week"}, {"key": "today", "name": "Today"}]
+    order = [{"key": "s-calls1", "name": "Calls"}, {"key": "later", "name": "Later"}, {"key": "s-orders", "name": "Orders"},
+             {"key": "now", "name": "Now"}, {"key": "this_week", "name": "This week"}, {"key": "today", "name": "Today"}]
     saved = bob.put("/api/todo/sections", json={"sections": order}).json()["sections"]
-    assert [s["key"] for s in saved] == ["s-calls1", "later", "now", "this_week", "today"]  # David's and yours, any order
+    # Yours stay where you put them (first, and third); David's four fill the other places in their own order
+    assert [s["key"] for s in saved] == ["s-calls1", "now", "s-orders", "today", "this_week", "later"]
     fresh = bob.post("/api/todo").json()["list"]  # and it lasts across a new list
-    assert [s["key"] for s in fresh["sections"]] == ["s-calls1", "later", "now", "this_week", "today"]
+    assert [s["key"] for s in fresh["sections"]] == ["s-calls1", "now", "s-orders", "today", "this_week", "later"]
