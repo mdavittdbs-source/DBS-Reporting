@@ -460,8 +460,8 @@ class TodoSections(BaseModel):
 
 @app.put("/api/todo/sections")
 def set_sections(body: TodoSections, user: dict = Depends(current_user)) -> dict:
-    """Add, rename or take out your own sections (David's four always stay, with their names; items in one
-    taken out go to Later)."""
+    """Add, rename, move or take out your own sections (anywhere, including between David's). David's four
+    keep their names and their order among themselves; items in a section taken out go to Later."""
     sections = store.set_todo_sections(user["id"], [s.model_dump() for s in body.sections])
     if sections is None:
         raise HTTPException(404, "Make a list first.")

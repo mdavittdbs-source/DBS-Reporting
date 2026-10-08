@@ -149,8 +149,9 @@ def _removed(data: dict, made_at: str) -> list[dict]:
     return kept[:REMOVED_MAX]
 
 
-# The list's sections, in order. David sorts his items into the four built-in ones, whose names are fixed;
-# people add their own (keys "s-…"), which they can rename or take out, and which last across new lists.
+# The list's sections, in order. David's four built-in ones keep their names and their order among themselves
+# (Now, Today, This week, Later); people add their own (keys "s-…") anywhere between them, and can rename, move
+# and take those out. It all lasts across new lists.
 SECTIONS = [{"key": "now", "name": "Now"}, {"key": "today", "name": "Today"},
             {"key": "this_week", "name": "This week"}, {"key": "later", "name": "Later"}]
 BUILT_IN = {s["key"] for s in SECTIONS}
@@ -159,18 +160,21 @@ MAX_SECTIONS = 12
 
 
 def _sections(data: dict | None) -> list[dict]:
-    """The list's sections: what the person saved (clean), with any built-in one that's missing put back."""
+    """The list's sections as the person arranged them (cleaned): their own wherever they put them, and
+    David's four with their own names, in their own order, any that's missing put back."""
     saved, seen = [], set()
     for s in (data or {}).get("sections") or []:
-        key, name = s.get("key"), " ".join(str(s.get("name") or "").split())[:40]
+        key = s.get("key")
         if key in seen or not (key in BUILT_IN or SECTION_KEY.match(key or "")):
             continue
         seen.add(key)
-        built_in = next((b["name"] for b in SECTIONS if b["key"] == key), None)
-        saved.append({"key": key, "name": built_in or name or "Untitled"})
+        saved.append({"key": key, "name": " ".join(str(s.get("name") or "").split())[:40] or "Untitled"})
     for i, s in enumerate(SECTIONS):
         if s["key"] not in seen:
             saved.insert(min(i, len(saved)), dict(s))
+    # David's sections fill their places in their own order, whatever order they were sent in.
+    davids = iter(SECTIONS)
+    saved = [dict(next(davids)) if s["key"] in BUILT_IN else s for s in saved]
     return saved[:MAX_SECTIONS]
 
 
