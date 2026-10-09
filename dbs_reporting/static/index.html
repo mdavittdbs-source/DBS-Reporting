@@ -163,10 +163,16 @@
 
   /* Start screen: headline and an uneven grid of example questions. Sizes and spacing follow the
      window's height, so it fits without scrolling on short screens (laptops, Windows displays
-     scaled to 125-150%) and sits in the middle of tall ones. It only scrolls if it can't fit. */
+     scaled to 125-150%) and sits just above the middle of tall ones. It only scrolls if it can't fit. */
   #log:has(.start) .inner { min-height: 100%; display: flex; flex-direction: column; }
-  #log:has(.start) #messages { flex: 1; justify-content: center; }
-  .start { padding: clamp(0px, 2vh, 24px) 0 clamp(8px, 2vh, 24px); }
+  #log:has(.start) #messages { flex: 1; gap: 0; }
+  /* The welcome sits above the middle, which looks centred (true centre looks low): less padding
+     at the top, and spare space split 1:2 above and below. The spacers shrink to nothing when
+     there's no spare room. */
+  #log:has(.start) { padding-top: 8px; }
+  #log:has(.start) #messages::before { content: ""; flex: 1; }
+  #log:has(.start) #messages::after { content: ""; flex: 2; }
+  .start { padding: 0 0 clamp(8px, 2vh, 24px); }
   .start .eyebrow-row { margin-bottom: clamp(10px, 2.2vh, 18px); }
   .start h2 { font-size: clamp(30px, min(4.4vw, 6.2vh), 56px); font-weight: 600; letter-spacing: -.05em; line-height: 1.02;
               margin: 0 0 clamp(8px, 1.6vh, 16px); text-wrap: balance; color: var(--text); }
@@ -202,6 +208,10 @@
          border-radius: 999px; padding: 5px 5px 5px 16px; font-size: 13px; font-weight: 500;
          background: var(--cta); color: var(--cta-ink); }
   .cta .ico { width: 26px; height: 26px; }
+  /* Optical centring: the label's box is centred, but its letters ride high (the box keeps room for
+     descenders like "p" and "y" that most labels barely use), so it sits 1px lower to look centred
+     against the round icon. */
+  .cta > span:first-child { position: relative; top: 1px; }
   .cta.ghost { background: var(--pill); color: var(--text); }
   .cta.ghost .ico { background: var(--pill); }
 
@@ -1790,7 +1800,7 @@
       b.className = "shell";
       b.style.setProperty("--i", i);
       b.innerHTML = '<span class="core"><span class="eyebrow"></span><span class="q"></span>' +
-        `<span class="cta${i ? " ghost" : ""}">${i ? "Try it" : "Ask David"}<span class="ico">${ARROW}</span></span></span>`;
+        `<span class="cta${i ? " ghost" : ""}"><span>${i ? "Try it" : "Ask David"}</span><span class="ico">${ARROW}</span></span></span>`;
       b.querySelector(".eyebrow").textContent = kind;
       b.querySelector(".q").textContent = text;
       b.onclick = () => ask(text);
